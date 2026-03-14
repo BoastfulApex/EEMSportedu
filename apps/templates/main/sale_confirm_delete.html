@@ -1,0 +1,28 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %} Guruhlar {% endblock %}
+
+<!-- Element injected in the BODY element -->
+{% block body_class %} Guruhni o'chirish {% endblock body_class %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+  <link href="{% static 'css/app.css' %}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+{% endblock stylesheets %}
+
+{% block content %}
+<div class="content-wrapper">
+    <section class="content-header">
+        <div class="container-fluid">
+            <form method="POST">
+                {% csrf_token %}
+                <p> O'chirishni tasdiqlaysizmi<br><b>{{sale.name}}</b></p>
+                <input type="submit" value="O'chirish" class="btn btn-outline-danger">
+            </form>
+        </div>
+    </section>
+</div>
+
+{% endblock content %}

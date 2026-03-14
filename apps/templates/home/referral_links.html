@@ -1,0 +1,107 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Referal Havolalar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<link href="{% static 'css/app.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <h3 class="mb-4">🔗 Telegram Referal Havolalar — {{ org.name }}</h3>
+
+    {% if not bot_username %}
+    <div class="alert alert-warning">
+      ⚠️ <strong>BOT_USERNAME</strong> .env faylida sozlanmagan.
+      Iltimos, <code>BOT_USERNAME=yourbotusername</code> qo'shing (@ belgisisiz).
+    </div>
+    {% endif %}
+
+    <div class="row">
+      <!-- Xodimlar uchun havola -->
+      <div class="col-md-6 mb-4">
+        <div class="card h-100">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">👤 Xodimlar uchun havola</h5>
+          </div>
+          <div class="card-body">
+            <p class="text-muted">
+              Bu havolani xodimlarga yuboring. Havola orqali kirgan xodim
+              avtomatik ravishda <strong>{{ org.name }}</strong> tashkilotiga
+              bog'lanadi va HR adminlarga tasdiqlash so'rovi yuboriladi.
+            </p>
+
+            {% if emp_link %}
+            <div class="input-group mb-3">
+              <input type="text" class="form-control" id="empLink" value="{{ emp_link }}" readonly>
+              <button class="btn btn-outline-primary" type="button" onclick="copyLink('empLink')">
+                📋 Nusxalash
+              </button>
+            </div>
+
+            <div class="text-center mt-3">
+              <a href="{{ emp_link }}" target="_blank" class="btn btn-primary">
+                🚀 Havolani ochish
+              </a>
+            </div>
+            {% else %}
+            <div class="alert alert-secondary">BOT_USERNAME sozlanmagan.</div>
+            {% endif %}
+          </div>
+          <div class="card-footer text-muted small">
+            Format: <code>https://t.me/BOT_USERNAME?start=emp_{{ org.id }}</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tinglovchilar uchun havola (kelajak) -->
+      <div class="col-md-6 mb-4">
+        <div class="card h-100 border-secondary">
+          <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">🎓 Tinglovchilar uchun havola</h5>
+          </div>
+          <div class="card-body text-muted">
+            <p>Bu funksiya hozircha ishlab chiqilmoqda.</p>
+            <p class="small">Format: <code>?start=std_{{ org.id }}</code></p>
+          </div>
+          <div class="card-footer text-muted small">
+            <span class="badge bg-secondary">Tez orada</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Qo'llanma -->
+    <div class="card mt-2">
+      <div class="card-header">📖 Qanday ishlaydi?</div>
+      <div class="card-body">
+        <ol>
+          <li>Xodim havolani bosadi va Telegram botga o'tadi.</li>
+          <li>Bot avtomatik ravishda tashkilotingizni aniqlaydi.</li>
+          <li>HR adminlarga tasdiqlash so'rovi yuboriladi.</li>
+          <li>Admin xodimni tasdiqlaydi, filial va ish jadvalini tayinlaydi.</li>
+          <li>Xodim tasdiqlangach yuz rasmini yuboradi.</li>
+          <li>Rasm tekshiriladi — qabul qilinsa ro'yxatdan o'tish yakunlanadi.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+function copyLink(id) {
+  const el = document.getElementById(id);
+  el.select();
+  el.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(el.value).then(() => {
+    alert('Havola nusxalandi!');
+  });
+}
+</script>
+{% endblock %}

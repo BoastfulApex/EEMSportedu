@@ -1,0 +1,188 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Davomat hisoboti{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+  .badge-main  { background:var(--action); color:#fff; font-size:11px; padding:2px 9px; border-radius:20px; font-weight:600; }
+  .badge-extra { background:var(--success); color:#fff; font-size:11px; padding:2px 9px; border-radius:20px; font-weight:600; }
+  .badge-kelgan   { background:var(--success-light); color:#065f46; font-size:11px; padding:3px 9px; border-radius:20px; font-weight:600; }
+  .badge-kelmagan { background:var(--danger-light);  color:#991b1b; font-size:11px; padding:3px 9px; border-radius:20px; font-weight:600; }
+  .late-warn  { color:var(--danger);  font-weight:700; }
+  .early-warn { color:var(--warning); font-weight:700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <div class="page-header">
+    <div>
+      <h4>Davomat hisoboti</h4>
+      <p class="breadcrumb-info mb-0">
+        {% if employee %}Xodim: <strong>{{ employee.name }}</strong>
+        {% else %}Filial: <strong>{{ filial }}</strong>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div>
+
+      {# ── Sana tanlash formi ── #}
+      <div class="card shadow-sm mb-4">
+        <div class="card-body py-3">
+          <form method="post" class="row g-3 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">📅 Boshlanish sanasi</label>
+              {{ form.start_date }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">📅 Tugash sanasi</label>
+              {{ form.end_date }}
+            </div>
+            <div class="col-md-4">
+              <button type="submit" class="btn btn-primary w-100">Hisobotni olish</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {% if report %}
+
+      {# ── Statistika ── #}
+      {% with total=report|length %}
+      {% with kelgan_count=0 %}
+      <div class="row g-3 mb-4">
+        <div class="col-md-3">
+          <div class="stat-card bg-primary-subtle">
+            <div class="text-primary fw-bold fs-4">{{ report|length }}</div>
+            <div class="text-muted small">Jami jadval qatorlari</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stat-card bg-success-subtle">
+            <div class="text-success fw-bold fs-4">
+              {% for r in report %}{% if r.status == 'Kelgan' %}{% if forloop.last %}✓{% endif %}{% endif %}{% endfor %}
+              {{ report|length }}
+            </div>
+            <div class="text-muted small">Qayd etilgan</div>
+          </div>
+        </div>
+      </div>
+      {% endwith %}
+      {% endwith %}
+
+      {# ── Yuklab olish tugmasi ── #}
+      <div class="d-flex justify-content-end mb-3">
+        {% if employee %}
+        <a href="{% url 'employee_download_excel' employee.id %}?start_date={{ request.POST.start_date }}&end_date={{ request.POST.end_date }}"
+           class="btn btn-success btn-sm">
+          📥 Excel yuklab olish
+        </a>
+        {% else %}
+        <a href="{% url 'report_download' %}?start_date={{ request.POST.start_date }}&end_date={{ request.POST.end_date }}"
+           class="btn btn-success btn-sm">
+          📥 Excel yuklab olish
+        </a>
+        {% endif %}
+      </div>
+
+      {# ── Jadval ── #}
+      <div class="card shadow-sm">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>Sana</th>
+                <th>Kun</th>
+                <th>Xodim</th>
+                <th>Turi</th>
+                <th>Jadval</th>
+                <th>Lokatsiya</th>
+                <th>Vaqt</th>
+                <th>Holati</th>
+                <th>Kirish</th>
+                <th>Chiqish</th>
+                <th>Ish vaqti</th>
+                <th>Kechikdi</th>
+                <th>Erta ketdi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report %}
+              <tr {% if row.status == 'Kelmagan' %}class="table-danger-subtle"{% endif %}>
+                <td class="text-muted">{{ row.index }}</td>
+                <td>{{ row.date }}</td>
+                <td><small>{{ row.weekday }}</small></td>
+                <td class="fw-semibold">{{ row.employee }}</td>
+                <td><small class="text-muted">{{ row.employee_type }}</small></td>
+                <td>
+                  {% if row.schedule_type == 'Asosiy' %}
+                    <span class="badge-main">Asosiy</span>
+                  {% else %}
+                    <span class="badge-extra">Qo'shimcha</span>
+                  {% endif %}
+                </td>
+                <td><small>📍 {{ row.location }}</small></td>
+                <td>
+                  <small>{{ row.schedule_start|time:"H:i" }} – {{ row.schedule_end|time:"H:i" }}</small>
+                </td>
+                <td>
+                  {% if row.status == 'Kelgan' %}
+                    <span class="badge badge-kelgan rounded-pill px-2">✓ Kelgan</span>
+                  {% else %}
+                    <span class="badge badge-kelmagan rounded-pill px-2">✗ Kelmagan</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.check_in != '-' %}
+                    {{ row.check_in|time:"H:i" }}
+                  {% else %} — {% endif %}
+                </td>
+                <td>
+                  {% if row.check_out != '-' %}
+                    {{ row.check_out|time:"H:i" }}
+                  {% else %} — {% endif %}
+                </td>
+                <td class="fw-semibold">{{ row.worked }}</td>
+                <td>
+                  {% if row.late_minutes != '-' and row.late_minutes > 0 %}
+                    <span class="late-warn">+{{ row.late_minutes }} d</span>
+                  {% elif row.late_minutes == 0 %}
+                    <span class="text-success">O'z vaqtida</span>
+                  {% else %} — {% endif %}
+                </td>
+                <td>
+                  {% if row.early_leave_minutes != '-' and row.early_leave_minutes > 0 %}
+                    <span class="early-warn">-{{ row.early_leave_minutes }} d</span>
+                  {% elif row.early_leave_minutes == 0 %}
+                    <span class="text-success">To'liq</span>
+                  {% else %} — {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% else %}
+        {% if request.method == 'POST' %}
+        <div class="alert alert-info">Bu davr uchun ma'lumot topilmadi.</div>
+        {% endif %}
+      {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  flatpickr(".datepicker", { dateFormat: "Y-m-d" });
+</script>
+{% endblock %}

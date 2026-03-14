@@ -1,0 +1,83 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Admin qo'shish{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<link href="{% static 'css/app.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <div class="mb-3">
+      <a href="{% url 'filial_admin_list' %}" class="btn btn-outline-secondary btn-sm">
+        &larr; Orqaga
+      </a>
+    </div>
+
+    <div class="row">
+      <div class="col-md-7">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              {% if role_label %}{{ role_label }} qo'shish{% else %}Admin qo'shish{% endif %}
+              <small class="text-muted">— {{ filial.filial_name }}</small>
+            </h5>
+          </div>
+          <div class="card-body">
+            {% if messages %}
+              {% for msg in messages %}
+                <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
+              {% endfor %}
+            {% endif %}
+
+            <form method="post">
+              {% csrf_token %}
+
+              <div class="mb-3">
+                <label class="form-label">Username</label>
+                {{ form.username }}
+                {% if form.username.errors %}
+                  <div class="text-danger small">{{ form.username.errors }}</div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Parol</label>
+                {{ form.password }}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">To'liq ism</label>
+                {{ form.full_name }}
+                {% if form.full_name.errors %}
+                  <div class="text-danger small">{{ form.full_name.errors }}</div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Telegram ID (ixtiyoriy)</label>
+                {{ form.telegram_id }}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Rol</label>
+                {{ form.role }}
+              </div>
+
+              <button type="submit" class="btn btn-success">Qo'shish</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,87 @@
+<nav class="navbar navbar-expand navbar-light navbar-bg">
+
+  {# Sidebar toggle #}
+  <button class="sidebar-toggle js-sidebar-toggle" type="button" aria-label="Toggle sidebar">
+    <i class="hamburger"></i>
+  </button>
+
+  {# Server time #}
+  <div class="server-time-chip ms-2 d-none d-md-inline-flex">
+    <span class="dot"></span>
+    <span>{{ tashkent_time|date:"d.m.Y" }} &nbsp;<strong>{{ tashkent_time|date:"H:i" }}</strong></span>
+  </div>
+
+  {# Right side #}
+  <div class="navbar-collapse collapse">
+    <ul class="navbar-nav ms-auto align-items-center gap-2">
+
+      {# User dropdown (vanilla JS — no Bootstrap JS dependency) #}
+      <li class="nav-item" style="position:relative" id="user-dd-wrap">
+        <button type="button" class="user-dropdown-btn" id="user-dd-btn"
+                aria-expanded="false" aria-haspopup="true">
+          <div class="user-avatar-wrap">
+            <span class="user-avatar-initials">
+              {{ admin_user.full_name|first|upper }}
+            </span>
+          </div>
+          <div class="user-info d-none d-sm-block">
+            <span class="user-info-name">{{ admin_user.full_name }}</span>
+            <span class="user-info-role">
+              {% if is_org_admin %}Org Admin
+              {% elif is_filial_admin %}Filial Admin
+              {% elif admin_role == 'hr_admin' %}HR Admin
+              {% elif admin_role == 'edu_admin' %}O'quv Admin
+              {% elif admin_role == 'monitoring' %}Monitoring
+              {% endif %}
+            </span>
+          </div>
+          <svg class="user-caret d-none d-sm-block" xmlns="http://www.w3.org/2000/svg"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <div class="user-dd-menu" id="user-dd-menu" role="menu">
+
+          {# Filial tanlash: faqat org_admin #}
+          {% if is_org_admin %}
+            <div class="dropdown-header">Filial tanlang</div>
+            {% for filial in data.filials %}
+              <form method="post" action="{% url 'admin_select_filial' filial.id %}" class="px-1 mb-1">
+                {% csrf_token %}
+                <button type="submit"
+                  class="dropdown-item {% if data.selected_filial_id|stringformat:'s' == filial.id|stringformat:'s' %}active-filial{% endif %}">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" style="flex-shrink:0">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                  </svg>
+                  {{ filial.filial_name }}
+                </button>
+              </form>
+            {% empty %}
+              <span class="dropdown-item text-muted fst-italic">Filial yo'q</span>
+            {% endfor %}
+            <div class="dropdown-divider"></div>
+          {% endif %}
+
+          {# Chiqish #}
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="dropdown-item logout-item">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" style="flex-shrink:0">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Chiqish
+            </button>
+          </form>
+
+        </div>
+      </li>
+
+    </ul>
+  </div>
+</nav>

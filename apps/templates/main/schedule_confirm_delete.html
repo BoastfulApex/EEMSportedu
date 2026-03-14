@@ -1,0 +1,28 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Jadvalni o'chirish{% endblock %}
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid pt-4">
+      <div class="card shadow-sm" style="max-width:500px;margin:auto">
+        <div class="card-header bg-danger text-white fw-semibold">Jadvalni o'chirish</div>
+        <div class="card-body">
+          <p>
+            <strong>"{{ object.name }}"</strong> jadvalini o'chirishni tasdiqlaysizmi?
+          </p>
+          <p class="text-muted small">Bu jadvalni ishlatayotgan xodimlarda jadval o'chiriladi.</p>
+          <form method="post">
+            {% csrf_token %}
+            <div class="d-flex gap-2 mt-3">
+              <button type="submit" class="btn btn-danger">Ha, o'chirish</button>
+              <a href="{% url 'schedules' %}" class="btn btn-outline-secondary">Bekor qilish</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block javascripts %}<script src="{% static 'js/app.js' %}"></script>{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %} Manzillar {% endblock %}
+
+<!-- Element injected in the BODY element -->
+{% block body_class %} dashboard {% endblock body_class %} 
+<style>
+	.x {
+    color: red;
+	}
+	.check {
+		color: green;
+	}
+
+</style>
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+  <link href="{% static 'css/app.css' %}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  
+{% endblock stylesheets %}
+
+{% block content %}
+<div class="content-wrapper">
+    <section class="content-header">
+        <h1>Joylashuv qo‘shish</h1>
+    </section>
+
+    <section class="content">
+        <div class="card card-primary">
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="id_filial">Filial</label>
+                        {{ form.filial }}
+                    </div>
+
+                    <div class="form-group">
+                        <label>Joylashuvni xaritadan tanlang:</label>
+                        <div id="map" style="height: 400px;"></div>
+                    </div>
+
+                    {{ form.latitude }}
+                    {{ form.longitude }}
+                </br>
+                </br>
+                    <div class="form-group">
+                        <label>Manzil (faqat o‘qish uchun)</label>
+                        {{ form.address }}
+                    </div>
+                </br>
+                </br>
+
+                    <input type="submit" class="btn btn-success" value="Saqlash">
+                </form>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+
+<!-- Leaflet.js for map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const latInput = document.getElementById("id_latitude");
+        const lngInput = document.getElementById("id_longitude");
+        const addressInput = document.getElementById("id_address");
+
+        // Default location
+        const defaultLat = 41.3111;
+        const defaultLng = 69.2797;
+
+        const map = L.map('map').setView([defaultLat, defaultLng], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        let marker;
+
+        function updateMarker(lat, lng) {
+            if (marker) {
+                marker.setLatLng([lat, lng]);
+            } else {
+                marker = L.marker([lat, lng], {draggable: true}).addTo(map);
+                marker.on("dragend", function (e) {
+                    const position = e.target.getLatLng();
+                    latInput.value = position.lat;
+                    lngInput.value = position.lng;
+                    reverseGeocode(position.lat, position.lng);
+                });
+            }
+        }
+
+        map.on("click", function (e) {
+            const {lat, lng} = e.latlng;
+            latInput.value = lat;
+            lngInput.value = lng;
+            updateMarker(lat, lng);
+            reverseGeocode(lat, lng);
+        });
+
+        function reverseGeocode(lat, lng) {
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                .then(response => response.json())
+                .then(data => {
+                    addressInput.value = data.display_name || "Manzil topilmadi";
+                })
+                .catch(error => {
+                    addressInput.value = "Manzil aniqlanmadi";
+                });
+        }
+
+        updateMarker(defaultLat, defaultLng);
+    });
+</script>
+{% endblock %}

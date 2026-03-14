@@ -1,0 +1,157 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Xodimlar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  {# ── Page Header ── #}
+  <div class="page-header">
+    <div>
+      <h4>Xodimlar ro'yxati</h4>
+      <p class="breadcrumb-info mb-0">Filial: <strong>{{ filial }}</strong></p>
+    </div>
+    <a href="{% url 'employees_create' %}" class="btn btn-primary">
+      <i data-feather="user-plus"></i>
+      Yangi xodim
+    </a>
+  </div>
+
+  {# ── Filter Bar ── #}
+  <div class="filter-bar">
+    <form class="d-flex gap-2 w-100 flex-wrap align-items-center" method="get">
+      <div style="flex:1;min-width:200px;max-width:340px" class="position-relative">
+        <input class="form-control ps-4" type="text" name="q"
+               value="{{ search_query }}"
+               placeholder="Ism yoki Telegram ID bo'yicha...">
+      </div>
+      <button class="btn btn-primary" type="submit">
+        <i data-feather="search"></i> Izlash
+      </button>
+      {% if search_query %}
+        <a href="{% url 'employees' %}" class="btn btn-outline-secondary">
+          <i data-feather="x"></i> Tozalash
+        </a>
+      {% endif %}
+    </form>
+  </div>
+
+  {# ── Table Card ── #}
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Xodim</th>
+            <th>Telegram ID</th>
+            <th>Tur</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for employee in page_obj %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">
+              {{ forloop.counter }}
+            </td>
+            <td>
+              <div class="emp-cell">
+                {% if employee.image %}
+                  <img src="{{ employee.image.url }}"
+                       class="emp-avatar" alt="{{ employee.name }}">
+                {% else %}
+                  <div class="emp-avatar-placeholder">
+                    {{ employee.name|first|upper }}
+                  </div>
+                {% endif %}
+                <div>
+                  <div class="emp-name">{{ employee.name }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <code style="font-size:12px;color:var(--text-sub)">{{ employee.user_id }}</code>
+            </td>
+            <td>
+              <span class="badge bg-primary-subtle text-primary">
+                {{ employee.get_employee_type_display }}
+              </span>
+            </td>
+            <td class="text-end">
+              <div class="d-flex gap-2 justify-content-end">
+                <a href="{% url 'employee_update' employee.id %}"
+                   class="btn btn-sm btn-outline-primary" title="Tahrirlash">
+                  <i data-feather="edit-2"></i>
+                </a>
+                <a href="{% url 'employee_report' employee.id %}"
+                   class="btn btn-sm btn-outline-secondary" title="Hisobot">
+                  <i data-feather="bar-chart-2"></i>
+                </a>
+                <a href="{% url 'employee_delete' employee.id %}"
+                   class="btn btn-sm btn-outline-danger" title="O'chirish">
+                  <i data-feather="trash-2"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center py-5">
+              <div style="color:var(--text-muted)">
+                <i data-feather="users" style="width:40px;height:40px;opacity:.3;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto"></i>
+                <p class="mb-2">Xodimlar topilmadi</p>
+                <a href="{% url 'employees_create' %}" class="btn btn-primary btn-sm">
+                  Yangi xodim qo'shish
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="card-footer d-flex align-items-center justify-content-between">
+      <small class="text-muted">
+        Jami: <strong>{{ page_obj.paginator.count }}</strong> ta xodim
+      </small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="?q={{ search_query }}&page=1">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?q={{ search_query }}&page={{ page_obj.previous_page_number }}">
+                {{ page_obj.previous_page_number }}
+              </a>
+            </li>
+          {% endif %}
+          <li class="page-item active">
+            <span class="page-link">{{ page_obj.number }}</span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="?q={{ search_query }}&page={{ page_obj.next_page_number }}">
+                {{ page_obj.next_page_number }}
+              </a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?q={{ search_query }}&page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock content %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

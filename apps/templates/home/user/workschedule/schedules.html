@@ -1,0 +1,124 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Ish jadvallari{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Ish jadvallari</h4>
+      <p class="breadcrumb-info mb-0">Filial: <strong>{{ filial }}</strong></p>
+    </div>
+    <a href="{% url 'schedule_create' %}" class="btn btn-primary">
+      <i data-feather="plus"></i> Yangi jadval
+    </a>
+  </div>
+
+  <div class="filter-bar">
+    <form class="d-flex gap-2 align-items-center" method="get">
+      <input class="form-control" type="text" name="q"
+             placeholder="Jadval nomi bo'yicha..."
+             value="{{ search_query }}" style="max-width:320px">
+      <button class="btn btn-primary" type="submit">
+        <i data-feather="search"></i> Izlash
+      </button>
+      {% if search_query %}
+        <a href="{% url 'schedules' %}" class="btn btn-outline-secondary">
+          <i data-feather="x"></i>
+        </a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Jadval nomi</th>
+            <th>Kunlar va vaqtlar</th>
+            <th>Lokatsiya</th>
+            <th>Xodimlar</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sch in page_obj %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
+            <td><div class="fw-bold" style="color:var(--primary)">{{ sch.name }}</div></td>
+            <td>
+              {% for sd in sch.days.all %}
+                <div class="d-flex align-items-center gap-1 mb-1">
+                  <span class="badge-day">{{ sd.weekday.name }}</span>
+                  <span class="fw-semibold" style="font-size:12px;color:var(--success)">{{ sd.start|time:"H:i" }}</span>
+                  <span class="text-muted" style="font-size:11px">–</span>
+                  <span class="fw-semibold" style="font-size:12px;color:var(--danger)">{{ sd.end|time:"H:i" }}</span>
+                </div>
+              {% empty %}
+                <span class="text-muted small fst-italic">Kunlar kiritilmagan</span>
+              {% endfor %}
+            </td>
+            <td>
+              <span class="loc-badge">
+                <i data-feather="map-pin" style="width:12px;height:12px;display:inline"></i>
+                {{ sch.location.name|default:"—" }}
+              </span>
+            </td>
+            <td>
+              <span class="badge bg-secondary-subtle text-secondary">{{ sch.employees.count }} kishi</span>
+            </td>
+            <td class="text-end">
+              <div class="d-flex gap-2 justify-content-end">
+                <a href="{% url 'schedule_detail' sch.id %}" class="btn btn-sm btn-outline-primary">
+                  <i data-feather="edit-2"></i>
+                </a>
+                <a href="{% url 'schedule_delete' sch.id %}" class="btn btn-sm btn-outline-danger">
+                  <i data-feather="trash-2"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center py-5">
+              <i data-feather="calendar" style="width:40px;height:40px;opacity:.2;display:block;margin:0 auto 12px"></i>
+              <p class="text-muted mb-3">Jadvallar topilmadi</p>
+              <a href="{% url 'schedule_create' %}" class="btn btn-primary btn-sm">Yangi jadval yarating</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer d-flex align-items-center justify-content-between">
+      <small class="text-muted">Sahifa <strong>{{ page_obj.number }}</strong> / {{ page_obj.paginator.num_pages }}</small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}">←</a>
+            </li>
+          {% endif %}
+          <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}">→</a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,197 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Xodim qo'shish{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+  .weekday-pill input[type="checkbox"] { display: none; }
+  .weekday-pill label {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    background: var(--bg);
+    color: var(--text-sub);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all .15s;
+    border: 1.5px solid var(--border);
+    user-select: none;
+  }
+  .weekday-pill input:checked + label {
+    background: var(--action);
+    color: #fff;
+    border-color: var(--action);
+    box-shadow: 0 3px 8px rgba(52,152,219,0.25);
+  }
+  .extra-pill input:checked + label {
+    background: var(--success);
+    border-color: var(--success);
+  }
+  .step-badge {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--action);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .section-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .extra-block {
+    border: 1.5px dashed var(--success);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 14px;
+    background: #F0FBF4;
+    position: relative;
+  }
+  .remove-extra {
+    position: absolute;
+    top: 12px; right: 14px;
+    background: none;
+    border: none;
+    color: #dc3545;
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content-header">
+    <div class="container-fluid">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <h1 class="mb-0">Yangi xodim qo'shish</h1>
+          <p class="text-muted mb-0">Filial: <strong>{{ filial }}</strong></p>
+        </div>
+        <a href="{% url 'employees' %}" class="btn btn-outline-secondary btn-sm">← Orqaga</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="content">
+    <div class="container-fluid">
+
+      {% if form_errors %}
+      <div class="alert alert-danger alert-dismissible fade show">
+        <strong>Xatolik!</strong> Iltimos, barcha maydonlarni to'g'ri to'ldiring.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endif %}
+
+      <form method="post" enctype="multipart/form-data" id="mainForm">
+        {% csrf_token %}
+        <input type="hidden" name="extra_count" id="extraCount" value="{{ extra_forms|length }}">
+
+        <div class="row g-4">
+
+          {# ===== CHAP: XODIM MA'LUMOTLARI ===== #}
+          <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-header d-flex align-items-center gap-2">
+                <span class="step-badge">1</span>
+                <span class="fw-semibold">Xodim ma'lumotlari</span>
+              </div>
+              <div class="card-body">
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">To'liq ismi <span class="text-danger">*</span></label>
+                  {{ emp_form.name }}
+                  {% if emp_form.name.errors %}
+                    <div class="text-danger small mt-1">{{ emp_form.name.errors.0 }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Telegram ID</label>
+                  {{ emp_form.user_id }}
+                  {% if emp_form.user_id.errors %}
+                    <div class="text-danger small mt-1">{{ emp_form.user_id.errors.0 }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Xodim turi <span class="text-danger">*</span></label>
+                  {{ emp_form.employee_type }}
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Yuz rasmi</label>
+                  {{ emp_form.image }}
+                  <div class="form-text">Bot orqali ham yuklash mumkin</div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          {# ===== O'NG: JADVAL TANLASH ===== #}
+          <div class="col-lg-8">
+            <div class="card shadow-sm">
+              <div class="card-header d-flex align-items-center gap-2">
+                <span class="step-badge">2</span>
+                <span class="fw-semibold">Jadval tanlash</span>
+                <span class="badge bg-primary-subtle text-primary ms-auto">Ixtiyoriy</span>
+              </div>
+              <div class="card-body">
+                <p class="text-muted small mb-3">
+                  Xodimga bir yoki bir nechta tayyor jadval biriktirilishi mumkin.
+                  Oldin <a href="{% url 'schedule_create' %}" target="_blank">jadval yarating</a>, keyin tanlang.
+                </p>
+
+                {% if emp_form.schedules.field.queryset.count == 0 %}
+                <div class="alert alert-warning">
+                  Bu filial uchun hali jadval shablonlari yaratilmagan.
+                  <a href="{% url 'schedule_create' %}" target="_blank">Jadval yarating →</a>
+                </div>
+                {% else %}
+                <div class="d-flex flex-column gap-2">
+                  {% for cb in emp_form.schedules %}
+                  <div class="form-check border rounded p-3">
+                    {{ cb.tag }}
+                    <label class="form-check-label ms-2 w-100" for="{{ cb.id_for_label }}">
+                      <span class="fw-semibold">{{ cb.choice_label }}</span>
+                    </label>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% if emp_form.schedules.errors %}
+                  <div class="text-danger small mt-1">{{ emp_form.schedules.errors.0 }}</div>
+                {% endif %}
+                {% endif %}
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# SUBMIT #}
+        <div class="d-flex justify-content-end gap-2 mt-4 mb-5">
+          <a href="{% url 'employees' %}" class="btn btn-outline-secondary px-4">Bekor qilish</a>
+          <button type="submit" class="btn btn-primary px-5">Xodimni saqlash</button>
+        </div>
+
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

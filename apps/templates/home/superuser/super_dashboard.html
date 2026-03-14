@@ -1,0 +1,131 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %} SUPER ADMIN {% endblock %} 
+
+<!-- Element injected in the BODY element -->
+{% block body_class %} dashboard {% endblock body_class %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+  <link href="{% static 'css/app.css' %}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+
+{% endblock stylesheets %}
+
+{% block content %}
+	{% if request.user.is_superuser == True %}
+
+			<main class="content">
+				<div class="container-fluid p-0">
+
+					<h1 class="h3 mb-3"><strong>FILIALLAR </strong>Ro'yxati </h1>
+
+					{% comment %} <div class="row">
+						<div class="col-xl-12 col-xxl-12 d-flex">
+							<div class="w-100">
+							<div class="row">
+								<!-- Bugungi kelganlar -->
+								<div class="col-sm-4">
+									<div class="card">
+										<div class="card-body">
+											<h5 class="card-title">Bugungi kelganlar</h5>
+											<h1 class="mt-1 mb-3">{{ todays_attendance_count }}</h1>
+										</div>
+									</div>
+								</div>
+
+								<!-- Oxirgi haftada kechikishlar -->
+								<div class="col-sm-4">
+									<div class="card">
+										<div class="card-body">
+											<h5 class="card-title">Oxirgi haftada kechikishlar</h5>
+											<h1 class="mt-1 mb-3">{{ late_percent }}%</h1>
+										</div>
+									</div>
+								</div>
+
+								<!-- Oxirgi haftada erta ketganlar -->
+								<div class="col-sm-4">
+									<div class="card">
+										<div class="card-body">
+											<h5 class="card-title">Oxirgi haftada erta ketganlar</h5>
+											<h1 class="mt-1 mb-3">{{ early_leave_percent }}%</h1>
+										</div>
+									</div>
+								</div>
+							</div>
+							</div>
+						</div>
+					</div>
+					<div class="row mt-4">
+					<!-- Chap taraf: kechikish -->
+						<div class="col-md-6">
+							<div class="card chart-card">
+							<div class="card-body">
+								<h5 class="card-title">Oxirgi 6 oyda kechikish foizi</h5>
+								<canvas id="lateChart"></canvas>
+							</div>
+							</div>
+						</div>
+
+						<!-- O'ng taraf: erta ketish -->
+						<div class="col-md-6">
+							<div class="card chart-card">
+							<div class="card-body">
+								<h5 class="card-title">Oxirgi 6 oyda erta ketish foizi</h5>
+								<canvas id="earlyChart"></canvas>
+							</div>
+							</div>
+						</div>
+					</div> {% endcomment %}
+				</div>
+			</main>
+	{% endif %}
+{% endblock content %}
+
+{% block javascripts %}
+
+	<script src="{% static 'js/app.js' %}"></script>
+
+	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+	<script>
+	const labels = {{ chart_labels_json|safe }};
+	const lateData = {{ late_values_json|safe }};
+	const earlyData = {{ early_values_json|safe }};
+
+	new Chart(document.getElementById('lateChart'), {
+		type: 'line',
+		data: {
+		labels: labels,
+		datasets: [{
+			label: 'Kechikish (%)',
+			data: lateData,
+			borderColor: 'rgba(255, 99, 132, 1)',
+			backgroundColor: 'rgba(255, 99, 132, 0.2)',
+			borderWidth: 2,
+			fill: true,
+			tension: 0.3
+		}]
+		},
+		options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } }
+	});
+
+	new Chart(document.getElementById('earlyChart'), {
+		type: 'line',
+		data: {
+		labels: labels,
+		datasets: [{
+			label: 'Erta ketish (%)',
+			data: earlyData,
+			borderColor: 'rgba(54, 162, 235, 1)',
+			backgroundColor: 'rgba(54, 162, 235, 0.2)',
+			borderWidth: 2,
+			fill: true,
+			tension: 0.3
+		}]
+		},
+		options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } }
+	});
+	</script>
+{% endblock javascripts %}

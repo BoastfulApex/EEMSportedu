@@ -1,0 +1,136 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Jadval yaratish{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header mb-4">
+    <div>
+      <h4>Yangi jadval yaratish</h4>
+      <p class="breadcrumb-info mb-0">Filial: <strong>{{ filial }}</strong></p>
+    </div>
+    <a href="{% url 'schedules' %}" class="btn btn-outline-secondary">
+      <i data-feather="arrow-left"></i> Orqaga
+    </a>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-4">
+
+      {# ── Left: Basic info ── #}
+      <div class="col-lg-4">
+        <div class="card">
+          <div class="card-header">
+            <i data-feather="info"></i>
+            Jadval ma'lumotlari
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">Jadval nomi <span style="color:var(--danger)">*</span></label>
+              {{ form.name }}
+              {% if form.name.errors %}
+                <div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>
+              {% endif %}
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Lokatsiya</label>
+              {{ form.location }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── Right: Weekdays ── #}
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-header">
+            <i data-feather="calendar"></i>
+            Hafta kunlari va vaqtlari
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-bordered mb-0">
+              <thead>
+                <tr>
+                  <th style="width:44px"></th>
+                  <th>Kun</th>
+                  <th>Kelish vaqti</th>
+                  <th>Ketish vaqti</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for wd in weekdays %}
+                <tr class="day-row" id="row-{{ wd.id }}">
+                  <td class="text-center align-middle">
+                    <input type="checkbox" class="form-check-input day-check"
+                           id="chk-{{ wd.id }}"
+                           data-row="row-{{ wd.id }}"
+                           onchange="toggleDay(this)">
+                  </td>
+                  <td class="align-middle fw-semibold day-toggle"
+                      onclick="toggleByLabel('chk-{{ wd.id }}')"
+                      style="color:var(--primary)">
+                    {{ wd.name }}
+                  </td>
+                  <td>
+                    <input type="time" name="day_{{ wd.id }}_start"
+                           class="form-control form-control-sm"
+                           id="start-{{ wd.id }}" disabled>
+                  </td>
+                  <td>
+                    <input type="time" name="day_{{ wd.id }}_end"
+                           class="form-control form-control-sm"
+                           id="end-{{ wd.id }}" disabled>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer text-muted">
+            <i data-feather="info" style="width:13px;height:13px"></i>
+            Faqat belgilangan kunlar uchun vaqt saqlanadi.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-4 mb-5">
+      <a href="{% url 'schedules' %}" class="btn btn-outline-secondary px-4">Bekor qilish</a>
+      <button type="submit" class="btn btn-primary px-5">
+        <i data-feather="save"></i> Saqlash
+      </button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+<script>
+function toggleDay(chk) {
+  const row = document.getElementById(chk.dataset.row);
+  const id  = chk.id.replace('chk-', '');
+  const s   = document.getElementById('start-' + id);
+  const e   = document.getElementById('end-'   + id);
+  if (chk.checked) {
+    row.style.background = '#F0FBF4';
+    s.disabled = false; e.disabled = false;
+    s.focus();
+  } else {
+    row.style.background = '';
+    s.disabled = true; e.disabled = true;
+    s.value = ''; e.value = '';
+  }
+}
+function toggleByLabel(id) {
+  const chk = document.getElementById(id);
+  chk.checked = !chk.checked;
+  toggleDay(chk);
+}
+</script>
+{% endblock %}
