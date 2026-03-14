@@ -45,6 +45,13 @@
             <span>Ish jadvallari</span>
           </a>
         </li>
+
+        <li class="sidebar-item {% if segment == 'salary' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'salary_list' %}">
+            <i data-feather="dollar-sign"></i>
+            <span>Maosh sozlamalari</span>
+          </a>
+        </li>
         {% endif %}
       {% endif %}
 

@@ -21,7 +21,8 @@ urlpatterns = [
     path('report/download/', views.download_excel, name='report_download'),
     path('employees/<int:pk>/report/', views.employee_report, name='employee_report'),
     path('employees/<int:pk>/report/download', views.employee_download_excel, name='employee_download_excel'),
-    
+    path('salaries/', views.salary_list, name='salary_list'),
+    path('salaries/<int:pk>/update/', views.salary_update, name='salary_update'),
 
     # path('users/', views.users_view, name='users'),
     # path('categories/', views.categories, name='home_categories'),

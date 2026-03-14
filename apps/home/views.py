@@ -1,6 +1,8 @@
 import json
 import calendar
 import openpyxl
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 from datetime import timedelta, datetime
 
 from django.contrib.auth.decorators import login_required
@@ -647,3 +649,65 @@ def employee_download_excel(request, pk):
     response['Content-Disposition'] = 'attachment; filename=hisobot.xlsx'
     wb.save(response)
     return response
+
+
+# ============================================================
+# MAOSH BOSHQARUVI
+# ============================================================
+
+@hr_admin_required
+def salary_list(request):
+    """Barcha xodimlarning oylik maosh sozlamalarini ko'rsatish."""
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    filial = Filial.objects.get(id=filial_id)
+    employees_qs = Employee.objects.filter(filial_id=filial_id).order_by('name')
+
+    salary_configs = {
+        sc.employee_id: sc
+        for sc in SalaryConfig.objects.filter(employee__in=employees_qs)
+    }
+
+    emp_data = []
+    for emp in employees_qs:
+        cfg = salary_configs.get(emp.id)
+        emp_data.append({
+            'employee'      : emp,
+            'monthly_hours'  : cfg.monthly_hours   if cfg else None,
+            'monthly_salary' : cfg.monthly_salary  if cfg else None,
+            'hourly_rate'    : cfg.hourly_rate      if cfg else None,
+        })
+
+    return render(request, 'home/user/salary/salary_list.html', {
+        'emp_data' : emp_data,
+        'filial'   : filial.filial_name,
+        'segment'  : 'salary',
+        'data'     : {'filials': _base_context(admin_user)['filials']},
+    })
+
+
+@hr_admin_required
+@require_POST
+def salary_update(request, pk):
+    """AJAX: xodim maosh konfiguratsiyasini saqlash."""
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+
+    employee = get_object_or_404(Employee, id=pk)
+    if employee.filial_id != filial_id:
+        return JsonResponse({'ok': False, 'error': "Ruxsat yo'q"}, status=403)
+
+    salary_cfg, _ = SalaryConfig.objects.get_or_create(employee=employee)
+    form = SalaryConfigForm(request.POST, instance=salary_cfg)
+    if form.is_valid():
+        cfg = form.save()
+        return JsonResponse({
+            'ok'            : True,
+            'monthly_hours'  : float(cfg.monthly_hours),
+            'monthly_salary' : float(cfg.monthly_salary),
+            'hourly_rate'    : round(cfg.hourly_rate, 0),
+        })
+    return JsonResponse({'ok': False, 'errors': form.errors}, status=400)
