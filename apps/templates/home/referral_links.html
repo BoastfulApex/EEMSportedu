@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 {% load static %}
-{% block title %}Referal Havolalar{% endblock %}
+{% block title %}Taklif Havolalar{% endblock %}
 {% block body_class %}dashboard{% endblock %}
 
 {% block stylesheets %}
@@ -11,7 +11,7 @@
 <main class="content">
   <div class="container-fluid p-0">
 
-    <h3 class="mb-4">🔗 Telegram Referal Havolalar — {{ org.name }}</h3>
+    <h3 class="mb-4">🔗 Telegram Taklif Havolalari — {{ org.name }}</h3>
 
     {% if not bot_username %}
     <div class="alert alert-warning">
@@ -20,71 +20,71 @@
     </div>
     {% endif %}
 
-    <div class="row">
-      <!-- Xodimlar uchun havola -->
-      <div class="col-md-6 mb-4">
-        <div class="card h-100">
-          <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">👤 Xodimlar uchun havola</h5>
-          </div>
-          <div class="card-body">
-            <p class="text-muted">
-              Bu havolani xodimlarga yuboring. Havola orqali kirgan xodim
-              avtomatik ravishda <strong>{{ org.name }}</strong> tashkilotiga
-              bog'lanadi va HR adminlarga tasdiqlash so'rovi yuboriladi.
-            </p>
-
-            {% if emp_link %}
-            <div class="input-group mb-3">
-              <input type="text" class="form-control" id="empLink" value="{{ emp_link }}" readonly>
-              <button class="btn btn-outline-primary" type="button" onclick="copyLink('empLink')">
-                📋 Nusxalash
-              </button>
-            </div>
-
-            <div class="text-center mt-3">
-              <a href="{{ emp_link }}" target="_blank" class="btn btn-primary">
-                🚀 Havolani ochish
-              </a>
-            </div>
-            {% else %}
-            <div class="alert alert-secondary">BOT_USERNAME sozlanmagan.</div>
-            {% endif %}
-          </div>
-          <div class="card-footer text-muted small">
-            Format: <code>https://t.me/BOT_USERNAME?start=emp_{{ org.id }}</code>
-          </div>
-        </div>
+    <div class="card">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">👤 Xodimlar uchun filial havolalari</h5>
       </div>
-
-      <!-- Tinglovchilar uchun havola (kelajak) -->
-      <div class="col-md-6 mb-4">
-        <div class="card h-100 border-secondary">
-          <div class="card-header bg-secondary text-white">
-            <h5 class="mb-0">🎓 Tinglovchilar uchun havola</h5>
-          </div>
-          <div class="card-body text-muted">
-            <p>Bu funksiya hozircha ishlab chiqilmoqda.</p>
-            <p class="small">Format: <code>?start=std_{{ org.id }}</code></p>
-          </div>
-          <div class="card-footer text-muted small">
-            <span class="badge bg-secondary">Tez orada</span>
-          </div>
-        </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Filial</th>
+              <th>Token</th>
+              <th>Havola</th>
+              <th>Amal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in filial_data %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td><strong>{{ item.filial.filial_name }}</strong></td>
+              <td><code>{{ item.token }}</code></td>
+              <td>
+                {% if item.link %}
+                <div class="input-group input-group-sm" style="min-width:280px">
+                  <input type="text" class="form-control form-control-sm"
+                         id="link_{{ item.filial.id }}"
+                         value="{{ item.link }}" readonly>
+                  <button class="btn btn-outline-secondary btn-sm"
+                          onclick="copyLink('link_{{ item.filial.id }}')">
+                    📋
+                  </button>
+                </div>
+                {% else %}
+                <span class="text-muted small">BOT_USERNAME sozlanmagan</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'regenerate_invite_token' item.filial.id %}"
+                   class="btn btn-outline-warning btn-sm"
+                   onclick="return confirm('Eski havola o\'chadi. Davom etasizmi?')">
+                  🔄 Yangilash
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">Filiallar topilmadi.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
 
     <!-- Qo'llanma -->
-    <div class="card mt-2">
+    <div class="card mt-3">
       <div class="card-header">📖 Qanday ishlaydi?</div>
       <div class="card-body">
-        <ol>
-          <li>Xodim havolani bosadi va Telegram botga o'tadi.</li>
-          <li>Bot avtomatik ravishda tashkilotingizni aniqlaydi.</li>
-          <li>HR adminlarga tasdiqlash so'rovi yuboriladi.</li>
-          <li>Admin xodimni tasdiqlaydi, filial va ish jadvalini tayinlaydi.</li>
-          <li>Xodim tasdiqlangach yuz rasmini yuboradi.</li>
-          <li>Rasm tekshiriladi — qabul qilinsa ro'yxatdan o'tish yakunlanadi.</li>
+        <ol class="mb-0">
+          <li>Kerakli filial havolasini nusxalang va xodimlarga yuboring.</li>
+          <li>Xodim havolani bosib Telegram botga o'tadi.</li>
+          <li>Bot avtomatik ravishda filial va tashkilotni aniqlaydi.</li>
+          <li>Faqat shu filialning HR adminlariga tasdiqlash so'rovi yuboriladi.</li>
+          <li>Admin xodimni tasdiqlaydi va ish jadvalini tayinlaydi.</li>
+          <li>Xodim yuz rasmini yuboradi — tekshiriladi va ro'yxatdan o'tish yakunlanadi.</li>
         </ol>
       </div>
     </div>

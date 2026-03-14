@@ -21,8 +21,8 @@ from utils.db_api.database import (
     is_user_admin,
     has_employee_photo,
     save_employee_photo,
-    get_hr_admins_by_org,
-    get_organization_by_id,
+    get_hr_admins_by_filial,
+    get_invite_token,
     set_telegram_user_organization,
 )
 from utils.face_check import detect_face
@@ -76,30 +76,26 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             )
         return
 
-    # ── Referal havola orqali keldi: emp_{org_id} ────────────
-    if args and args.startswith("emp_"):
-        try:
-            org_id = int(args.split("_")[1])
-        except (IndexError, ValueError):
+    # ── Referal havola orqali keldi (token) ─────────────────────
+    if args:
+        invite = await get_invite_token(args)
+        if not invite:
             await message.answer(
-                "⚠️ Noto'g'ri havola. Administrator bilan bog'laning."
+                "⚠️ Noto'g'ri yoki eskirgan havola.\n"
+                "Administrator bilan bog'laning."
             )
             return
 
-        org = await get_organization_by_id(org_id)
-        if not org:
-            await message.answer(
-                "❌ Tashkilot topilmadi. Administrator bilan bog'laning."
-            )
-            return
+        org_id = invite['org_id']
+        filial_id = invite['filial_id']
 
         # Tashkilotni TelegramUser ga yozamiz
         await set_telegram_user_organization(user.id, org_id)
 
-        hr_admins = await get_hr_admins_by_org(org_id)
+        hr_admins = await get_hr_admins_by_filial(filial_id)
         if not hr_admins:
             await message.answer(
-                f"⚠️ <b>{org['name']}</b> tashkilotida HR admin topilmadi.\n"
+                f"⚠️ <b>{invite['filial_name']}</b> filialida HR admin topilmadi.\n"
                 "Administrator bilan bog'laning.",
                 parse_mode="HTML"
             )
@@ -113,10 +109,11 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             f"👤 Ism: {full_name}\n"
             f"📱 Username: {username_text}\n"
             f"🆔 Telegram ID: <code>{user.id}</code>\n"
-            f"🏢 Tashkilot: {org['name']}\n\n"
+            f"🏢 Tashkilot: {invite['org_name']}\n"
+            f"🏬 Filial: {invite['filial_name']}\n\n"
             f"Ushbu xodimni tasdiqlaysizmi?"
         )
-        approval_keyboard = get_user_approval_keyboard(user.id, org_id)
+        approval_keyboard = get_user_approval_keyboard(user.id, org_id, filial_id)
 
         sent_count = 0
         for admin in hr_admins:
@@ -135,7 +132,7 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
         if sent_count > 0:
             await message.answer(
-                f"✅ So'rovingiz <b>{org['name']}</b> tashkilotining "
+                f"✅ So'rovingiz <b>{invite['filial_name']}</b> filialining "
                 f"HR adminlariga yuborildi.\n\n"
                 "⏳ Tasdiqlangandan so'ng sizga xabar keladi.",
                 parse_mode="HTML"

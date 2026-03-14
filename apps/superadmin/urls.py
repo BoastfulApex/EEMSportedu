@@ -25,4 +25,5 @@ urlpatterns = [
 
     # Referal havolalar
     path('referral-links/', views.referral_links, name='referral_links'),
+    path('referral-links/<int:filial_id>/regenerate/', views.regenerate_invite_token, name='regenerate_invite_token'),
 ]

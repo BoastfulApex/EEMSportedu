@@ -386,6 +386,78 @@ def get_hr_admins_by_org(org_id: int):
 
 
 @sync_to_async
+def get_hr_admins_by_filial(filial_id: int):
+    """Filial bo'yicha HR adminlar: org_admin + hr_admin"""
+    return list(
+        Administrator.objects.filter(
+            filial_id=filial_id,
+            role__in=["org_admin", "hr_admin"]
+        )
+    )
+
+
+@sync_to_async
+def get_filial_by_id(filial_id: int):
+    """Filialni ID bo'yicha olish"""
+    try:
+        filial = Filial.objects.get(id=filial_id)
+        return {"id": filial.id, "name": filial.filial_name}
+    except Filial.DoesNotExist:
+        return None
+
+
+@sync_to_async
+def get_schedules_by_filial(filial_id: int):
+    """Filial uchun tayyor jadvallar ro'yxati (days bilan)"""
+    from apps.main.models import Schedule
+    schedules = list(
+        Schedule.objects.filter(filial_id=filial_id)
+        .prefetch_related('days__weekday')
+    )
+    result = []
+    for s in schedules:
+        days = s.days.order_by('weekday__id').select_related('weekday')
+        if days:
+            day_names = ", ".join(d.weekday.name[:2] for d in days)
+            times = f"{days[0].start.strftime('%H:%M')}-{days[0].end.strftime('%H:%M')}"
+            label = f"{s.name} ({day_names} | {times})"
+        else:
+            label = s.name
+        result.append({'id': s.id, 'label': label})
+    return result
+
+
+@sync_to_async
+def assign_schedules_to_employee(emp_user_id: int, schedule_ids: list):
+    """Xodimga tanlangan jadvallarni biriktirish (M2M)"""
+    from apps.main.models import Schedule
+    employee = Employee.objects.filter(user_id=emp_user_id).first()
+    if not employee:
+        return False
+    schedules = Schedule.objects.filter(id__in=schedule_ids)
+    employee.schedules.set(schedules)
+    return True
+
+
+@sync_to_async
+def get_invite_token(token: str):
+    """Token orqali filial va tashkilot ma'lumotlarini olish"""
+    from apps.main.models import InviteToken
+    try:
+        invite = InviteToken.objects.select_related(
+            'filial', 'filial__organization'
+        ).get(token=token, is_active=True)
+        return {
+            'filial_id': invite.filial.id,
+            'filial_name': invite.filial.filial_name,
+            'org_id': invite.filial.organization.id,
+            'org_name': invite.filial.organization.name,
+        }
+    except InviteToken.DoesNotExist:
+        return None
+
+
+@sync_to_async
 def set_telegram_user_organization(user_id: int, org_id: int) -> bool:
     """TelegramUser.organization ni saqlash (referal orqali kelinganda)"""
     try:

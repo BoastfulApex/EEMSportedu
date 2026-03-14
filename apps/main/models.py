@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
 from apps.superadmin.models import Organization, Filial, Building, Administrator, Weekday
@@ -8,13 +10,6 @@ class TelegramUser(models.Model):
     username = models.CharField(max_length=100, null=True, blank=True)
     first_name = models.CharField(max_length=100, null=True, blank=True)
     last_name = models.CharField(max_length=100, null=True, blank=True)
-    organization = models.ForeignKey(
-        'superadmin.Organization',
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='pending_users',
-        verbose_name="Tashkilot (referal orqali)"
-    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -207,6 +202,31 @@ class ExtraSchedule(models.Model):
     class Meta:
         verbose_name = "Qo'shimcha jadval"
         verbose_name_plural = "Qo'shimcha jadvallar"
+
+
+class InviteToken(models.Model):
+    """Filial uchun Telegram bot taklif havolasi tokeni"""
+    token = models.CharField(max_length=20, unique=True, blank=True)
+    filial = models.ForeignKey(
+        Filial,
+        on_delete=models.CASCADE,
+        related_name='invite_tokens',
+        verbose_name="Filial"
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Faol")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = uuid.uuid4().hex[:12]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.filial.filial_name} — {self.token}"
+
+    class Meta:
+        verbose_name = "Taklif havolasi"
+        verbose_name_plural = "Taklif havolalari"
 
 
 class SalaryConfig(models.Model):

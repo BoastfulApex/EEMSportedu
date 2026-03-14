@@ -11,11 +11,12 @@ class AddLocation(StatesGroup):
 
 
 class ApproveEmployee(StatesGroup):
-    """Xodimni tasdiqlash jarayoni uchun holатlar"""
-    selecting_filial = State()         # Admin filial tanlaydi
-    selecting_weekdays = State()       # Admin hafta kunlarini tanlaydi
-    waiting_for_time_range = State()   # Admin vaqt kiritadi (09:00 - 18:00)
-    confirm_more_schedules = State()   # Yana jadval qo'shish? (Ha / Yo'q)
+    """Xodimni tasdiqlash jarayoni uchun holatlar"""
+    selecting_filial = State()         # (eski — ishlatilmaydi)
+    selecting_schedule = State()       # Admin tayyor jadval tanlaydi
+    selecting_weekdays = State()       # (eski — ishlatilmaydi)
+    waiting_for_time_range = State()   # (eski — ishlatilmaydi)
+    confirm_more_schedules = State()   # (eski — ishlatilmaydi)
 
 
 class SetEmployeeForm(StatesGroup):

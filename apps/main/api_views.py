@@ -13,8 +13,10 @@ from PIL import Image
 
 try:
     import mediapipe as mp
+    # solutions mavjudligini tekshiramiz (0.10.x da yo'q bo'lishi mumkin)
+    _test = mp.solutions.face_detection
     MEDIAPIPE_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     MEDIAPIPE_AVAILABLE = False
     mp = None
 

@@ -123,6 +123,13 @@
         </a>
       </li>
 
+      <li class="sidebar-item {% if segment == 'referral' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'referral_links' %}">
+          <i data-feather="link"></i>
+          <span>Taklif Havolalar</span>
+        </a>
+      </li>
+
       <li class="sidebar-item {% if segment == 'admins' %}active{% endif %}">
         <a class="sidebar-link {% if segment != 'admins' %}collapsed{% endif %}"
            data-bs-toggle="collapse"

@@ -24,13 +24,13 @@ async def go_web_app() -> InlineKeyboardMarkup:
 # TASDIQLASH KLAVIATURALARI (admin uchun)
 # ============================================================
 
-def get_user_approval_keyboard(emp_user_id: int, org_id: int) -> InlineKeyboardMarkup:
+def get_user_approval_keyboard(emp_user_id: int, org_id: int, filial_id: int) -> InlineKeyboardMarkup:
     """HR admin uchun: xodimni tasdiqlash yoki rad etish"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
                 text="✅ Tasdiqlash",
-                callback_data=f"approve_emp:{emp_user_id}:{org_id}"
+                callback_data=f"approve_emp:{emp_user_id}:{org_id}:{filial_id}"
             ),
             InlineKeyboardButton(
                 text="❌ Rad etish",
@@ -91,6 +91,23 @@ def get_more_schedule_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Tugatish", callback_data="finish_sched"),
         ]
     ])
+
+
+def get_schedule_selection_keyboard(schedules: list, selected_ids: set) -> InlineKeyboardMarkup:
+    """Tayyor jadvallar ro'yxatidan tanlash"""
+    buttons = []
+    for s in schedules:
+        mark = "✅ " if s['id'] in selected_ids else ""
+        buttons.append([InlineKeyboardButton(
+            text=f"{mark}{s['label']}",
+            callback_data=f"asel:{s['id']}"
+        )])
+    if selected_ids:
+        buttons.append([InlineKeyboardButton(
+            text="✔️ Tasdiqlash",
+            callback_data="asel_done"
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 # ============================================================

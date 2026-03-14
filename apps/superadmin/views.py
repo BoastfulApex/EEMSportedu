@@ -225,7 +225,6 @@ def create_location(request):
         if form.is_valid():
             filial = form.cleaned_data.get('filial')
             # Eski locationlarni o'chirish
-            Location.objects.filter(filial=filial).delete()
             instance = form.save(commit=False)
             name = get_location_name(instance.latitude, instance.longitude)
             instance.name = name or "Unknown location"
@@ -343,16 +342,50 @@ class FilialSubAdminDeleteView(DeleteView):
 
 @org_admin_required
 def referral_links(request):
-    """Tashkilot uchun Telegram referal havolalarini ko'rsatish."""
+    """Tashkilot filiallari uchun Telegram taklif havolalarini ko'rsatish."""
     from data.config import BOT_USERNAME
+    from apps.main.models import InviteToken
+
     admin_user = request.admin_user
     org = admin_user.organization
+    filials = Filial.objects.filter(organization=org)
 
-    emp_link = f"https://t.me/{BOT_USERNAME}?start=emp_{org.id}" if BOT_USERNAME else None
+    # Har bir filial uchun faol token bo'lmasa — avtomatik yaratamiz
+    for filial in filials:
+        if not filial.invite_tokens.filter(is_active=True).exists():
+            InviteToken.objects.create(filial=filial)
+
+    filial_data = []
+    for filial in filials:
+        token_obj = filial.invite_tokens.filter(is_active=True).order_by('-created_at').first()
+        link = f"https://t.me/{BOT_USERNAME}?start={token_obj.token}" if BOT_USERNAME and token_obj else None
+        filial_data.append({
+            'filial': filial,
+            'token': token_obj.token if token_obj else None,
+            'link': link,
+        })
 
     return render(request, 'home/referral_links.html', {
         'segment': 'referral',
         'org': org,
-        'emp_link': emp_link,
+        'filial_data': filial_data,
         'bot_username': BOT_USERNAME,
     })
+
+
+@org_admin_required
+def regenerate_invite_token(request, filial_id):
+    """Filial uchun yangi token yaratish (eskilarini o'chiradi)."""
+    from apps.main.models import InviteToken
+    admin_user = request.admin_user
+
+    filial = Filial.objects.filter(id=filial_id, organization=admin_user.organization).first()
+    if not filial:
+        return HttpResponseForbidden("Bu filial sizga tegishli emas.")
+
+    # Eski tokenlarni o'chirish
+    filial.invite_tokens.all().delete()
+    # Yangi token yaratish
+    InviteToken.objects.create(filial=filial)
+
+    return redirect('referral_links')

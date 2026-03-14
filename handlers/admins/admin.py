@@ -20,6 +20,7 @@ from keyboards.inline.main_inline import (
     generate_approve_weekday_keyboard,
     get_filial_keyboard_for_employee,
     get_more_schedule_keyboard,
+    get_schedule_selection_keyboard,
     employee_main_keyboard,
 )
 from utils.db_api.database import (
@@ -33,9 +34,10 @@ from utils.db_api.database import (
     save_location,
     generate_attendance_excel_file,
     get_hr_admins_by_org,
-    get_filials_by_org_objects,
     create_employee_with_filial,
     save_work_schedule_by_weekday_names,
+    get_schedules_by_filial,
+    assign_schedules_to_employee,
 )
 from states.admin import (
     EmployeeForm,
@@ -180,174 +182,85 @@ async def save_user_location(message: Message, state: FSMContext):
 @router.callback_query(lambda c: c.data.startswith("approve_emp:"))
 async def approve_emp_callback(callback: CallbackQuery, state: FSMContext):
     """
-    Format: approve_emp:{emp_user_id}:{org_id}
-    Admin filial tanlashga o'tadi.
+    Format: approve_emp:{emp_user_id}:{org_id}:{filial_id}
+    Filial jadvallarini ko'rsatadi — admin tayyor jadvaldan tanlaydi.
     """
     parts = callback.data.split(":")
     emp_user_id = int(parts[1])
     org_id = int(parts[2])
+    filial_id = int(parts[3])
 
-    # Admin FSM ga ma'lumot saqlaymiz
     tg_user = await get_telegram_user(emp_user_id)
     full_name = ""
     if tg_user:
         full_name = f"{tg_user.first_name or ''} {tg_user.last_name or ''}".strip()
 
+    schedules = await get_schedules_by_filial(filial_id)
+    if not schedules:
+        await callback.message.edit_text(
+            f"⚠️ Bu filialda hech qanday jadval topilmadi.\n"
+            "Avval admin panelda jadval yarating.",
+            parse_mode="HTML"
+        )
+        await callback.answer()
+        return
+
     await state.update_data(
         emp_user_id=emp_user_id,
         emp_name=full_name,
         org_id=org_id,
-        filial_id=None,
-        selected_weekdays=[],
-        schedules=[],
+        filial_id=filial_id,
+        available_schedules=schedules,
+        selected_schedule_ids=[],
     )
+    await state.set_state(ApproveEmployee.selecting_schedule)
 
-    # Org filiallarini olamiz
-    filials = await get_filials_by_org_objects(org_id)
-    if not filials:
-        await callback.message.edit_text("❌ Bu tashkilotda filial topilmadi.")
-        await callback.answer()
-        return
-
-    keyboard = get_filial_keyboard_for_employee(filials, emp_user_id)
-    await state.set_state(ApproveEmployee.selecting_filial)
+    keyboard = get_schedule_selection_keyboard(schedules, set())
     await callback.message.edit_text(
         f"👤 Xodim: <b>{full_name}</b>\n\n"
-        "📍 Xodim qaysi filialda ishlaydi?",
+        "📅 Xodimga qaysi jadval(lar)ni biriktirmoqchisiz?",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("emp_filial:"), StateFilter(ApproveEmployee.selecting_filial))
-async def select_filial_for_employee(callback: CallbackQuery, state: FSMContext):
-    """
-    Format: emp_filial:{filial_id}:{emp_user_id}
-    Filial tanlangandan so'ng hafta kunlari tanlanadi.
-    """
-    parts = callback.data.split(":")
-    filial_id = int(parts[1])
-
-    await state.update_data(filial_id=filial_id, selected_weekdays=[])
-    await state.set_state(ApproveEmployee.selecting_weekdays)
-
-    keyboard = generate_approve_weekday_keyboard(set())
-    await callback.message.edit_text(
-        "📆 Hafta kunlarini tanlang (bir nechta tanlash mumkin):",
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data.startswith("awday:"), StateFilter(ApproveEmployee.selecting_weekdays))
-async def toggle_approve_weekday(callback: CallbackQuery, state: FSMContext):
-    """Hafta kunini tanlash/bekor qilish"""
-    weekday_name = callback.data.split(":")[1]
+@router.callback_query(lambda c: c.data.startswith("asel:"), StateFilter(ApproveEmployee.selecting_schedule))
+async def toggle_schedule_selection(callback: CallbackQuery, state: FSMContext):
+    """Jadval tanlash/bekor qilish"""
+    sched_id = int(callback.data.split(":")[1])
     data = await state.get_data()
-    selected = set(data.get("selected_weekdays", []))
+    selected = set(data.get("selected_schedule_ids", []))
 
-    if weekday_name in selected:
-        selected.remove(weekday_name)
+    if sched_id in selected:
+        selected.remove(sched_id)
     else:
-        selected.add(weekday_name)
+        selected.add(sched_id)
 
-    await state.update_data(selected_weekdays=list(selected))
-    keyboard = generate_approve_weekday_keyboard(selected)
+    await state.update_data(selected_schedule_ids=list(selected))
+    keyboard = get_schedule_selection_keyboard(data["available_schedules"], selected)
     await callback.message.edit_reply_markup(reply_markup=keyboard)
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data == "awday_done", StateFilter(ApproveEmployee.selecting_weekdays))
-async def approve_weekday_done(callback: CallbackQuery, state: FSMContext):
-    """Kunlar tanlandi — vaqt kiritishga o'tadi"""
-    data = await state.get_data()
-    selected = data.get("selected_weekdays", [])
-
-    if not selected:
-        await callback.answer("⛔ Hech qanday kun tanlanmagan.", show_alert=True)
-        return
-
-    await state.set_state(ApproveEmployee.waiting_for_time_range)
-    await callback.message.edit_text(
-        f"✅ Tanlangan kunlar: <b>{', '.join(selected)}</b>\n\n"
-        "🕐 Ish vaqtini kiriting (masalan: <code>09:00 - 18:00</code>):",
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-@router.message(ApproveEmployee.waiting_for_time_range, F.text)
-async def approve_receive_time_range(message: Message, state: FSMContext):
-    """Vaqt qabul qilinadi, jadval ro'yxatga qo'shiladi"""
-    text = message.text.strip()
-    try:
-        start_str, end_str = map(str.strip, text.split("-"))
-        start_time = datetime.strptime(start_str, "%H:%M").time()
-        end_time = datetime.strptime(end_str, "%H:%M").time()
-        if start_time >= end_time:
-            raise ValueError("Boshlanish vaqti tugash vaqtidan katta bo'lmasligi kerak.")
-    except Exception as e:
-        await message.answer(
-            f"⛔ Noto'g'ri format: {e}\n"
-            "Iltimos, <code>09:00 - 18:00</code> shaklida yozing.",
-            parse_mode="HTML"
-        )
-        return
-
-    data = await state.get_data()
-    selected_weekdays = data.get("selected_weekdays", [])
-    schedules = data.get("schedules", [])
-
-    schedules.append({
-        "weekdays": selected_weekdays,
-        "start": start_str.strip(),
-        "end": end_str.strip(),
-    })
-    await state.update_data(schedules=schedules, selected_weekdays=[])
-
-    # Qo'shilgan jadvallar ro'yxati
-    schedule_text = "\n".join(
-        f"  • {', '.join(s['weekdays'])} | {s['start']} - {s['end']}"
-        for s in schedules
-    )
-
-    await state.set_state(ApproveEmployee.confirm_more_schedules)
-    await message.answer(
-        f"✅ Jadval qo'shildi:\n{schedule_text}\n\n"
-        "Yana jadval qo'shmoqchimisiz?",
-        reply_markup=get_more_schedule_keyboard()
-    )
-
-
-@router.callback_query(lambda c: c.data == "more_sched", StateFilter(ApproveEmployee.confirm_more_schedules))
-async def add_more_schedule(callback: CallbackQuery, state: FSMContext):
-    """Yana bir jadval qo'shish — hafta kunlariga qaytadi"""
-    await state.update_data(selected_weekdays=[])
-    await state.set_state(ApproveEmployee.selecting_weekdays)
-
-    keyboard = generate_approve_weekday_keyboard(set())
-    await callback.message.edit_text(
-        "📆 Keyingi jadval uchun hafta kunlarini tanlang:",
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == "finish_sched", StateFilter(ApproveEmployee.confirm_more_schedules))
+@router.callback_query(lambda c: c.data == "asel_done", StateFilter(ApproveEmployee.selecting_schedule))
 async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext):
     """
     Jadval tayinlash tugadi.
     1. Xodim yaratiladi.
-    2. Barcha jadvallar saqlanadi.
+    2. Tanlangan jadvallar biriktiriladi (M2M).
     3. Xodimga rasm so'rash xabari yuboriladi.
     """
     data = await state.get_data()
     emp_user_id = data["emp_user_id"]
     emp_name = data["emp_name"]
     filial_id = data["filial_id"]
-    schedules = data.get("schedules", [])
-    admin_id = callback.from_user.id
+    selected_ids = data.get("selected_schedule_ids", [])
+    available = data.get("available_schedules", [])
+
+    if not selected_ids:
+        await callback.answer("⛔ Hech qanday jadval tanlanmagan.", show_alert=True)
+        return
 
     # 1. Xodim yaratish
     employee = await create_employee_with_filial(
@@ -361,24 +274,16 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # 2. Jadvallarni saqlash
-    for sched in schedules:
-        start_t = datetime.strptime(sched["start"], "%H:%M").time()
-        end_t = datetime.strptime(sched["end"], "%H:%M").time()
-        await save_work_schedule_by_weekday_names(
-            employee_user_id=emp_user_id,
-            weekday_names=sched["weekdays"],
-            start_time=start_t,
-            end_time=end_t,
-            admin_telegram_id=admin_id,
-        )
+    # 2. Jadvallarni biriktirish
+    await assign_schedules_to_employee(emp_user_id, selected_ids)
 
-    # Jadval matni
-    jadval_text = await get_employee_schedule_text(emp_user_id)
+    # Tanlangan jadvallar nomlari
+    selected_labels = "\n".join(
+        f"  • {s['label']}" for s in available if s['id'] in set(selected_ids)
+    )
 
-    # 3. Xodimga xabar: tasdiqlandingiz + rasm so'rash
+    # 3. Xodimga xabar
     from states.users import EmployeeRegistration
-    from aiogram.fsm.context import FSMContext as _FSMContext
     from loader import dp as _dp
 
     try:
@@ -387,35 +292,22 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
             text=(
                 f"🎉 <b>Tabriklaymiz!</b>\n\n"
                 f"Siz <b>xodim</b> sifatida tasdiqlandi.\n\n"
-                f"{jadval_text}\n\n"
+                f"📅 Ish jadvalingiz:\n{selected_labels}\n\n"
                 f"📸 Endi <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring.\n"
                 f"Bu rasm davomat tizimi uchun kerak."
             ),
             parse_mode="HTML"
         )
-        # Xodim FSM holatini waiting_for_photo ga o'rnatamiz
-        # (xodim tomonida state o'rnatish uchun storage ga to'g'ridan-to'g'ri yozamiz)
         from aiogram.fsm.storage.base import StorageKey
-        storage = _dp.storage
-        key = StorageKey(
-            bot_id=bot.id,
-            chat_id=emp_user_id,
-            user_id=emp_user_id
-        )
-        await storage.set_state(key=key, state=EmployeeRegistration.waiting_for_photo)
-
+        key = StorageKey(bot_id=bot.id, chat_id=emp_user_id, user_id=emp_user_id)
+        await _dp.storage.set_state(key=key, state=EmployeeRegistration.waiting_for_photo)
     except Exception as e:
         logger.error(f"Xodimga xabar yuborishda xato (user_id={emp_user_id}): {e}")
 
-    # Admin uchun tasdiqlash tugadi
-    schedule_summary = "\n".join(
-        f"  • {', '.join(s['weekdays'])} | {s['start']} - {s['end']}"
-        for s in schedules
-    )
     await callback.message.edit_text(
         f"✅ <b>Xodim tasdiqlandi!</b>\n\n"
         f"👤 {emp_name}\n\n"
-        f"📅 Jadvallar:\n{schedule_summary}\n\n"
+        f"📅 Biriktirilgan jadvallar:\n{selected_labels}\n\n"
         f"Xodimdan rasm kutilmoqda...",
         parse_mode="HTML"
     )
