@@ -30,10 +30,14 @@ class OrgAdminCreateForm(forms.ModelForm):
         password  = self.cleaned_data['password']
         full_name = self.cleaned_data['full_name']
 
-        user = User(username=username, first_name=full_name, is_staff=True)
-        user.set_password(password)
-        if commit:
-            user.save()
+        # User doim saqlanadi — Django admin commit=False bilan chaqirganda ham.
+        # (save_form → commit=False, save_model → obj.save() oqimi)
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            first_name=full_name,
+            is_staff=True,
+        )
 
         admin_obj = super().save(commit=False)
         admin_obj.user      = user
