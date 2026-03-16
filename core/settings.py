@@ -9,15 +9,11 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 CORE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-_qo-xrslgusc1ixtvh477nbnpso7r(((xrs03&t0kewg6fx52d'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-_qo-xrslgusc1ixtvh477nbnpso7r(((xrs03&t0kewg6fx52d')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+# .env da DEBUG=True bo'lsa local, bo'lmasa production
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = ['*']
 
@@ -82,23 +78,33 @@ DB_HOST     = os.getenv('DB_HOST'     , None)
 DB_PORT     = os.getenv('DB_PORT'     , None)
 DB_NAME     = os.getenv('DB_NAME'     , None)
 
-
-if DB_ENGINE and DB_NAME and DB_USERNAME:
-    DATABASES = { 
-      'default': {
-        'ENGINE'  : 'django.db.backends.' + DB_ENGINE, 
-        'NAME'    : DB_NAME,
-        'USER'    : DB_USERNAME,
-        'PASSWORD': DB_PASS,
-        'HOST'    : DB_HOST,
-        'PORT'    : DB_PORT,
-        }, 
-    }
-else:
+if DEBUG:
+    # Local — SQLite
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': 'db.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+elif DB_ENGINE and DB_NAME and DB_USERNAME:
+    # Production — PostgreSQL
+    DATABASES = {
+        'default': {
+            'ENGINE'  : 'django.db.backends.' + DB_ENGINE,
+            'NAME'    : DB_NAME,
+            'USER'    : DB_USERNAME,
+            'PASSWORD': DB_PASS,
+            'HOST'    : DB_HOST,
+            'PORT'    : DB_PORT,
+            'CONN_MAX_AGE': 60,
+        }
+    }
+else:
+    # Fallback — SQLite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
 
