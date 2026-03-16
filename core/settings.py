@@ -103,11 +103,15 @@ else:
     # Fallback — SQLite
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'ENGINE'  : 'django.db.backends.' + DB_ENGINE,
+            'NAME'    : DB_NAME,
+            'USER'    : DB_USERNAME,
+            'PASSWORD': DB_PASS,
+            'HOST'    : DB_HOST,
+            'PORT'    : DB_PORT,
+            'CONN_MAX_AGE': 60,
         }
     }
-
 
 
 # Password validation
