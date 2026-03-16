@@ -166,4 +166,8 @@ dmypy.json
 cython_debug/
 
 files/
-media/
+media/staticfiles/
+.env
+*.pyc
+__pycache__/
+db.sqlite3
