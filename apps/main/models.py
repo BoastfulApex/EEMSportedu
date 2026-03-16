@@ -229,6 +229,35 @@ class InviteToken(models.Model):
         verbose_name_plural = "Taklif havolalari"
 
 
+class DailyAttendanceSummary(models.Model):
+    """
+    Kunlik kechikish / erta ketish / ortiqcha ishlash xulosasi.
+    15 daqiqagacha kechikish/erta ketish hisobga olinmaydi (grace period).
+    """
+    RECORD_TYPES = [
+        ('late', 'Kechikish'),
+        ('early_leave', 'Erta ketish'),
+        ('overtime', 'Ortiqcha ishlash'),
+    ]
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='daily_summaries'
+    )
+    date = models.DateField()
+    duration_minutes = models.IntegerField(default=0)
+    record_type = models.CharField(max_length=20, choices=RECORD_TYPES)
+
+    class Meta:
+        unique_together = ('employee', 'date', 'record_type')
+        verbose_name = "Kunlik davomot xulosasi"
+        verbose_name_plural = "Kunlik davomot xulosalari"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.employee.name} - {self.date} - {self.get_record_type_display()}: {self.duration_minutes} daqiqa"
+
+
 class SalaryConfig(models.Model):
     """
     Xodimning maosh konfiguratsiyasi.

@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.views.generic.edit import DeleteView
 
 from apps.superadmin.models import Administrator, Filial, Weekday
-from apps.main.models import Employee, WorkSchedule, Attendance, Schedule, ScheduleDay, ExtraSchedule, SalaryConfig
+from apps.main.models import Employee, WorkSchedule, Attendance, Schedule, ScheduleDay, ExtraSchedule, SalaryConfig, DailyAttendanceSummary
 from apps.main.forms import (
     EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm
 )
@@ -42,20 +42,220 @@ def _total_minutes(check_in, check_out, date):
     return max(0, int(delta.total_seconds() / 60))
 
 
+GRACE_MINUTES = 15  # 15 daqiqagacha kechikish/erta ketish kechirilaди
+
+
 def _late_minutes(check_in, schedule_start, date):
+    """Kechikish daqiqalari. 15 daqiqagacha grace period."""
     if not check_in:
         return '-'
     diff = int((datetime.combine(date, check_in) -
                 datetime.combine(date, schedule_start)).total_seconds() / 60)
-    return max(0, diff)
+    if diff <= 0:
+        return 0
+    if diff <= GRACE_MINUTES:
+        return 0  # Grace period — kechirilaди
+    return diff
 
 
 def _early_leave_minutes(check_out, schedule_end, date):
+    """Erta ketish daqiqalari. 15 daqiqagacha grace period."""
     if not check_out:
         return '-'
     diff = int((datetime.combine(date, schedule_end) -
                 datetime.combine(date, check_out)).total_seconds() / 60)
+    if diff <= 0:
+        return 0
+    if diff <= GRACE_MINUTES:
+        return 0  # Grace period — kechirilaди
+    return diff
+
+
+def _overtime_minutes(check_out, schedule_end, date):
+    """Ortiqcha ishlash daqiqalari."""
+    if not check_out:
+        return 0
+    diff = int((datetime.combine(date, check_out) -
+                datetime.combine(date, schedule_end)).total_seconds() / 60)
     return max(0, diff)
+
+
+UZ_DAYS = {
+    0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
+    3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba',
+}
+
+
+def _build_daily_report(employees_qs, start_date, end_date):
+    """
+    Belgilangan davr uchun kunlik davomat yozuvlari.
+    Har bir ScheduleDay + Attendance = bitta qator.
+    15 daqiqa grace period qo'llaniladi.
+    """
+    start_date, end_date = _parse_dates(start_date, end_date)
+    rows = []
+    delta = timedelta(days=1)
+    idx = 1
+
+    current = start_date
+    while current <= end_date:
+        wd_name = calendar.day_name[current.weekday()]
+        try:
+            weekday_obj = Weekday.objects.get(name_en=wd_name)
+        except Weekday.DoesNotExist:
+            current += delta
+            continue
+
+        for emp in employees_qs:
+            if emp.created_at.date() > current:
+                continue
+
+            schedule_days = ScheduleDay.objects.filter(
+                schedule__employees=emp,
+                weekday=weekday_obj
+            ).select_related('schedule__location')
+
+            for sd in schedule_days:
+                att = Attendance.objects.filter(
+                    employee=emp, date=current, location=sd.schedule.location
+                ).first()
+                if att is None:
+                    att = Attendance.objects.filter(
+                        employee=emp, date=current
+                    ).first()
+
+                check_in  = att.check_in  if att else None
+                check_out = att.check_out if att else None
+                location  = sd.schedule.location.name if sd.schedule.location else '—'
+
+                worked_min = _total_minutes(check_in, check_out, current)
+
+                late = _late_minutes(check_in, sd.start, current)
+                late_min = late if late != '-' else 0
+
+                overtime_min = _overtime_minutes(check_out, sd.end, current)
+
+                rows.append({
+                    'index':          idx,
+                    'date':           current,
+                    'weekday':        UZ_DAYS.get(current.weekday(), wd_name),
+                    'employee':       emp,
+                    'location':       location,
+                    'schedule_start': sd.start,
+                    'schedule_end':   sd.end,
+                    'status':         'Kelgan' if att else 'Kelmagan',
+                    'check_in':       check_in,
+                    'check_out':      check_out,
+                    'worked_h':       worked_min // 60,
+                    'worked_m':       worked_min % 60,
+                    'worked_total':   worked_min,
+                    'late_min':       late_min,
+                    'overtime_min':   overtime_min,
+                })
+                idx += 1
+
+        current += delta
+
+    return rows
+
+
+def _build_emp_stats_for_period(employees_qs, start_date, end_date):
+    """
+    [start_date, end_date] oralig'i uchun har bir xodim bo'yicha xulosa.
+    Qaytaradi: list of dict {employee, required_hours, worked_hours,
+    progress_pct, late_*, early_*, overtime_*}
+    """
+    start_date, end_date = _parse_dates(start_date, end_date)
+    stats = []
+    delta = timedelta(days=1)
+
+    for emp in employees_qs:
+        required_minutes = 0
+        worked_minutes = 0
+        late_total = 0
+        early_leave_total = 0
+        overtime_total = 0
+
+        current = start_date
+        while current <= end_date:
+            wd_name = calendar.day_name[current.weekday()]
+            try:
+                weekday_obj = Weekday.objects.get(name_en=wd_name)
+            except Weekday.DoesNotExist:
+                current += delta
+                continue
+
+            schedule_days = ScheduleDay.objects.filter(
+                schedule__employees=emp,
+                weekday=weekday_obj
+            ).select_related('schedule__location')
+
+            counted_att_ids = set()
+            day_late = 0
+            day_early = 0
+            day_overtime = 0
+
+            for sd in schedule_days:
+                # Jadval vaqtiga ko'ra kerakli daqiqalar
+                req = int((
+                    datetime.combine(current, sd.end) -
+                    datetime.combine(current, sd.start)
+                ).total_seconds() / 60)
+                required_minutes += max(0, req)
+
+                att = Attendance.objects.filter(
+                    employee=emp, date=current, location=sd.schedule.location
+                ).first()
+                if att is None:
+                    att = Attendance.objects.filter(
+                        employee=emp, date=current
+                    ).exclude(id__in=counted_att_ids).first()
+
+                if att and att.id not in counted_att_ids:
+                    counted_att_ids.add(att.id)
+                    worked_minutes += _total_minutes(att.check_in, att.check_out, current)
+
+                if att:
+                    late = _late_minutes(att.check_in, sd.start, current)
+                    if late != '-':
+                        day_late = max(day_late, late)
+
+                    early = _early_leave_minutes(att.check_out, sd.end, current)
+                    if early != '-':
+                        day_early = max(day_early, early)
+
+                    day_overtime += _overtime_minutes(att.check_out, sd.end, current)
+
+            late_total += day_late
+            early_leave_total += day_early
+            overtime_total += day_overtime
+            current += delta
+
+        required_hours = required_minutes / 60
+        worked_hours = worked_minutes / 60
+
+        if required_hours > 0:
+            progress_pct = min(150, round(worked_hours / required_hours * 100, 1))
+        else:
+            progress_pct = 0
+
+        stats.append({
+            'employee':    emp,
+            'required_h':  round(required_hours, 1),
+            'worked_h':    round(worked_hours, 1),
+            'progress_pct': progress_pct,
+            'late_h':      late_total // 60,
+            'late_m':      late_total % 60,
+            'late_total':  late_total,
+            'early_h':     early_leave_total // 60,
+            'early_m':     early_leave_total % 60,
+            'early_total': early_leave_total,
+            'overtime_h':  overtime_total // 60,
+            'overtime_m':  overtime_total % 60,
+            'overtime_total': overtime_total,
+        })
+
+    return stats
 
 
 def _build_day_rows(employee, current, weekday_obj, week_uz):
@@ -519,34 +719,76 @@ class ScheduleDelete(DeleteView):
 
 @any_admin_required
 def get_report_date(request):
+    """
+    Yagona hisobot sahifasi.
+    ?type=monthly   → joriy oy boshi – bugun
+    ?type=weekly    → joriy hafta dushanba – bugun
+    ?type=date_range → foydalanuvchi sanani tanlaydi
+    Har bir holat uchun xodimlar bo'yicha jadval ko'rinishida xulosa.
+    """
     admin_user = request.admin_user
-
     filial_id = _get_filial_id(admin_user, request)
     if filial_id is None:
         return redirect('/home/')
 
     data = {'filials': _base_context(admin_user)['filials']}
-    filial_name = admin_user.filial.filial_name if admin_user.filial else ''
-    report = []
+    filial = Filial.objects.get(id=filial_id)
+    today = timezone.localdate()
 
-    if request.method == 'POST':
-        form = AttendanceDateRangeForm(request.POST)
-        if form.is_valid():
-            report = build_report(
-                form.cleaned_data['start_date'],
-                form.cleaned_data['end_date'],
-                filial_id=filial_id
-            )
+    report_type = request.GET.get('type', 'monthly')
+
+    UZ_MONTHS = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr',
+    }
+
+    if report_type == 'monthly':
+        start_date = today.replace(day=1)
+        end_date = today
+        period_label = f"{UZ_MONTHS[today.month]} {today.year} ({start_date} – {end_date})"
+
+    elif report_type == 'weekly':
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+        period_label = f"{start_date} – {end_date} (joriy hafta)"
+
+    else:  # date_range yoki daily — foydalanuvchi sanani tanlaydi
+        start_str = request.GET.get('start_date', '')
+        end_str   = request.GET.get('end_date', '')
+        if start_str and end_str:
+            try:
+                start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+            except ValueError:
+                start_date = today
+                end_date   = today
+        else:
+            start_date = today
+            end_date   = today
+        period_label = f"{start_date} – {end_date}"
+
+    employees_qs = Employee.objects.filter(filial_id=filial_id).order_by('name')
+
+    if report_type == 'daily':
+        daily_rows = _build_daily_report(employees_qs, start_date, end_date)
+        emp_stats  = []
     else:
-        form = AttendanceDateRangeForm()
+        emp_stats  = _build_emp_stats_for_period(employees_qs, start_date, end_date)
+        daily_rows = []
 
     return render(request, 'home/user/report/get_report_date.html', {
-        'form': form,
-        'report': report,
-        'segment': 'report',
+        'emp_stats':    emp_stats,
+        'daily_rows':   daily_rows,
+        'report_type':  report_type,
+        'period_label': period_label,
+        'start_date':   start_date,
+        'end_date':     end_date,
+        'segment':      'report',
         'tashkent_time': timezone.localtime(timezone.now()),
-        'filial': filial_name,
-        'data': data,
+        'filial':       filial.filial_name,
+        'data':         data,
+        'today':        today,
     })
 
 
@@ -587,68 +829,323 @@ def download_excel(request):
 
 
 @any_admin_required
-def employee_report(request, pk):
+def report_download_excel(request):
+    """
+    Hisobot turига ko'ra Excel yuklab olish.
+    ?type=monthly|weekly|date_range  → xodimlar bo'yicha xulosa
+    ?type=daily                      → kunlik davomat jadvali
+    """
     admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
 
+    today = timezone.localdate()
+    report_type = request.GET.get('type', 'monthly')
+    start_str   = request.GET.get('start_date', '')
+    end_str     = request.GET.get('end_date', '')
+
+    if report_type == 'monthly':
+        start_date = today.replace(day=1)
+        end_date   = today
+    elif report_type == 'weekly':
+        start_date = today - timedelta(days=today.weekday())
+        end_date   = today
+    else:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return redirect('home_get_dates')
+
+    employees_qs = Employee.objects.filter(filial_id=filial_id).order_by('name')
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    from openpyxl.styles import Font, PatternFill, Alignment
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(fill_type='solid', fgColor='1F3864')
+    center = Alignment(horizontal='center', vertical='center')
+
+    if report_type == 'daily':
+        ws.title = "Kunlik davomat"
+        headers = [
+            '#', 'Sana', 'Hafta kuni', 'Xodim', 'Turi',
+            'Lokatsiya', 'Jadval boshi', 'Jadval oxiri',
+            'Holat', 'Kirish', 'Chiqish',
+            'Ishlagan (soat)', 'Kechikish (daqiqa)', 'Ortiqcha (daqiqa)'
+        ]
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = center
+
+        rows = _build_daily_report(employees_qs, start_date, end_date)
+        for r in rows:
+            ws.append([
+                r['index'],
+                str(r['date']),
+                r['weekday'],
+                r['employee'].name,
+                r['employee'].get_employee_type_display(),
+                r['location'],
+                str(r['schedule_start']),
+                str(r['schedule_end']),
+                r['status'],
+                str(r['check_in']) if r['check_in'] else '—',
+                str(r['check_out']) if r['check_out'] else '—',
+                round((r['worked_h'] * 60 + r['worked_m']) / 60, 2),
+                r['late_min'],
+                r['overtime_min'],
+            ])
+    else:
+        ws.title = "Xodimlar xulosasi"
+        type_labels = {
+            'monthly': 'Oylik', 'weekly': 'Haftalik', 'date_range': 'Sana bo\'yicha'
+        }
+        headers = [
+            '#', 'Xodim', 'Turi',
+            'Kerakli soat', 'Ishlagan soat', 'Bajarilish %',
+            'Kechikish (daqiqa)', 'Erta ketish (daqiqa)', 'Ortiqcha (daqiqa)'
+        ]
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = center
+
+        stats = _build_emp_stats_for_period(employees_qs, start_date, end_date)
+        for i, e in enumerate(stats, 1):
+            ws.append([
+                i,
+                e['employee'].name,
+                e['employee'].get_employee_type_display(),
+                e['required_h'],
+                e['worked_h'],
+                e['progress_pct'],
+                e['late_total'],
+                e['early_total'],
+                e['overtime_total'],
+            ])
+
+    # Ustun kengligini avtomatik moslashtirish
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or '')) for cell in col), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+
+    filename = f"hisobot_{report_type}_{start_date}_{end_date}.xlsx"
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename={filename}'
+    wb.save(response)
+    return response
+
+
+@any_admin_required
+def employee_report(request, pk):
+    """
+    Xodimning shaxsiy hisobot sahifasi.
+    Doim ko'rsatiladi: Haftalik va Oylik xulosa cartlari.
+    Ixtiyoriy: ?type=date_range | daily — sana tanlash + jadval.
+    """
+    admin_user = request.admin_user
     filial_id = _get_filial_id(admin_user, request)
     if filial_id is None:
         return redirect('/home/')
 
     employee = get_object_or_404(Employee, id=pk)
     data = {'filials': _base_context(admin_user)['filials']}
-    filial_name = admin_user.filial.filial_name if admin_user.filial else ''
-    report = []
+    today = timezone.localdate()
 
-    if request.method == 'POST':
-        form = AttendanceDateRangeForm(request.POST)
-        if form.is_valid():
-            report = build_report_for_employee(
-                pk,
-                form.cleaned_data['start_date'],
-                form.cleaned_data['end_date']
-            )
-    else:
-        form = AttendanceDateRangeForm()
+    # ── Haftalik va oylik avtomatik cardlar ──
+    week_start  = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    emp_qs = Employee.objects.filter(id=pk)
 
-    return render(request, 'home/user/report/get_report_date.html', {
-        'employee': employee,
-        'form': form,
-        'report': report,
+    weekly_list  = _build_emp_stats_for_period(emp_qs, week_start, today)
+    monthly_list = _build_emp_stats_for_period(emp_qs, month_start, today)
+
+    weekly_stats  = weekly_list[0]  if weekly_list  else None
+    monthly_stats = monthly_list[0] if monthly_list else None
+
+    UZ_MONTHS = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr',
+    }
+
+    # ── Qo'shimcha hisobot (ixtiyoriy) ──
+    report_type = request.GET.get('type', '')
+    start_date = end_date = period_label = None
+    emp_stats = daily_rows = []
+
+    if report_type in ('date_range', 'daily'):
+        start_str = request.GET.get('start_date', '')
+        end_str   = request.GET.get('end_date', '')
+        if start_str and end_str:
+            try:
+                start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+            except ValueError:
+                start_date = end_date = today
+        else:
+            start_date = end_date = today
+        period_label = f"{start_date} – {end_date}"
+
+        if report_type == 'daily':
+            daily_rows = _build_daily_report(emp_qs, start_date, end_date)
+        else:
+            emp_stats = _build_emp_stats_for_period(emp_qs, start_date, end_date)
+
+    return render(request, 'home/user/report/employee_report.html', {
+        'employee':      employee,
+        'weekly_stats':  weekly_stats,
+        'monthly_stats': monthly_stats,
+        'week_start':    week_start,
+        'month_start':   month_start,
+        'month_label':   f"{UZ_MONTHS[today.month]} {today.year}",
+        'emp_stats':     emp_stats,
+        'daily_rows':    daily_rows,
+        'report_type':   report_type,
+        'period_label':  period_label,
+        'start_date':    start_date or today,
+        'end_date':      end_date or today,
+        'today':         today,
+        'segment':       'employees',
+        'data':          data,
         'tashkent_time': timezone.localtime(timezone.now()),
-        'filial': filial_name,
-        'segment': 'employees',
-        'data': data,
+        'filial':        employee.filial.filial_name if employee.filial else '',
     })
 
 
 @any_admin_required
 def employee_download_excel(request, pk):
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-    if not start_date or not end_date:
-        return redirect('home_get_dates')
+    """
+    Xodimning to'liq hisobotini bitta report.xlsx ga yozadi.
+    Varaqlar: Oylik, Haftalik, va (ixtiyoriy) Kunlik yoki Sana bo'yicha.
+    """
+    employee = get_object_or_404(Employee, id=pk)
+    today    = timezone.localdate()
+    emp_qs   = Employee.objects.filter(id=pk)
 
-    report_data = build_report_for_employee(pk, start_date, end_date)
+    from openpyxl.styles import Font, PatternFill, Alignment
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(fill_type='solid', fgColor='1F3864')
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Xodim hisoboti"
-    headers = ['T/r', 'Sana', 'Hafta kuni', 'Xodim', 'Turi', 'Holati',
-               'Jadval', 'Lokatsiya', 'Jadval (boshlanish)', 'Jadval (tugash)',
-               'Kirish', 'Chiqish', 'Jami ish vaqti', 'Kechikdi (daqiqa)', 'Erta ketdi (daqiqa)']
-    ws.append(headers)
-    for row in report_data:
-        ws.append([
-            row['index'], str(row['date']), row['weekday'],
-            row['employee'], row['employee_type'], row['status'],
-            row['schedule_type'], row['location'],
-            str(row['schedule_start']), str(row['schedule_end']),
-            str(row['check_in']), str(row['check_out']),
-            row['worked'], row['late_minutes'], row['early_leave_minutes'],
+    wb.remove(wb.active)  # default sheet ni o'chirish
+
+    def _style_header(ws, headers):
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = center
+
+    def _autofit(ws):
+        for col in ws.columns:
+            max_len = max((len(str(cell.value or '')) for cell in col), default=8)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 38)
+
+    def _write_summary_sheet(ws, stats_list, period_str):
+        """Xulosa varag'i: bir qator xodim uchun."""
+        _style_header(ws, [
+            'Davr', 'Xodim', 'Turi',
+            'Kerakli (soat)', 'Ishlagan (soat)', 'Bajarilish (%)',
+            'Kechikish (daqiqa)', 'Erta ketish (daqiqa)', 'Ortiqcha (daqiqa)',
         ])
-    response = HttpResponse(content_type='application/ms-excel')
-    response['Content-Disposition'] = 'attachment; filename=hisobot.xlsx'
+        for e in stats_list:
+            ws.append([
+                period_str,
+                e['employee'].name,
+                e['employee'].get_employee_type_display(),
+                e['required_h'],
+                e['worked_h'],
+                e['progress_pct'],
+                e['late_total'],
+                e['early_total'],
+                e['overtime_total'],
+            ])
+        _autofit(ws)
+
+    def _write_daily_sheet(ws, rows):
+        """Kunlik davomat varag'i."""
+        _style_header(ws, [
+            '#', 'Sana', 'Hafta kuni', 'Xodim', 'Turi',
+            'Lokatsiya', 'Jadval boshi', 'Jadval oxiri',
+            'Holat', 'Kirish', 'Chiqish',
+            'Ishlagan (soat)', 'Kechikish (daqiqa)', 'Ortiqcha (daqiqa)',
+        ])
+        for r in rows:
+            ws.append([
+                r['index'],
+                str(r['date']),
+                r['weekday'],
+                r['employee'].name,
+                r['employee'].get_employee_type_display(),
+                r['location'],
+                str(r['schedule_start']),
+                str(r['schedule_end']),
+                r['status'],
+                str(r['check_in'])  if r['check_in']  else '—',
+                str(r['check_out']) if r['check_out'] else '—',
+                round((r['worked_h'] * 60 + r['worked_m']) / 60, 2),
+                r['late_min'],
+                r['overtime_min'],
+            ])
+        _autofit(ws)
+
+    # ── 1. Oylik varaq ──
+    month_start = today.replace(day=1)
+    ws_monthly  = wb.create_sheet("Oylik")
+    monthly     = _build_emp_stats_for_period(emp_qs, month_start, today)
+    _write_summary_sheet(ws_monthly, monthly, f"{month_start} – {today}")
+
+    # ── 2. Haftalik varaq ──
+    week_start = today - timedelta(days=today.weekday())
+    ws_weekly  = wb.create_sheet("Haftalik")
+    weekly     = _build_emp_stats_for_period(emp_qs, week_start, today)
+    _write_summary_sheet(ws_weekly, weekly, f"{week_start} – {today}")
+
+    # ── 3. Qo'shimcha varaq (ixtiyoriy) ──
+    report_type = request.GET.get('type', '')
+    start_str   = request.GET.get('start_date', '')
+    end_str     = request.GET.get('end_date', '')
+
+    if report_type in ('date_range', 'daily') and start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+            period_str = f"{start_date} – {end_date}"
+
+            if report_type == 'daily':
+                ws_extra = wb.create_sheet("Kunlik")
+                rows = _build_daily_report(emp_qs, start_date, end_date)
+                _write_daily_sheet(ws_extra, rows)
+            else:
+                ws_extra = wb.create_sheet("Sana bo'yicha")
+                stats = _build_emp_stats_for_period(emp_qs, start_date, end_date)
+                _write_summary_sheet(ws_extra, stats, period_str)
+        except ValueError:
+            pass
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename=report.xlsx'
     wb.save(response)
     return response
+
+
+# ============================================================
+# OYLIK XULOSA HISOBOTI
+# ============================================================
+
+@any_admin_required
+def monthly_summary(request):
+    """Eski URL — asosiy hisobot sahifasiga yo'naltiradi."""
+    return redirect(reverse('home_get_dates') + '?type=monthly')
 
 
 # ============================================================

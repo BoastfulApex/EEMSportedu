@@ -691,3 +691,324 @@ def get_available_months(user_id: int) -> list:
         })
 
     return result
+
+
+# ============================================================
+# BOT HISOBOTLARI UCHUN FUNKSIYALAR
+# ============================================================
+
+_GRACE = 15  # daqiqa — kechikish grace period
+_UZ_MONTHS = {
+    1:'Yanvar', 2:'Fevral', 3:'Mart', 4:'Aprel', 5:'May', 6:'Iyun',
+    7:'Iyul', 8:'Avgust', 9:'Sentabr', 10:'Oktabr', 11:'Noyabr', 12:'Dekabr',
+}
+_UZ_DAYS = {
+    0:'Du', 1:'Se', 2:'Ch', 3:'Pa', 4:'Ju', 5:'Sh', 6:'Ya',
+}
+
+
+def _bot_compute_stats_sync(employee, start_date, end_date):
+    """
+    [start_date, end_date] uchun xodim statistikasini hisoblaydi.
+    15 daqiqa grace period qo'llaniladi.
+    """
+    from apps.main.models import ScheduleDay, Attendance
+    required_min = worked_min = late_total = overtime_total = 0
+    current = start_date
+
+    while current <= end_date:
+        wd_name = current.strftime('%A')
+        try:
+            weekday_obj = Weekday.objects.get(name_en=wd_name)
+        except Weekday.DoesNotExist:
+            current += timedelta(days=1)
+            continue
+
+        sds = ScheduleDay.objects.filter(
+            schedule__employees=employee, weekday=weekday_obj
+        ).select_related('schedule__location')
+
+        counted = set()
+        day_late = day_ot = 0
+
+        for sd in sds:
+            req = int((
+                datetime.combine(current, sd.end) -
+                datetime.combine(current, sd.start)
+            ).total_seconds() / 60)
+            required_min += max(0, req)
+
+            att = Attendance.objects.filter(
+                employee=employee, date=current, location=sd.schedule.location
+            ).first()
+            if att is None:
+                att = Attendance.objects.filter(
+                    employee=employee, date=current
+                ).exclude(id__in=counted).first()
+
+            if att and att.id not in counted:
+                counted.add(att.id)
+                if att.check_in and att.check_out:
+                    d = datetime.combine(current, att.check_out) - \
+                        datetime.combine(current, att.check_in)
+                    worked_min += max(0, int(d.total_seconds() / 60))
+
+            if att and att.check_in:
+                diff = int((
+                    datetime.combine(current, att.check_in) -
+                    datetime.combine(current, sd.start)
+                ).total_seconds() / 60)
+                if diff > _GRACE:
+                    day_late = max(day_late, diff)
+
+            if att and att.check_out:
+                ot = int((
+                    datetime.combine(current, att.check_out) -
+                    datetime.combine(current, sd.end)
+                ).total_seconds() / 60)
+                if ot > 0:
+                    day_ot += ot
+
+        late_total += day_late
+        overtime_total += day_ot
+        current += timedelta(days=1)
+
+    req_h = required_min / 60
+    wrk_h = worked_min / 60
+    progress = min(150, round(wrk_h / req_h * 100, 1)) if req_h > 0 else 0.0
+
+    return {
+        'required_h': round(req_h, 1),
+        'worked_h':   round(wrk_h, 1),
+        'progress':   progress,
+        'late_total': late_total,
+        'late_h':     late_total // 60,
+        'late_m':     late_total % 60,
+        'overtime_total': overtime_total,
+        'overtime_h': overtime_total // 60,
+        'overtime_m': overtime_total % 60,
+    }
+
+
+@sync_to_async
+def get_emp_weekly_monthly_stats(user_id: int) -> dict:
+    """
+    Xodimning haftalik va oylik statistikasini qaytaradi.
+    Bot "Hisobotlar" overview uchun.
+    """
+    employee = Employee.objects.filter(user_id=user_id).first()
+    if not employee:
+        return {}
+
+    today = date.today()
+    week_start  = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+
+    weekly  = _bot_compute_stats_sync(employee, week_start, today)
+    monthly = _bot_compute_stats_sync(employee, month_start, today)
+
+    return {
+        'weekly':      weekly,
+        'monthly':     monthly,
+        'week_start':  week_start,
+        'month_start': month_start,
+        'today':       today,
+        'month_label': f"{_UZ_MONTHS[today.month]} {today.year}",
+        'employee_name': employee.name,
+    }
+
+
+@sync_to_async
+def get_emp_stats_period(user_id: int, start_date, end_date) -> dict:
+    """
+    Xodimning berilgan davr uchun statistikasi (sana bo'yicha hisobot).
+    """
+    employee = Employee.objects.filter(user_id=user_id).first()
+    if not employee:
+        return {}
+    stats = _bot_compute_stats_sync(employee, start_date, end_date)
+    stats['employee_name'] = employee.name
+    return stats
+
+
+@sync_to_async
+def get_emp_daily_report_month(user_id: int, year: int, month: int) -> list:
+    """
+    Xodimning berilgan oy uchun kunlik davomat jadvali.
+    """
+    import calendar as cal_mod
+    from apps.main.models import ScheduleDay, Attendance
+
+    employee = Employee.objects.filter(user_id=user_id).first()
+    if not employee:
+        return []
+
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, cal_mod.monthrange(year, month)[1])
+    end       = min(last_day, date.today())
+
+    rows = []
+    current = first_day
+
+    while current <= end:
+        wd_name = current.strftime('%A')
+        try:
+            weekday_obj = Weekday.objects.get(name_en=wd_name)
+        except Weekday.DoesNotExist:
+            current += timedelta(days=1)
+            continue
+
+        sds = ScheduleDay.objects.filter(
+            schedule__employees=employee, weekday=weekday_obj
+        ).select_related('schedule__location')
+
+        if not sds.exists():
+            current += timedelta(days=1)
+            continue
+
+        counted = set()
+        for sd in sds:
+            att = Attendance.objects.filter(
+                employee=employee, date=current, location=sd.schedule.location
+            ).first()
+            if att is None:
+                att = Attendance.objects.filter(
+                    employee=employee, date=current
+                ).exclude(id__in=counted).first()
+
+            check_in  = att.check_in  if att else None
+            check_out = att.check_out if att else None
+
+            if att and att.id not in counted:
+                counted.add(att.id)
+
+            worked_min = 0
+            if check_in and check_out:
+                d = datetime.combine(current, check_out) - \
+                    datetime.combine(current, check_in)
+                worked_min = max(0, int(d.total_seconds() / 60))
+
+            late_min = 0
+            if check_in:
+                diff = int((
+                    datetime.combine(current, check_in) -
+                    datetime.combine(current, sd.start)
+                ).total_seconds() / 60)
+                if diff > _GRACE:
+                    late_min = diff
+
+            rows.append({
+                'date':      current,
+                'day_uz':    _UZ_DAYS.get(current.weekday(), ''),
+                'status':    'Kelgan' if att else 'Kelmagan',
+                'check_in':  check_in,
+                'check_out': check_out,
+                'sch_start': sd.start,
+                'sch_end':   sd.end,
+                'worked_h':  worked_min // 60,
+                'worked_m':  worked_min % 60,
+                'late_min':  late_min,
+            })
+
+        current += timedelta(days=1)
+
+    return rows
+
+
+@sync_to_async
+def get_emp_late_days_month(user_id: int, year: int, month: int) -> list:
+    """
+    Xodimning berilgan oyda kechikkan kunlari.
+    15 daqiqagacha kechiriladi.
+    """
+    import calendar as cal_mod
+    from apps.main.models import ScheduleDay, Attendance
+
+    employee = Employee.objects.filter(user_id=user_id).first()
+    if not employee:
+        return []
+
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, cal_mod.monthrange(year, month)[1])
+    end       = min(last_day, date.today())
+
+    late_days = []
+    current = first_day
+
+    while current <= end:
+        wd_name = current.strftime('%A')
+        try:
+            weekday_obj = Weekday.objects.get(name_en=wd_name)
+        except Weekday.DoesNotExist:
+            current += timedelta(days=1)
+            continue
+
+        sds = ScheduleDay.objects.filter(
+            schedule__employees=employee, weekday=weekday_obj
+        )
+        if not sds.exists():
+            current += timedelta(days=1)
+            continue
+
+        day_late = 0
+        for sd in sds:
+            att = Attendance.objects.filter(
+                employee=employee, date=current
+            ).first()
+            if att and att.check_in:
+                diff = int((
+                    datetime.combine(current, att.check_in) -
+                    datetime.combine(current, sd.start)
+                ).total_seconds() / 60)
+                if diff > _GRACE:
+                    day_late = max(day_late, diff)
+
+        if day_late > 0:
+            late_days.append({
+                'date':    current,
+                'day_uz':  _UZ_DAYS.get(current.weekday(), ''),
+                'late_min': day_late,
+                'late_h':  day_late // 60,
+                'late_m':  day_late % 60,
+            })
+
+        current += timedelta(days=1)
+
+    return late_days
+
+
+@sync_to_async
+def get_report_months_for_employee(user_id: int) -> list:
+    """
+    Hisobot uchun oylar ro'yxati (joriy + oxirgi 5 oy).
+    """
+    from django.db.models.functions import TruncMonth
+    import calendar as cal_mod
+
+    employee = Employee.objects.filter(user_id=user_id).first()
+    if not employee:
+        return []
+
+    months = (
+        Attendance.objects.filter(employee=employee)
+        .annotate(month=TruncMonth('date'))
+        .values_list('month', flat=True)
+        .distinct()
+        .order_by('-month')[:5]
+    )
+
+    result = []
+    for m in months:
+        result.append({
+            'year': m.year, 'month': m.month,
+            'label': f"{_UZ_MONTHS[m.month]} {m.year}",
+        })
+
+    today = date.today()
+    if not any(r['year'] == today.year and r['month'] == today.month for r in result):
+        result.insert(0, {
+            'year': today.year, 'month': today.month,
+            'label': f"{_UZ_MONTHS[today.month]} {today.year} (joriy)",
+        })
+
+    return result

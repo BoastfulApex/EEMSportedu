@@ -1,0 +1,432 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}{{ employee.name }} — Hisobot{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+/* ── Yuqori bar ── */
+.emp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+.emp-avatar {
+  width: 52px; height: 52px; border-radius: 50%;
+  object-fit: cover; border: 2px solid #e5e7eb;
+  background: #f3f4f6;
+}
+.emp-avatar-placeholder {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: linear-gradient(135deg,#3b82f6,#6366f1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.emp-info .emp-name { font-size: 18px; font-weight: 800; color: #111827; }
+.emp-info .emp-sub  { font-size: 12px; color: #9ca3af; }
+.emp-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Tur tugmalari ── */
+.rtype-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:20px; }
+.rtype-btn {
+  padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600;
+  border:2px solid #e5e7eb; background:#fff; color:#374151;
+  text-decoration:none; transition:all .18s;
+}
+.rtype-btn:hover { border-color:var(--action); color:var(--action); }
+.rtype-btn.active { background:var(--action); border-color:var(--action); color:#fff; }
+
+/* ── Stat card ── */
+.stat-card-lg {
+  background: #fff;
+  border: 1px solid #e8eaed;
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.06);
+  height: 100%;
+}
+.sc-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 16px;
+}
+.sc-title { font-size: 14px; font-weight: 700; color: #374151; }
+.sc-period { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+.sc-hours {
+  display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.sc-hour-box {
+  flex: 1 1 90px; background: #f9fafb; border-radius: 8px;
+  padding: 8px 10px; text-align: center;
+}
+.sc-hour-box .hb-lbl { font-size: 10px; color: #9ca3af; margin-bottom: 2px; }
+.sc-hour-box .hb-val { font-size: 18px; font-weight: 800; }
+.hb-req  { color: #2563eb; }
+.hb-work { color: #059669; }
+
+/* ── Progress ── */
+.prog-row { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.prog-pct { font-size:14px; font-weight:800; min-width:46px; text-align:right; }
+.prog-bg  { flex:1; height:10px; border-radius:99px; background:#e5e7eb; overflow:hidden; }
+.prog-fill{ height:100%; border-radius:99px; transition:width .4s; }
+.fill-green  { background:linear-gradient(90deg,#10b981,#34d399); }
+.fill-yellow { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
+.fill-red    { background:linear-gradient(90deg,#ef4444,#f87171); }
+.pct-green   { color:#059669; }
+.pct-yellow  { color:#d97706; }
+.pct-red     { color:#dc2626; }
+
+/* ── Badge qatorlari ── */
+.sc-badges { display:flex; gap:6px; flex-wrap:wrap; }
+.sc-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:5px 10px; border-radius:20px; font-size:12px; font-weight:600;
+}
+.badge-late     { background:#fee2e2; color:#b91c1c; }
+.badge-early    { background:#fef3c7; color:#92400e; }
+.badge-overtime { background:#d1fae5; color:#065f46; }
+.badge-zero     { background:#f3f4f6; color:#9ca3af; }
+
+/* ── Davr badge ── */
+.period-badge {
+  display:inline-block; background:#f0f4ff; color:#3b5bdb;
+  border-radius:6px; padding:4px 14px; font-size:12px; font-weight:600; margin-bottom:18px;
+}
+
+/* ── Date form card ── */
+.date-form-card {
+  background:#fff; border:1px solid #e8eaed; border-radius:10px;
+  padding:16px 20px; margin-bottom:20px;
+}
+
+/* ── Jadval ── */
+.report-table th {
+  font-size:12px; font-weight:700; color:#6b7280; white-space:nowrap; padding:10px 12px;
+}
+.report-table td { font-size:13px; padding:9px 12px; vertical-align:middle; }
+.report-table tbody tr:hover { background:#f8fafc; }
+
+.etype-pill {
+  font-size:10px; padding:2px 8px; border-radius:20px;
+  font-weight:600; background:#f3f4f6; color:#6b7280;
+}
+.val-late     { color:#b91c1c; font-weight:700; }
+.val-early    { color:#92400e; font-weight:700; }
+.val-overtime { color:#065f46; font-weight:700; }
+.val-zero     { color:#d1d5db; }
+.badge-kelgan   { background:#d1fae5; color:#065f46; font-size:11px; padding:2px 9px; border-radius:20px; font-weight:600; }
+.badge-kelmagan { background:#fee2e2; color:#991b1b; font-size:11px; padding:2px 9px; border-radius:20px; font-weight:600; }
+
+.prog-bg-sm { height:6px; border-radius:99px; background:#e5e7eb; overflow:hidden; min-width:60px; flex:1; }
+.prog-fill-sm { height:100%; border-radius:99px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  {# ── Xodim info bar ── #}
+  <div class="emp-topbar">
+    {% if employee.image %}
+      <img src="{{ employee.imageURL }}" class="emp-avatar" alt="">
+    {% else %}
+      <div class="emp-avatar-placeholder">
+        {{ employee.name|first|upper }}
+      </div>
+    {% endif %}
+    <div class="emp-info">
+      <div class="emp-name">{{ employee.name }}</div>
+      <div class="emp-sub">{{ employee.get_employee_type_display }} · {{ filial }}</div>
+    </div>
+    <div class="emp-actions">
+      {# Excel yuklab olish — joriy type va sanalar bilan #}
+      <a href="{% url 'employee_download_excel' employee.id %}?type={{ report_type }}&start_date={{ start_date|date:'Y-m-d' }}&end_date={{ end_date|date:'Y-m-d' }}"
+         class="btn btn-success btn-sm">
+        ⬇ report.xlsx
+      </a>
+      <a href="{% url 'employees' %}" class="btn btn-outline-secondary btn-sm">← Orqaga</a>
+    </div>
+  </div>
+
+  {# ── Qo'shimcha hisobot tugmalari ── #}
+  <div class="rtype-bar">
+    <span style="font-size:12px;color:#9ca3af;align-self:center;margin-right:4px">Qo'shimcha:</span>
+    <a href="?type=date_range&start_date={{ today|date:'Y-m-d' }}&end_date={{ today|date:'Y-m-d' }}"
+       class="rtype-btn {% if report_type == 'date_range' %}active{% endif %}">
+      🗓 Sana bo'yicha
+    </a>
+    <a href="?type=daily&start_date={{ today|date:'Y-m-d' }}&end_date={{ today|date:'Y-m-d' }}"
+       class="rtype-btn {% if report_type == 'daily' %}active{% endif %}">
+      📋 Kunlik
+    </a>
+    {% if report_type %}
+    <a href="?" class="rtype-btn" style="border-color:#fca5a5;color:#dc2626">✕ Yopish</a>
+    {% endif %}
+  </div>
+
+  {# ── 2 ta avtomatik card: Haftalik + Oylik ── #}
+  <div class="row g-3 mb-4">
+
+    {# Haftalik #}
+    <div class="col-md-6">
+      <div class="stat-card-lg">
+        <div class="sc-header">
+          <div>
+            <div class="sc-title">📆 Haftalik hisobot</div>
+            <div class="sc-period">{{ week_start }} – {{ today }}</div>
+          </div>
+        </div>
+        {% if weekly_stats %}
+        <div class="sc-hours">
+          <div class="sc-hour-box">
+            <div class="hb-lbl">Kerakli</div>
+            <div class="hb-val hb-req">{{ weekly_stats.required_h }}s</div>
+          </div>
+          <div class="sc-hour-box">
+            <div class="hb-lbl">Ishlagan</div>
+            <div class="hb-val hb-work">{{ weekly_stats.worked_h }}s</div>
+          </div>
+        </div>
+        <div class="prog-row">
+          <span class="prog-pct {% if weekly_stats.progress_pct >= 90 %}pct-green{% elif weekly_stats.progress_pct >= 60 %}pct-yellow{% else %}pct-red{% endif %}">
+            {{ weekly_stats.progress_pct }}%
+          </span>
+          <div class="prog-bg">
+            <div class="prog-fill {% if weekly_stats.progress_pct >= 90 %}fill-green{% elif weekly_stats.progress_pct >= 60 %}fill-yellow{% else %}fill-red{% endif %}"
+                 style="width:{% if weekly_stats.progress_pct > 100 %}100{% else %}{{ weekly_stats.progress_pct }}{% endif %}%">
+            </div>
+          </div>
+        </div>
+        <div class="sc-badges">
+          {% if weekly_stats.late_total %}
+            <span class="sc-badge badge-late">⏰ {% if weekly_stats.late_h %}{{ weekly_stats.late_h }}s {% endif %}{{ weekly_stats.late_m }}d</span>
+          {% else %}
+            <span class="sc-badge badge-zero">⏰ Kechikish —</span>
+          {% endif %}
+          {% if weekly_stats.early_total %}
+            <span class="sc-badge badge-early">🚪 {% if weekly_stats.early_h %}{{ weekly_stats.early_h }}s {% endif %}{{ weekly_stats.early_m }}d</span>
+          {% else %}
+            <span class="sc-badge badge-zero">🚪 Erta ketish —</span>
+          {% endif %}
+          {% if weekly_stats.overtime_total %}
+            <span class="sc-badge badge-overtime">✅ {% if weekly_stats.overtime_h %}{{ weekly_stats.overtime_h }}s {% endif %}{{ weekly_stats.overtime_m }}d</span>
+          {% else %}
+            <span class="sc-badge badge-zero">✅ Ortiqcha —</span>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted small">Bu hafta jadval topilmadi.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Oylik #}
+    <div class="col-md-6">
+      <div class="stat-card-lg">
+        <div class="sc-header">
+          <div>
+            <div class="sc-title">📅 Oylik hisobot</div>
+            <div class="sc-period">{{ month_label }} · {{ month_start }} – {{ today }}</div>
+          </div>
+        </div>
+        {% if monthly_stats %}
+        <div class="sc-hours">
+          <div class="sc-hour-box">
+            <div class="hb-lbl">Kerakli</div>
+            <div class="hb-val hb-req">{{ monthly_stats.required_h }}s</div>
+          </div>
+          <div class="sc-hour-box">
+            <div class="hb-lbl">Ishlagan</div>
+            <div class="hb-val hb-work">{{ monthly_stats.worked_h }}s</div>
+          </div>
+        </div>
+        <div class="prog-row">
+          <span class="prog-pct {% if monthly_stats.progress_pct >= 90 %}pct-green{% elif monthly_stats.progress_pct >= 60 %}pct-yellow{% else %}pct-red{% endif %}">
+            {{ monthly_stats.progress_pct }}%
+          </span>
+          <div class="prog-bg">
+            <div class="prog-fill {% if monthly_stats.progress_pct >= 90 %}fill-green{% elif monthly_stats.progress_pct >= 60 %}fill-yellow{% else %}fill-red{% endif %}"
+                 style="width:{% if monthly_stats.progress_pct > 100 %}100{% else %}{{ monthly_stats.progress_pct }}{% endif %}%">
+            </div>
+          </div>
+        </div>
+        <div class="sc-badges">
+          {% if monthly_stats.late_total %}
+            <span class="sc-badge badge-late">⏰ {% if monthly_stats.late_h %}{{ monthly_stats.late_h }}s {% endif %}{{ monthly_stats.late_m }}d</span>
+          {% else %}
+            <span class="sc-badge badge-zero">⏰ Kechikish —</span>
+          {% endif %}
+          {% if monthly_stats.early_total %}
+            <span class="sc-badge badge-early">🚪 {% if monthly_stats.early_h %}{{ monthly_stats.early_h }}s {% endif %}{{ monthly_stats.early_m }}d</span>
+          {% else %}
+            <span class="sc-badge badge-zero">🚪 Erta ketish —</span>
+          {% endif %}
+          {% if monthly_stats.overtime_total %}
+            <span class="sc-badge badge-overtime">✅ {% if monthly_stats.overtime_h %}{{ monthly_stats.overtime_h }}s {% endif %}{{ monthly_stats.overtime_m }}d</span>
+          {% else %}
+            <span class="sc-badge badge-zero">✅ Ortiqcha —</span>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted small">Bu oy jadval topilmadi.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# QO'SHIMCHA HISOBOT (Sana / Kunlik) #}
+  {% if report_type == 'date_range' or report_type == 'daily' %}
+
+  {# Sana tanlash formi #}
+  <div class="date-form-card">
+    <form method="get" class="row g-2 align-items-end">
+      <input type="hidden" name="type" value="{{ report_type }}">
+      <div class="col-md-4">
+        <label class="form-label fw-semibold mb-1" style="font-size:13px">Boshlanish</label>
+        <input type="text" name="start_date" class="form-control datepicker"
+               value="{{ start_date|date:'Y-m-d' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold mb-1" style="font-size:13px">Tugash</label>
+        <input type="text" name="end_date" class="form-control datepicker"
+               value="{{ end_date|date:'Y-m-d' }}" required>
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-primary w-100">Ko'rish</button>
+      </div>
+    </form>
+  </div>
+
+  {% if period_label %}
+  <div class="period-badge">📊 {{ period_label }}</div>
+  {% endif %}
+
+  {# ── Sana bo'yicha xulosa jadval ── #}
+  {% if report_type == 'date_range' and emp_stats %}
+  <div class="card shadow-sm mb-3">
+    <div class="table-responsive">
+      <table class="table report-table mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Kerakli (soat)</th>
+            <th>Ishlagan (soat)</th>
+            <th style="min-width:140px">Bajarilish</th>
+            <th class="text-center">Kechikish</th>
+            <th class="text-center">Erta ketish</th>
+            <th class="text-center">Ortiqcha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in emp_stats %}
+          <tr>
+            <td class="fw-semibold" style="color:#2563eb">{{ e.required_h }}s</td>
+            <td class="fw-semibold" style="color:#059669">{{ e.worked_h }}s</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="{% if e.progress_pct >= 90 %}pct-green{% elif e.progress_pct >= 60 %}pct-yellow{% else %}pct-red{% endif %}"
+                      style="min-width:42px;text-align:right;font-weight:700">{{ e.progress_pct }}%</span>
+                <div class="prog-bg-sm" style="flex:1">
+                  <div class="prog-fill-sm {% if e.progress_pct >= 90 %}fill-green{% elif e.progress_pct >= 60 %}fill-yellow{% else %}fill-red{% endif %}"
+                       style="width:{% if e.progress_pct > 100 %}100{% else %}{{ e.progress_pct }}{% endif %}%">
+                  </div>
+                </div>
+              </div>
+            </td>
+            <td class="text-center">{% if e.late_total %}<span class="val-late">{% if e.late_h %}{{ e.late_h }}s {% endif %}{{ e.late_m }}d</span>{% else %}<span class="val-zero">—</span>{% endif %}</td>
+            <td class="text-center">{% if e.early_total %}<span class="val-early">{% if e.early_h %}{{ e.early_h }}s {% endif %}{{ e.early_m }}d</span>{% else %}<span class="val-zero">—</span>{% endif %}</td>
+            <td class="text-center">{% if e.overtime_total %}<span class="val-overtime">{% if e.overtime_h %}{{ e.overtime_h }}s {% endif %}{{ e.overtime_m }}d</span>{% else %}<span class="val-zero">—</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% elif report_type == 'date_range' %}
+  <div class="alert alert-info">Bu davr uchun ma'lumot topilmadi.</div>
+  {% endif %}
+
+  {# ── Kunlik davomat jadval ── #}
+  {% if report_type == 'daily' and daily_rows %}
+  <div class="card shadow-sm mb-3">
+    <div class="table-responsive">
+      <table class="table report-table mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Sana</th>
+            <th>Kun</th>
+            <th>Lokatsiya</th>
+            <th class="text-center">Jadval vaqti</th>
+            <th class="text-center">Holat</th>
+            <th class="text-center">Kirish</th>
+            <th class="text-center">Chiqish</th>
+            <th class="text-center">Ishlagan</th>
+            <th class="text-center">Kechikish</th>
+            <th class="text-center">Ortiqcha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in daily_rows %}
+          <tr {% if r.status == 'Kelmagan' %}style="background:#fff5f5"{% endif %}>
+            <td class="text-muted">{{ r.index }}</td>
+            <td style="white-space:nowrap">{{ r.date }}</td>
+            <td><small class="text-muted">{{ r.weekday }}</small></td>
+            <td><small>📍 {{ r.location }}</small></td>
+            <td class="text-center">
+              <small>{{ r.schedule_start|time:"H:i" }} – {{ r.schedule_end|time:"H:i" }}</small>
+            </td>
+            <td class="text-center">
+              {% if r.status == 'Kelgan' %}
+                <span class="badge-kelgan">✓ Kelgan</span>
+              {% else %}
+                <span class="badge-kelmagan">✗ Kelmagan</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if r.check_in %}{{ r.check_in|time:"H:i" }}{% else %}<span class="val-zero">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if r.check_out %}{{ r.check_out|time:"H:i" }}{% else %}<span class="val-zero">—</span>{% endif %}
+            </td>
+            <td class="text-center fw-semibold" style="color:#059669">
+              {% if r.worked_total %}{{ r.worked_h }}s {{ r.worked_m }}d{% else %}<span class="val-zero">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if r.late_min %}<span class="val-late">{{ r.late_min }}d</span>
+              {% elif r.check_in %}<span style="color:#059669;font-weight:600">O'z vaqtida</span>
+              {% else %}<span class="val-zero">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if r.overtime_min %}<span class="val-overtime">{{ r.overtime_min }}d</span>
+              {% else %}<span class="val-zero">—</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="text-muted" style="font-size:12px">Jami {{ daily_rows|length }} yozuv</div>
+  {% elif report_type == 'daily' %}
+  <div class="alert alert-info">Bu davr uchun ma'lumot topilmadi.</div>
+  {% endif %}
+
+  {% endif %}{# end report_type check #}
+
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  flatpickr(".datepicker", {
+    dateFormat: "Y-m-d",
+    defaultDate: "today",
+    locale: { firstDayOfWeek: 1 }
+  });
+</script>
+{% endblock %}

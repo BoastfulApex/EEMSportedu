@@ -7,3 +7,8 @@ class UserForm(StatesGroup):
 
 class EmployeeRegistration(StatesGroup):
     waiting_for_photo = State()
+
+
+class ReportDateRange(StatesGroup):
+    waiting_start = State()   # foydalanuvchi boshlanish sanasini kiritadi
+    waiting_end   = State()   # foydalanuvchi tugash sanasini kiritadi

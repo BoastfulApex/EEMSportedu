@@ -1,0 +1,261 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Oylik xulosa — {{ month_label }}{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+  /* ── Karta ── */
+  .emp-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e8eaed;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .emp-card .emp-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 2px;
+  }
+  .emp-card .emp-type {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 14px;
+  }
+
+  /* ── Soat qatorlari ── */
+  .hours-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .hours-box {
+    flex: 1 1 120px;
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .hours-box .hb-label {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-bottom: 2px;
+  }
+  .hours-box .hb-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+  }
+  .hours-box.required .hb-value { color: #2563eb; }
+  .hours-box.worked  .hb-value { color: #059669; }
+  .hours-box.monthly .hb-value { color: #7c3aed; }
+
+  /* ── Progress bar ── */
+  .progress-wrap {
+    margin-bottom: 14px;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 5px;
+  }
+  .progress-label .pct-val {
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .progress-bar-bg {
+    height: 10px;
+    border-radius: 99px;
+    background: #e5e7eb;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .4s ease;
+  }
+  .fill-green  { background: linear-gradient(90deg,#10b981,#34d399); }
+  .fill-yellow { background: linear-gradient(90deg,#f59e0b,#fbbf24); }
+  .fill-red    { background: linear-gradient(90deg,#ef4444,#f87171); }
+
+  /* ── Badge qatorlari ── */
+  .stat-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .stat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-late     { background:#fee2e2; color:#b91c1c; }
+  .badge-early    { background:#fef3c7; color:#92400e; }
+  .badge-overtime { background:#d1fae5; color:#065f46; }
+  .badge-zero     { background:#f3f4f6; color:#9ca3af; }
+
+  /* ── Header stats ── */
+  .summary-header {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .summary-stat {
+    flex: 1 1 140px;
+    background: #fff;
+    border: 1px solid #e8eaed;
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .summary-stat .ss-val { font-size: 22px; font-weight: 800; }
+  .summary-stat .ss-lbl { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+  .ss-blue   { color: #2563eb; }
+  .ss-green  { color: #059669; }
+  .ss-red    { color: #dc2626; }
+  .ss-yellow { color: #d97706; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <div class="page-header">
+    <div>
+      <h4>Oylik xulosa</h4>
+      <p class="breadcrumb-info mb-0">
+        Filial: <strong>{{ filial }}</strong> &mdash;
+        <strong>{{ month_label }}</strong> &mdash; {{ today }} gacha
+      </p>
+    </div>
+    <div>
+      <a href="{% url 'home_get_dates' %}" class="btn btn-outline-secondary btn-sm">
+        📋 Davomat hisoboti
+      </a>
+    </div>
+  </div>
+
+  {# ── Umumiy statistika ── #}
+  {% if emp_stats %}
+  {% with total_emp=emp_stats|length %}
+  <div class="summary-header">
+    <div class="summary-stat">
+      <div class="ss-val ss-blue">{{ total_emp }}</div>
+      <div class="ss-lbl">Jami xodimlar</div>
+    </div>
+    <div class="summary-stat">
+      <div class="ss-val ss-green">
+        {% for e in emp_stats %}{% if e.progress_pct >= 90 %}{% if forloop.last %}{% endif %}{% endif %}{% endfor %}
+        {{ emp_stats|length }}
+      </div>
+      <div class="ss-lbl">Hisobotda</div>
+    </div>
+  </div>
+  {% endwith %}
+
+  {# ── Xodimlar kartalar ── #}
+  <div class="row g-3">
+    {% for e in emp_stats %}
+    <div class="col-xl-6 col-xxl-4">
+      <div class="emp-card">
+
+        {# Ism #}
+        <div class="emp-name">{{ e.employee.name }}</div>
+        <div class="emp-type">{{ e.employee.get_employee_type_display }}</div>
+
+        {# Soat qatorlari #}
+        <div class="hours-row">
+          <div class="hours-box monthly">
+            <div class="hb-label">Oylik me'yor</div>
+            <div class="hb-value">{{ e.monthly_hours }}s</div>
+          </div>
+          <div class="hours-box required">
+            <div class="hb-label">Kerakli (bugungacha)</div>
+            <div class="hb-value">{{ e.required_hours }}s</div>
+          </div>
+          <div class="hours-box worked">
+            <div class="hb-label">Ishlagan</div>
+            <div class="hb-value">{{ e.worked_hours }}s</div>
+          </div>
+        </div>
+
+        {# Progress bar #}
+        <div class="progress-wrap">
+          <div class="progress-label">
+            <span>Bajarilish darajasi</span>
+            <span class="pct-val
+              {% if e.progress_pct >= 90 %}text-success
+              {% elif e.progress_pct >= 60 %}text-warning
+              {% else %}text-danger{% endif %}">
+              {{ e.progress_pct }}%
+            </span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill
+              {% if e.progress_pct >= 90 %}fill-green
+              {% elif e.progress_pct >= 60 %}fill-yellow
+              {% else %}fill-red{% endif %}"
+              style="width: {% if e.progress_pct > 100 %}100{% else %}{{ e.progress_pct }}{% endif %}%">
+            </div>
+          </div>
+        </div>
+
+        {# Kechikish / Erta ketish / Ortiqcha ishlash #}
+        <div class="stat-badges">
+          {# Kechikish #}
+          {% if e.late_h or e.late_m %}
+            <span class="stat-badge badge-late">
+              ⏰ Kechikish:
+              {% if e.late_h %}{{ e.late_h }}s {% endif %}{{ e.late_m }}d
+            </span>
+          {% else %}
+            <span class="stat-badge badge-zero">⏰ Kechikish: —</span>
+          {% endif %}
+
+          {# Erta ketish #}
+          {% if e.early_h or e.early_m %}
+            <span class="stat-badge badge-early">
+              🚪 Erta ketish:
+              {% if e.early_h %}{{ e.early_h }}s {% endif %}{{ e.early_m }}d
+            </span>
+          {% else %}
+            <span class="stat-badge badge-zero">🚪 Erta ketish: —</span>
+          {% endif %}
+
+          {# Ortiqcha ishlash #}
+          {% if e.overtime_h or e.overtime_m %}
+            <span class="stat-badge badge-overtime">
+              ✅ Ortiqcha:
+              {% if e.overtime_h %}{{ e.overtime_h }}s {% endif %}{{ e.overtime_m }}d
+            </span>
+          {% else %}
+            <span class="stat-badge badge-zero">✅ Ortiqcha: —</span>
+          {% endif %}
+        </div>
+
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="alert alert-info mt-3">Bu filialda xodimlar topilmadi.</div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

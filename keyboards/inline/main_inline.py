@@ -7,10 +7,10 @@ from data.config import URL
 # ============================================================
 
 async def employee_main_keyboard() -> InlineKeyboardMarkup:
-    """Xodim uchun asosiy menyu — web app + statistika"""
+    """Xodim uchun asosiy menyu — web app + hisobotlar"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🖥 Kirish", web_app=WebAppInfo(url=URL))],
-        [InlineKeyboardButton(text="📊 Mening statistikam", callback_data="my_stats")],
+        [InlineKeyboardButton(text="📊 Hisobotlar", callback_data="my_reports")],
     ])
 
 
@@ -152,11 +152,11 @@ async def get_filial_selection_keyboard_by_org(org_id: int) -> InlineKeyboardMar
 
 
 # ============================================================
-# STATISTIKA KLAVIATURALARI
+# STATISTIKA KLAVIATURALARI (eski)
 # ============================================================
 
 def months_keyboard(months: list) -> InlineKeyboardMarkup:
-    """Oylar ro'yxati klaviaturasi"""
+    """Oylar ro'yxati klaviaturasi (eski stats flow)"""
     buttons = [
         [InlineKeyboardButton(
             text=m['month_name'],
@@ -165,6 +165,35 @@ def months_keyboard(months: list) -> InlineKeyboardMarkup:
         for m in months
     ]
     buttons.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ============================================================
+# YANGI HISOBOT KLAVIATURALARI
+# ============================================================
+
+def reports_menu_keyboard() -> InlineKeyboardMarkup:
+    """Hisobot asosiy menyu klaviaturasi"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📋 Kunlik", callback_data="rep_daily_months"),
+            InlineKeyboardButton(text="🗓 Sana bo'yicha", callback_data="rep_daterange"),
+        ],
+        [InlineKeyboardButton(text="⏰ Kechikkan kunlarim", callback_data="rep_late_months")],
+        [InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")],
+    ])
+
+
+def report_months_keyboard(months: list, prefix: str) -> InlineKeyboardMarkup:
+    """Hisobot uchun oy tanlash klaviaturasi"""
+    buttons = [
+        [InlineKeyboardButton(
+            text=m['label'],
+            callback_data=f"{prefix}_{m['year']}_{m['month']}"
+        )]
+        for m in months
+    ]
+    buttons.append([InlineKeyboardButton(text="🔙 Hisobotlar", callback_data="my_reports")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
