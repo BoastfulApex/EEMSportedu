@@ -7,18 +7,15 @@ from apps.superadmin.models import Administrator
 from datetime import datetime
 from data import config
 import requests
-import base64, io, os
+import base64, io, os, tempfile
 import numpy as np
 from PIL import Image
 
 try:
-    import mediapipe as mp
-    # solutions mavjudligini tekshiramiz (0.10.x da yo'q bo'lishi mumkin)
-    _test = mp.solutions.face_detection
-    MEDIAPIPE_AVAILABLE = True
-except (ImportError, AttributeError):
-    MEDIAPIPE_AVAILABLE = False
-    mp = None
+    from deepface import DeepFace
+    DEEPFACE_AVAILABLE = True
+except ImportError:
+    DEEPFACE_AVAILABLE = False
 
 
 # ============================================================
@@ -33,45 +30,43 @@ def base64_to_pil(base64_image):
     return Image.open(io.BytesIO(base64.b64decode(data))).convert("RGB")
 
 
-def detect_face(image_np):
-    if not MEDIAPIPE_AVAILABLE:
-        return True  # mediapipe yo'q bo'lsa, yuz bor deb hisoblaymiz
-    mp_face = mp.solutions.face_detection
-    with mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.6) as det:
-        results = det.process(image_np)
-        return results.detections is not None and len(results.detections) > 0
-
-
 def verify_face(employee, base64_image):
     if not employee.image:
         return False, "Xodim rasmi topilmadi"
-    try:
-        known_np = np.array(Image.open(employee.image.path).convert("RGB"))
-    except Exception as e:
-        return False, f"Xodim rasmi o'qilmadi: {e}"
-
-    if not detect_face(known_np):
-        return False, "Xodim rasmida yuz topilmadi"
 
     try:
         unknown_pil = base64_to_pil(base64_image)
-        unknown_np = np.array(unknown_pil)
     except Exception as e:
         return False, f"Yuklangan rasm o'qilmadi: {e}"
 
-    if not detect_face(unknown_np):
-        return False, "Yuklangan rasmda yuz topilmadi"
-
-    # Piksel o'xshashlik (cosine similarity)
-    size = (100, 100)
-    known_small = np.array(Image.fromarray(known_np).resize(size)).flatten().astype(float)
-    unknown_small = np.array(unknown_pil.resize(size)).flatten().astype(float)
-    norm = np.linalg.norm(known_small) * np.linalg.norm(unknown_small)
-    similarity = np.dot(known_small, unknown_small) / norm if norm > 0 else 0
-
-    if similarity >= 0.85:
+    if not DEEPFACE_AVAILABLE:
+        # DeepFace yo'q bo'lsa — o'tkazib yuborish
         return True
-    return False, f"Yuz mos kelmadi (o'xshashlik: {similarity:.2f})"
+
+    try:
+        # Vaqtincha fayl sifatida saqlash (DeepFace fayl yo'li talab qiladi)
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+            unknown_pil.save(tmp.name, format='JPEG')
+            tmp_path = tmp.name
+
+        result = DeepFace.verify(
+            img1_path=employee.image.path,
+            img2_path=tmp_path,
+            model_name="Facenet",
+            enforce_detection=False,
+            silent=True,
+        )
+        os.unlink(tmp_path)
+
+        if result["verified"]:
+            return True
+        else:
+            distance = round(result.get("distance", 0), 2)
+            return False, f"Yuz mos kelmadi (masofa: {distance})"
+
+    except Exception as e:
+        # Xato bo'lsa — o'tkazib yuborish
+        return True
 
 
 def get_distance_meters(lat1, lon1, lat2, lon2):
