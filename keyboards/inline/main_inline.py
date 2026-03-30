@@ -9,14 +9,20 @@ from data.config import URL
 async def employee_main_keyboard() -> InlineKeyboardMarkup:
     """Xodim uchun asosiy menyu — web app + hisobotlar"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🖥 Kirish", web_app=WebAppInfo(url=URL))],
+        [
+            InlineKeyboardButton(text="🔓 Kirish", web_app=WebAppInfo(url=f"{URL}?action=check_in")),
+            InlineKeyboardButton(text="🔒 Chiqish", web_app=WebAppInfo(url=f"{URL}?action=check_out")),
+        ],
         [InlineKeyboardButton(text="📊 Hisobotlar", callback_data="my_reports")],
     ])
 
 
 async def go_web_app() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Kirish", web_app=WebAppInfo(url=URL))]
+        [
+            InlineKeyboardButton(text="🔓 Kirish", web_app=WebAppInfo(url=f"{URL}?action=check_in")),
+            InlineKeyboardButton(text="🔒 Chiqish", web_app=WebAppInfo(url=f"{URL}?action=check_out")),
+        ]
     ])
 
 

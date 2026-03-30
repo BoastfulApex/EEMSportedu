@@ -103,19 +103,18 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Buttons ── */
+    /* ── Button ── */
     .btn-row {
       display: flex;
-      gap: 12px;
       width: 100%;
       max-width: 320px;
     }
     .btn {
       flex: 1;
-      padding: 14px 10px;
+      padding: 16px 10px;
       border: none;
       border-radius: 14px;
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-weight: 600;
       cursor: pointer;
       transition: opacity 0.15s, transform 0.1s;
@@ -127,21 +126,15 @@
     .btn:active { transform: scale(0.96); opacity: 0.85; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-    .btn-enter {
-      background: #198754;
-      color: #fff;
-    }
-    .btn-exit {
-      background: #dc3545;
-      color: #fff;
-    }
+    .btn-enter { background: #198754; color: #fff; }
+    .btn-exit  { background: #dc3545; color: #fff; }
     .btn span.lbl { font-size: 0.72rem; font-weight: 400; opacity: 0.85; }
   </style>
 </head>
 <body>
 
   <div class="header">
-    <h1>📋 Davomat tizimi</h1>
+    <h1 id="pageTitle">📋 Davomat tizimi</h1>
     <p id="dateLabel"></p>
   </div>
 
@@ -157,13 +150,9 @@
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-enter" id="enterBtn" disabled>
-      🔓
-      <span class="lbl">Kirish</span>
-    </button>
-    <button class="btn btn-exit" id="exitBtn" disabled>
-      🔒
-      <span class="lbl">Chiqish</span>
+    <button class="btn" id="actionBtn" disabled>
+      <span id="actionBtnIcon">🪪</span>
+      <span id="actionBtnLbl" class="lbl">Yuklanyapti...</span>
     </button>
   </div>
 
@@ -172,15 +161,34 @@
     tg.ready();
     tg.expand();
 
-    const video     = document.getElementById("camera");
-    const canvas    = document.getElementById("snapshot");
+    const video      = document.getElementById("camera");
+    const canvas     = document.getElementById("snapshot");
     const statusCard = document.getElementById("statusCard");
-    const statusMsg = document.getElementById("statusMsg");
-    const enterBtn  = document.getElementById("enterBtn");
-    const exitBtn   = document.getElementById("exitBtn");
-    const dateLabel = document.getElementById("dateLabel");
+    const actionBtn  = document.getElementById("actionBtn");
+    const dateLabel  = document.getElementById("dateLabel");
+    const pageTitle  = document.getElementById("pageTitle");
+    const actionBtnIcon = document.getElementById("actionBtnIcon");
+    const actionBtnLbl  = document.getElementById("actionBtnLbl");
 
     const user_id = tg.initDataUnsafe?.user?.id || null;
+
+    // URL dan action o'qish: check_in yoki check_out
+    const urlParams  = new URLSearchParams(window.location.search);
+    const actionType = urlParams.get("action") || "check_in";
+    const isCheckIn  = actionType === "check_in";
+
+    // Sahifa sarlavhasi va tugma ko'rinishini sozlash
+    if (isCheckIn) {
+      pageTitle.textContent    = "🔓 Kirish";
+      actionBtn.classList.add("btn-enter");
+      actionBtnIcon.textContent = "🪪";
+      actionBtnLbl.textContent  = "Face ID orqali kirish";
+    } else {
+      pageTitle.textContent    = "🔒 Chiqish";
+      actionBtn.classList.add("btn-exit");
+      actionBtnIcon.textContent = "🪪";
+      actionBtnLbl.textContent  = "Face ID orqali chiqish";
+    }
 
     // Sana
     const now = new Date();
@@ -207,9 +215,9 @@
         });
         video.srcObject = stream;
         await video.play();
-        enterBtn.disabled = false;
-        exitBtn.disabled  = false;
-        setStatus("", "📷", "Tayyor. Kirish yoki chiqishni tanlang.");
+        actionBtn.disabled = false;
+        const hint = isCheckIn ? "Kirish uchun tugmani bosing." : "Chiqish uchun tugmani bosing.";
+        setStatus("", "📷", hint);
       } catch (err) {
         setStatus("error", "❌", "Kamera yoqilmadi: " + err.message);
       }
@@ -234,24 +242,19 @@
       });
     }
 
-    function setBtns(disabled) {
-      enterBtn.disabled = disabled;
-      exitBtn.disabled  = disabled;
-    }
-
-    async function performCheck(actionType) {
+    async function performCheck() {
       if (!user_id) {
         setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi.");
         return;
       }
-      setBtns(true);
+      actionBtn.disabled = true;
       setLoading("Joylashuv aniqlanmoqda...");
 
       try {
         const photo = takePhoto();
         if (!photo) {
           setStatus("error", "⚠️", "Kamera tayyor emas. Sahifani yangilang.");
-          setBtns(false);
+          actionBtn.disabled = false;
           return;
         }
 
@@ -263,7 +266,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id,
-            type: actionType === "enter" ? "check_in" : "check_out",
+            type: actionType,
             latitude,
             longitude,
             image: photo
@@ -273,22 +276,21 @@
         const data = await res.json().catch(() => ({}));
 
         if (res.ok && data?.status === "SUCCESS") {
-          const label = actionType === "enter" ? "Kirish qayd etildi" : "Chiqish qayd etildi";
+          const label = isCheckIn ? "Kirish qayd etildi" : "Chiqish qayd etildi";
           setStatus("success", "✅", label + (data.time ? ` — ${data.time}` : ""));
           setTimeout(() => tg.close(), 2500);
         } else {
           const reason = data?.reason || data?.detail || "Noma'lum xato";
           setStatus("error", "❌", reason);
-          setBtns(false);
+          actionBtn.disabled = false;
         }
       } catch (err) {
         setStatus("error", "⚠️", "Xatolik: " + err.message);
-        setBtns(false);
+        actionBtn.disabled = false;
       }
     }
 
-    enterBtn.addEventListener("click", () => performCheck("enter"));
-    exitBtn.addEventListener("click",  () => performCheck("exit"));
+    actionBtn.addEventListener("click", performCheck);
 
     startCamera();
   </script>
