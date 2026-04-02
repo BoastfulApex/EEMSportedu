@@ -1,0 +1,79 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Yo'nalishlar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Yo'nalishlar ro'yxati</h4>
+    </div>
+    <a href="{% url 'direction_create' %}" class="btn btn-primary">
+      <i data-feather="plus"></i> Yangi yo'nalish
+    </a>
+  </div>
+
+  <div class="filter-bar">
+    <form class="d-flex gap-2 w-100 flex-wrap align-items-center" method="get">
+      <div style="flex:1;min-width:200px;max-width:340px">
+        <input class="form-control" type="text" name="q"
+               value="{{ search_query }}" placeholder="Yo'nalish nomi...">
+      </div>
+      <button class="btn btn-primary" type="submit">
+        <i data-feather="search"></i> Izlash
+      </button>
+      {% if search_query %}
+        <a href="{% url 'directions_list' %}" class="btn btn-outline-secondary">
+          <i data-feather="x"></i> Tozalash
+        </a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Yo'nalish nomi</th>
+            <th>Filial</th>
+            <th>Guruhlar soni</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in page_obj %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
+            <td><span class="fw-semibold">{{ d.name }}</span></td>
+            <td>{{ d.filial.filial_name|default:"—" }}</td>
+            <td><span class="badge bg-secondary">{{ d.groups.count }} ta</span></td>
+            <td>
+              <div class="d-flex gap-1 justify-content-end">
+                <a href="{% url 'direction_detail' d.id %}" class="btn btn-sm btn-outline-secondary">
+                  <i data-feather="edit-2" style="width:14px;height:14px"></i>
+                </a>
+                <a href="{% url 'direction_delete' d.id %}" class="btn btn-sm btn-outline-danger">
+                  <i data-feather="trash-2" style="width:14px;height:14px"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center py-5 text-muted">
+              <i data-feather="compass" style="width:40px;height:40px;opacity:0.3;display:block;margin:0 auto 8px"></i>
+              Yo'nalishlar topilmadi
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

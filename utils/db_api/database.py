@@ -10,7 +10,7 @@ from datetime import timedelta
 @sync_to_async
 def get_employee(user_id):
     try:
-        user = Employee.objects.filter(user_id=user_id).first()
+        user = Employee.objects.filter(telegram_user_id=user_id).first()
         return user
     except:
         return None
@@ -19,9 +19,9 @@ def get_employee(user_id):
 @sync_to_async
 def add_employee(user_id, full_name, admin_id):
     # try:
-    Employee.objects.create(user_id=user_id, name=full_name).save()
+    Employee.objects.create(telegram_user_id=user_id, name=full_name).save()
     admin = Administrator.objects.filter(telegram_id=admin_id).first()
-    emp = Employee.objects.filter(user_id=user_id).first()
+    emp = Employee.objects.filter(telegram_user_id=user_id).first()
     emp.filial = admin.filial
     emp.save()
     return emp
@@ -70,12 +70,18 @@ def get_employees() -> List[Employee]:
 
 @sync_to_async
 def is_user_employee(user_id: int) -> bool:
-    return Employee.objects.filter(user_id=user_id).exists()
+    return Employee.objects.filter(telegram_user_id=user_id).exists()
 
 
 @sync_to_async
 def is_user_admin(user_id: int) -> bool:
     return Administrator.objects.filter(telegram_id=user_id).exists()
+
+
+@sync_to_async
+def is_user_student(user_id: int) -> bool:
+    from apps.students.models import Student
+    return Student.objects.filter(telegram_id=user_id).exists()
 
 
 @sync_to_async
@@ -140,8 +146,8 @@ async def get_location_name(lat, lon):
 
 @sync_to_async
 def create_employee_if_not_exists(user_id, full_name):
-    if not Employee.objects.filter(user_id=user_id).exists():
-        Employee.objects.create(user_id=user_id, full_name=full_name)
+    if not Employee.objects.filter(telegram_user_id=user_id).exists():
+        Employee.objects.create(telegram_user_id=user_id, name=full_name)
         
 
 @sync_to_async
@@ -153,7 +159,7 @@ def get_all_weekdays():
 def save_work_schedule(user_id, data):
     admin = Administrator.objects.filter(telegram_id=user_id).first()
 
-    employee = Employee.objects.filter(user_id=data["employee_id"]).first()
+    employee = Employee.objects.filter(telegram_user_id=data["employee_id"]).first()
     if not employee:
         raise Exception("Foydalanuvchi topilmadi!")
     
@@ -169,7 +175,7 @@ def save_work_schedule(user_id, data):
 
 @sync_to_async
 def delete_employee_by_user_id(user_id: int) -> bool:
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if employee:
         employee.delete()
         return True  # O'chirildi
@@ -179,7 +185,7 @@ def delete_employee_by_user_id(user_id: int) -> bool:
 @sync_to_async
 def get_employee_schedule_text(employee_id: int) -> str:
     try:
-        emp = Employee.objects.filter(user_id=employee_id).first()
+        emp = Employee.objects.filter(telegram_user_id=employee_id).first()
         if not emp:
             return "❌ Xodim topilmadi."
 
@@ -431,7 +437,7 @@ def get_schedules_by_filial(filial_id: int):
 def assign_schedules_to_employee(emp_user_id: int, schedule_ids: list):
     """Xodimga tanlangan jadvallarni biriktirish (M2M)"""
     from apps.main.models import Schedule
-    employee = Employee.objects.filter(user_id=emp_user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=emp_user_id).first()
     if not employee:
         return False
     schedules = Schedule.objects.filter(id__in=schedule_ids)
@@ -455,6 +461,101 @@ def get_invite_token(token: str):
         }
     except InviteToken.DoesNotExist:
         return None
+
+
+@sync_to_async
+def get_group_by_invite_token(token: str):
+    """Guruh taklif tokeni orqali guruhni olish"""
+    from apps.students.models import Group
+    try:
+        group = Group.objects.select_related(
+            'filial', 'organization', 'direction'
+        ).get(invite_token=token)
+        return {
+            'id':           group.id,
+            'name':         group.name,
+            'filial_id':    group.filial_id,
+            'filial_name':  group.filial.filial_name if group.filial else '',
+            'org_id':       group.organization_id,
+            'direction':    group.direction.name if group.direction else '',
+            'year':         group.year,
+            'month':        group.get_month_display(),
+        }
+    except (Group.DoesNotExist, Exception):
+        return None
+
+
+@sync_to_async
+def get_students_by_group(group_id: int):
+    """Guruhdagi barcha tinglovchilar ro'yxatini qaytaradi"""
+    from apps.students.models import Group
+    try:
+        group = Group.objects.get(id=group_id)
+        return [
+            {'id': s.id, 'full_name': s.full_name}
+            for s in group.students.all().order_by('full_name')
+        ]
+    except Exception:
+        return []
+
+
+@sync_to_async
+def link_student_telegram(student_id: int, telegram_id: int):
+    """Student ga telegram_id bog'lash"""
+    from apps.students.models import Student
+    try:
+        student = Student.objects.get(id=student_id)
+        student.telegram_id = telegram_id
+        student.save(update_fields=['telegram_id'])
+        return {
+            'full_name': student.full_name,
+            'login':     student.user.username if student.user else '',
+            'password':  student.plain_password or '',
+        }
+    except Exception:
+        return None
+
+
+@sync_to_async
+def register_student_to_group(telegram_id: int, full_name: str, group_id: int):
+    """Tinglovchini guruhga qo'shish, Student va User yaratish"""
+    from apps.students.models import Student, Group
+    from django.contrib.auth.models import User
+    import random
+
+    group = Group.objects.get(id=group_id)
+
+    # Student yaratish yoki topish
+    student, created = Student.objects.get_or_create(
+        telegram_id=telegram_id,
+        defaults={
+            'full_name':    full_name,
+            'organization': group.organization,
+            'filial':       group.filial,
+        }
+    )
+
+    # Yangi student uchun user yaratish
+    if created or not student.user_id:
+        login    = str(student.pk).zfill(8)
+        chars    = 'aeiou0123456789'
+        password = ''.join(random.choices(chars, k=4))
+        user     = User.objects.create_user(username=login, password=password)
+        student.user           = user
+        student.plain_password = password
+        student.save(update_fields=['user', 'plain_password'])
+
+    # Guruhga qo'shish
+    already_in = group.students.filter(pk=student.pk).exists()
+    if not already_in:
+        group.students.add(student)
+
+    return {
+        'login':      student.user.username if student.user else '',
+        'password':   student.plain_password or '',
+        'already_in': already_in,
+        'group_name': group.name,
+    }
 
 
 @sync_to_async
@@ -489,7 +590,7 @@ def get_or_create_telegram_user(user_id: int, username: str, first_name: str, la
 def create_employee_with_filial(user_id: int, full_name: str, filial_id: int):
     """Xodim yaratish va filialga biriktirish"""
     try:
-        emp, _ = Employee.objects.get_or_create(user_id=user_id)
+        emp, _ = Employee.objects.get_or_create(telegram_user_id=user_id)
         emp.name = full_name
         emp.filial_id = filial_id
         emp.save()
@@ -509,7 +610,7 @@ def save_work_schedule_by_weekday_names(
 ):
     """WorkSchedule saqlash (hafta kunlari nomlari bo'yicha)"""
     try:
-        employee = Employee.objects.filter(user_id=employee_user_id).first()
+        employee = Employee.objects.filter(telegram_user_id=employee_user_id).first()
         if not employee:
             raise Exception(f"Xodim topilmadi: user_id={employee_user_id}")
 
@@ -558,7 +659,7 @@ def save_employee_photo(user_id: int, photo_path: str) -> bool:
     photo_path — fayl tizimidagi to'liq yo'l (MEDIA_ROOT ichida).
     """
     try:
-        employee = Employee.objects.filter(user_id=user_id).first()
+        employee = Employee.objects.filter(telegram_user_id=user_id).first()
         if not employee:
             return False
         # Eski rasmni o'chirish
@@ -580,7 +681,7 @@ def save_employee_photo(user_id: int, photo_path: str) -> bool:
 @sync_to_async
 def has_employee_photo(user_id: int) -> bool:
     """Xodimning rasmi borligini tekshiradi"""
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return False
     return bool(employee.image)
@@ -603,7 +704,7 @@ def get_employee_monthly_stats(user_id: int, year: int, month: int) -> dict:
     import calendar as cal_mod
     from apps.main.models import Attendance, SalaryConfig
 
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return {}
 
@@ -664,7 +765,7 @@ def get_available_months(user_id: int) -> list:
     from datetime import date
     from django.db.models.functions import TruncMonth
 
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return []
 
@@ -796,7 +897,7 @@ def get_emp_weekly_monthly_stats(user_id: int) -> dict:
     Xodimning haftalik va oylik statistikasini qaytaradi.
     Bot "Hisobotlar" overview uchun.
     """
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return {}
 
@@ -823,7 +924,7 @@ def get_emp_stats_period(user_id: int, start_date, end_date) -> dict:
     """
     Xodimning berilgan davr uchun statistikasi (sana bo'yicha hisobot).
     """
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return {}
     stats = _bot_compute_stats_sync(employee, start_date, end_date)
@@ -839,7 +940,7 @@ def get_emp_daily_report_month(user_id: int, year: int, month: int) -> list:
     import calendar as cal_mod
     from apps.main.models import ScheduleDay, Attendance
 
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return []
 
@@ -924,7 +1025,7 @@ def get_emp_late_days_month(user_id: int, year: int, month: int) -> list:
     import calendar as cal_mod
     from apps.main.models import ScheduleDay, Attendance
 
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return []
 
@@ -985,7 +1086,7 @@ def get_report_months_for_employee(user_id: int) -> list:
     from django.db.models.functions import TruncMonth
     import calendar as cal_mod
 
-    employee = Employee.objects.filter(user_id=user_id).first()
+    employee = Employee.objects.filter(telegram_user_id=user_id).first()
     if not employee:
         return []
 

@@ -22,6 +22,8 @@ except ImportError:
 # YORDAMCHI FUNKSIYALAR
 # ============================================================
 
+
+
 def base64_to_pil(base64_image):
     if "," in base64_image:
         _, data = base64_image.split(",", 1)
@@ -171,7 +173,7 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
 
         # Xodimni topish
         try:
-            employee = Employee.objects.get(user_id=user_id)
+            employee = Employee.objects.get(telegram_user_id=user_id)
         except Employee.DoesNotExist:
             return Response({"status": "FAIL", "reason": "Foydalanuvchi topilmadi"}, status=404)
 
@@ -220,7 +222,7 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
                     f"🚪 Chiqish: {attendance.check_out.strftime('%H:%M')}\n"
                     f"⌛ Ish vaqti: {hours:02d}:{minutes:02d}"
                 )
-                send_telegram_message(employee.user_id, msg)
+                send_telegram_message(employee.telegram_user_id, msg)
 
         attendance.save()
 

@@ -42,7 +42,7 @@ class EmployeeForm(forms.ModelForm):
             "class": "form-control",
         })
     )
-    user_id = forms.IntegerField(
+    telegram_user_id = forms.IntegerField(
         required=False,
         widget=forms.NumberInput(attrs={
             "placeholder": "Telegram UserID",
@@ -66,7 +66,7 @@ class EmployeeForm(forms.ModelForm):
 
     class Meta:
         model = Employee
-        fields = ['name', 'user_id', 'employee_type', 'image', 'schedules']
+        fields = ['name', 'telegram_user_id', 'employee_type', 'image', 'schedules']
 
     def __init__(self, *args, **kwargs):
         filial = kwargs.pop('filial', None)

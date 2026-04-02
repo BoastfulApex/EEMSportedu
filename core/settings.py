@@ -5,6 +5,10 @@ from datetime import timedelta
 
 load_dotenv()
 
+# TensorFlow/oneDNN warning larni o'chirish
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 CORE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +35,7 @@ INSTALLED_APPS = [
     'apps.authentication',
     'apps.main',
     'apps.superadmin',
+    'apps.students',
     'rest_framework',
 ]
 

@@ -1,0 +1,79 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Guruh tahrirlash{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Guruh tahrirlash</h4>
+      <p class="breadcrumb-info mb-0">
+        <a href="{% url 'groups_list' %}">Guruhlar</a> / {{ group.name }}
+      </p>
+    </div>
+  </div>
+
+  <div class="card border-0 mx-auto" style="max-width:600px">
+    <div class="card-body p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Guruh nomi <span class="text-danger">*</span></label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Filial</label>
+          <input class="form-control" value="{{ group.filial.filial_name|default:'—' }}" disabled>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Yo'nalish</label>
+          {{ form.direction }}
+          {% if form.direction.errors %}<div class="text-danger small mt-1">{{ form.direction.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="row">
+          <div class="col-6">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Yil <span class="text-danger">*</span></label>
+              {{ form.year }}
+              {% if form.year.errors %}<div class="text-danger small mt-1">{{ form.year.errors.0 }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Oy <span class="text-danger">*</span></label>
+              {{ form.month }}
+              {% if form.month.errors %}<div class="text-danger small mt-1">{{ form.month.errors.0 }}</div>{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Tinglovchilar</label>
+          <div class="alert alert-info py-2 mb-0">Jami: <strong>{{ group.students.count }} ta</strong></div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">
+            <i data-feather="save"></i> Saqlash
+          </button>
+          <a href="{% url 'group_students' group.pk %}" class="btn btn-outline-primary">
+            <i data-feather="users"></i> Tinglovchilar ({{ group.students.count }})
+          </a>
+          <a href="{% url 'groups_list' %}" class="btn btn-outline-secondary">
+            <i data-feather="x"></i> Bekor qilish
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

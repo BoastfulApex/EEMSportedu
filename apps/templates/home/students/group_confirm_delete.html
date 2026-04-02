@@ -1,0 +1,27 @@
+{% extends "layouts/base.html" %}
+{% block title %}Guruhni o'chirish{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <div class="card mx-auto" style="max-width: 500px; margin-top: 50px;">
+    <div class="card-body text-center p-4">
+      <h3 class="mb-3">
+        <i data-feather="alert-circle" style="color: #dc3545;"></i>
+        Tasdiqlang
+      </h3>
+      <p class="text-muted mb-4">
+        "<strong>{{ object.name }}</strong>" guruhini o'chirishga ishonchingiz komilmi?
+      </p>
+      <form method="post" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">
+          <i data-feather="trash-2"></i> Ha, o'chir
+        </button>
+        <a href="{% url 'groups_list' %}" class="btn btn-outline-secondary">
+          <i data-feather="x"></i> Bekor qilish
+        </a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

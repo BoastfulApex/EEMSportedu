@@ -4,10 +4,10 @@ import logging
 from aiogram import F, Router
 from aiogram.filters import CommandStart, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from loader import dp, bot
-from states.users import EmployeeRegistration
+from states.users import EmployeeRegistration, StudentGroupSelect
 from keyboards.inline.main_inline import (
     employee_main_keyboard,
     get_user_approval_keyboard,
@@ -19,11 +19,15 @@ from utils.db_api.database import (
     get_or_create_telegram_user,
     is_user_employee,
     is_user_admin,
+    is_user_student,
     has_employee_photo,
     save_employee_photo,
     get_hr_admins_by_filial,
     get_invite_token,
     set_telegram_user_organization,
+    get_group_by_invite_token,
+    get_students_by_group,
+    link_student_telegram,
 )
 from utils.face_check import detect_face
 
@@ -40,9 +44,8 @@ logger = logging.getLogger(__name__)
 @router.message(CommandStart(), StateFilter(None))
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject):
     user = message.from_user
-    args = command.args  # masalan: "emp_5"
+    args = command.args
 
-    # TelegramUser yaratish/olish
     await get_or_create_telegram_user(
         user_id=user.id,
         username=user.username or "",
@@ -50,7 +53,7 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         last_name=user.last_name or "",
     )
 
-    # ── Admin tekshirish ──────────────────────────────────────
+    # ── 1. Admin ─────────────────────────────────────────────
     if await is_user_admin(user.id):
         from keyboards.inline.menu_button import admin_menu_keyboard
         await message.answer(
@@ -60,7 +63,7 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         )
         return
 
-    # ── Allaqachon xodim ─────────────────────────────────────
+    # ── 2. Allaqachon xodim ───────────────────────────────────
     if await is_user_employee(user.id):
         if await has_employee_photo(user.id):
             await message.answer(
@@ -76,7 +79,58 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             )
         return
 
-    # ── Referal havola orqali keldi (token) ─────────────────────
+    # ── 3. Allaqachon tinglovchi ──────────────────────────────
+    if await is_user_student(user.id):
+        await message.answer(
+            "✅ Xush kelibsiz!",
+            reply_markup=await employee_main_keyboard()
+        )
+        return
+
+    # ── 4. Yangi foydalanuvchi — havolaga qarab yo'naltirish ──
+
+    # 4a. Guruh taklif havolasi: grp_<uuid>
+    if args and args.startswith('grp_'):
+        token = args[4:]
+        group = await get_group_by_invite_token(token)
+        if not group:
+            await message.answer(
+                "⚠️ Noto'g'ri yoki eskirgan guruh havolasi.\n"
+                "Administrator bilan bog'laning."
+            )
+            return
+
+        students = await get_students_by_group(group['id'])
+        if not students:
+            await message.answer(
+                f"⚠️ <b>{group['name']}</b> guruhida hali tinglovchilar yo'q.\n"
+                "Administrator bilan bog'laning.",
+                parse_mode="HTML"
+            )
+            return
+
+        buttons = [
+            [InlineKeyboardButton(
+                text=s['full_name'],
+                callback_data=f"student_select:{s['id']}:{group['id']}"
+            )]
+            for s in students
+        ]
+        kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+        await state.set_state(StudentGroupSelect.selecting)
+        await state.update_data(group_id=group['id'])
+
+        await message.answer(
+            f"📋 <b>{group['name']}</b> guruhi ro'yxati\n"
+            f"🏢 {group['filial_name']}  |  📅 {group['year']} — {group['month']}\n\n"
+            f"Quyidagi ro'yxatdan <b>o'z ismingizni</b> tanlang:",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+        return
+
+    # 4b. Filial taklif havolasi (xodim uchun)
     if args:
         invite = await get_invite_token(args)
         if not invite:
@@ -86,10 +140,9 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             )
             return
 
-        org_id = invite['org_id']
+        org_id    = invite['org_id']
         filial_id = invite['filial_id']
 
-        # Tashkilotni TelegramUser ga yozamiz
         await set_telegram_user_organization(user.id, org_id)
 
         hr_admins = await get_hr_admins_by_filial(filial_id)
@@ -101,9 +154,8 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             )
             return
 
-        full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "Ism ko'rsatilmagan"
-        username_text = f"@{user.username}" if user.username else "username yo'q"
-
+        full_name      = f"{user.first_name or ''} {user.last_name or ''}".strip() or "Ism ko'rsatilmagan"
+        username_text  = f"@{user.username}" if user.username else "username yo'q"
         notification_text = (
             f"🔔 <b>Yangi xodim so'rovi!</b>\n\n"
             f"👤 Ism: {full_name}\n"
@@ -144,11 +196,10 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             )
         return
 
-    # ── Oddiy /start (havola yo'q) ───────────────────────────
+    # ── 5. Oddiy /start (hech qanday havola yo'q) ────────────
     await message.answer(
-        "⚠️ Siz xodim sifatida ro'yxatdan o'tmagansiz.\n\n"
-        "Botdan foydalanish uchun tashkilot administratoridan "
-        "<b>xodimlar uchun maxsus havola</b> oling.",
+        "⚠️ Botdan foydalanish uchun tashkilot administratoridan "
+        "<b>maxsus havola</b> oling.",
         parse_mode="HTML"
     )
 
@@ -217,3 +268,37 @@ async def receive_wrong_input_photo(message: Message):
         "📌 Eslatma: Faylni hujjat sifatida emas, oddiy rasm sifatida yuboring.",
         parse_mode="HTML"
     )
+
+
+# ============================================================
+# TINGLOVCHI O'Z ISMINI TANLASHI
+# ============================================================
+
+@router.callback_query(
+    StudentGroupSelect.selecting,
+    F.data.startswith("student_select:")
+)
+async def student_selected(callback: CallbackQuery, state: FSMContext):
+    _, student_id, group_id = callback.data.split(":")
+
+    result = await link_student_telegram(
+        student_id=int(student_id),
+        telegram_id=callback.from_user.id,
+    )
+
+    await state.clear()
+
+    if not result:
+        await callback.message.edit_text(
+            "❌ Xatolik yuz berdi. Administrator bilan bog'laning."
+        )
+        return
+
+    text = (
+        f"✅ Ro'yxatdan o'tdingiz!\n\n"
+        f"👤 Ism: <b>{result['full_name']}</b>\n\n"
+        f"🔑 Login: <code>{result['login']}</code>\n"
+        f"🔒 Parol: <code>{result['password']}</code>\n\n"
+        f"⚠️ Login va parolni eslab qoling!"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML")

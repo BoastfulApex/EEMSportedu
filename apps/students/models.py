@@ -10,9 +10,42 @@ Ulash uchun:
 3. python manage.py migrate
 """
 
+import uuid
+from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 from apps.superadmin.models import Organization, Filial, Building, Administrator, Weekday
+
+
+MONTH_CHOICES = [
+    (1, 'Yanvar'), (2, 'Fevral'), (3, 'Mart'), (4, 'Aprel'),
+    (5, 'May'), (6, 'Iyun'), (7, 'Iyul'), (8, 'Avgust'),
+    (9, 'Sentabr'), (10, 'Oktabr'), (11, 'Noyabr'), (12, 'Dekabr'),
+]
+
+
+class Direction(models.Model):
+    """O'quv yo'nalishi — filialga bog'liq"""
+    name = models.CharField(max_length=255, verbose_name="Yo'nalish nomi")
+    filial = models.ForeignKey(
+        Filial,
+        on_delete=models.CASCADE,
+        related_name='directions',
+        verbose_name="Filial"
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='directions',
+        verbose_name="Tashkilot"
+    )
+
+    def __str__(self):
+        return f"{self.name} ({self.filial.filial_name if self.filial else '-'})"
+
+    class Meta:
+        verbose_name = "Yo'nalish"
+        verbose_name_plural = "Yo'nalishlar"
 
 
 class Student(models.Model):
@@ -26,6 +59,12 @@ class Student(models.Model):
         ('rejected', 'Rad etilgan'),
     ]
 
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='student'
+    )
     full_name = models.CharField(max_length=255)
     telegram_id = models.BigIntegerField(unique=True, null=True, blank=True)
     phone = models.CharField(max_length=20, null=True, blank=True)
@@ -46,6 +85,11 @@ class Student(models.Model):
         max_length=20,
         choices=VERIFICATION_STATUS,
         default='pending'
+    )
+
+    plain_password = models.CharField(
+        max_length=20, null=True, blank=True,
+        help_text="Tizimga kirish paroli (ochiq ko'rinishda)"
     )
 
     organization = models.ForeignKey(
@@ -74,8 +118,11 @@ class Group(models.Model):
     """
     O'quv guruhi.
     O'quv bo'limi tomonidan yaratiladi va tasdiqlanadi.
+    Har bir guruh ma'lum yil va oyga boglanadi.
     """
     name = models.CharField(max_length=200)
+    year = models.PositiveIntegerField(verbose_name="Yil")
+    month = models.PositiveSmallIntegerField(choices=MONTH_CHOICES, verbose_name="Oy")
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
@@ -87,11 +134,20 @@ class Group(models.Model):
         null=True, blank=True,
         related_name='groups'
     )
+    direction = models.ForeignKey(
+        Direction,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='groups',
+        verbose_name="Yo'nalish"
+    )
     students = models.ManyToManyField(
         Student,
         blank=True,
         related_name='groups'
     )
+
+    invite_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     # O'quv bo'limi tasdiqlashi
     is_confirmed = models.BooleanField(default=False)
@@ -111,7 +167,7 @@ class Group(models.Model):
     )
 
     def __str__(self):
-        return f"{self.name} ({self.filial.filial_name if self.filial else '-'})"
+        return f"{self.name} ({self.year}-{self.get_month_display()}) ({self.filial.filial_name if self.filial else '-'})"
 
     class Meta:
         verbose_name = "Guruh"

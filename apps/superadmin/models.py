@@ -113,6 +113,19 @@ class Administrator(models.Model):
     def is_monitoring(self):
         return self.role in ('org_admin', 'monitoring')
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.user_id and not self.user.is_staff:
+            self.user.is_staff = True
+            self.user.save(update_fields=['is_staff'])
+
+    def delete(self, *args, **kwargs):
+        user = self.user
+        super().delete(*args, **kwargs)
+        if user and user.is_staff and not user.is_superuser:
+            user.is_staff = False
+            user.save(update_fields=['is_staff'])
+
     def __str__(self):
         return f"{self.full_name} ({self.get_role_display()})"
 

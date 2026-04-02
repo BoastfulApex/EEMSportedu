@@ -1,0 +1,160 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Guruhlar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Guruhlar ro'yxati</h4>
+      <p class="breadcrumb-info mb-0">
+        <strong>{{ filter_year }}-yil, {{ month_name }}</strong>
+      </p>
+    </div>
+    <a href="{% url 'group_create' %}" class="btn btn-primary">
+      <i data-feather="plus"></i> Yangi guruh
+    </a>
+  </div>
+
+  {# ── Filter Bar ── #}
+  <div class="card border-0 mb-3">
+    <div class="card-body py-3">
+      <form class="row g-2 align-items-end" method="get">
+
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label small mb-1">Yil</label>
+          <select name="year" class="form-control form-control-sm">
+            {% for y in years %}
+              <option value="{{ y }}" {% if y == filter_year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label small mb-1">Oy</label>
+          <select name="month" class="form-control form-control-sm">
+            {% for num, label in month_choices %}
+              <option value="{{ num }}" {% if num == filter_month %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label small mb-1">Yo'nalish</label>
+          <select name="direction" class="form-control form-control-sm">
+            <option value="">Barchasi</option>
+            {% for d in directions %}
+              <option value="{{ d.id }}" {% if d.id|stringformat:"s" == filter_direction %}selected{% endif %}>
+                {{ d.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label small mb-1">Qidirish</label>
+          <div class="d-flex gap-1">
+            <input class="form-control form-control-sm" type="text" name="q"
+                   value="{{ search_query }}" placeholder="Guruh nomi...">
+            <button class="btn btn-sm btn-primary" type="submit">
+              <i data-feather="search" style="width:14px;height:14px"></i>
+            </button>
+            {% if search_query or filter_direction %}
+              <a href="{% url 'groups_list' %}?year={{ filter_year }}&month={{ filter_month }}"
+                 class="btn btn-sm btn-outline-secondary">
+                <i data-feather="x" style="width:14px;height:14px"></i>
+              </a>
+            {% endif %}
+          </div>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  {# ── Table ── #}
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Guruh nomi</th>
+            <th>Filial</th>
+            <th>Yo'nalish</th>
+            <th>Yil / Oy</th>
+            <th>Tinglovchilar</th>
+            <th>Holati</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in page_obj %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
+            <td><span class="fw-semibold">{{ group.name }}</span></td>
+            <td>{{ group.filial.filial_name|default:"—" }}</td>
+            <td>{{ group.direction.name|default:"—" }}</td>
+            <td><span class="badge bg-info">{{ group.year }}-{{ group.get_month_display }}</span></td>
+            <td><span class="badge bg-secondary">{{ group.students.count }} ta</span></td>
+            <td>
+              {% if group.is_confirmed %}
+                <span class="badge bg-success">✓ Tasdiqlangan</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">⏳ Kutilmoqda</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex gap-1 justify-content-end">
+                <a href="{% url 'group_students' group.id %}" class="btn btn-sm btn-outline-primary" title="Tinglovchilar">
+                  <i data-feather="users" style="width:14px;height:14px"></i>
+                </a>
+                <a href="{% url 'group_detail' group.id %}" class="btn btn-sm btn-outline-secondary" title="Tahrirlash">
+                  <i data-feather="edit-2" style="width:14px;height:14px"></i>
+                </a>
+                <a href="{% url 'group_delete' group.id %}" class="btn btn-sm btn-outline-danger" title="O'chirish">
+                  <i data-feather="trash-2" style="width:14px;height:14px"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="8" class="text-center py-5 text-muted">
+              <i data-feather="inbox" style="width:40px;height:40px;opacity:0.3;display:block;margin:0 auto 8px"></i>
+              Guruhlar topilmadi
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Pagination ── #}
+  {% if page_obj.has_other_pages %}
+  <nav class="d-flex justify-content-center mt-4">
+    <ul class="pagination">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?year={{ filter_year }}&month={{ filter_month }}&direction={{ filter_direction }}&q={{ search_query }}&page={{ page_obj.previous_page_number }}">← Oldingi</a>
+        </li>
+      {% endif %}
+      {% for num in page_obj.paginator.page_range %}
+        <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+          <a class="page-link" href="?year={{ filter_year }}&month={{ filter_month }}&direction={{ filter_direction }}&q={{ search_query }}&page={{ num }}">{{ num }}</a>
+        </li>
+      {% endfor %}
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?year={{ filter_year }}&month={{ filter_month }}&direction={{ filter_direction }}&q={{ search_query }}&page={{ page_obj.next_page_number }}">Keyingi →</a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+</div>
+{% endblock %}

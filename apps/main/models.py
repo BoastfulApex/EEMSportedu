@@ -1,5 +1,6 @@
 import uuid
 
+from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 from apps.superadmin.models import Organization, Filial, Building, Administrator, Weekday
@@ -43,9 +44,15 @@ class Employee(models.Model):
         ('teacher', "O'qituvchi"),
     ]
 
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='employee'
+    )
     name = models.CharField(max_length=200, blank=True, null=True)
     employee_type = models.CharField(max_length=20, choices=EMPLOYEE_TYPE_CHOICES, default='employee')
-    user_id = models.IntegerField(null=True, blank=True, unique=True)
+    telegram_user_id = models.BigIntegerField(null=True, blank=True, unique=True)
     filial = models.ForeignKey(Filial, on_delete=models.CASCADE, null=True, blank=True)
     schedules = models.ManyToManyField(
         'Schedule',

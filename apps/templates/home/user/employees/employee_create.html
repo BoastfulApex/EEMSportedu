@@ -119,9 +119,9 @@
 
                 <div class="mb-3">
                   <label class="form-label fw-semibold">Telegram ID</label>
-                  {{ emp_form.user_id }}
-                  {% if emp_form.user_id.errors %}
-                    <div class="text-danger small mt-1">{{ emp_form.user_id.errors.0 }}</div>
+                  {{ emp_form.telegram_user_id }}
+                  {% if emp_form.telegram_user_id.errors %}
+                    <div class="text-danger small mt-1">{{ emp_form.telegram_user_id.errors.0 }}</div>
                   {% endif %}
                 </div>
 

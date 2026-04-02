@@ -55,6 +55,34 @@
         {% endif %}
       {% endif %}
 
+      {# ── O'QUV BO'LIMI ── #}
+      {% if is_edu_admin %}
+        {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+        <li class="sidebar-header">O'quv</li>
+
+        <li class="sidebar-item {% if segment == 'groups' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'groups_list' %}">
+            <i data-feather="users"></i>
+            <span>Guruhlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'directions' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'directions_list' %}">
+            <i data-feather="compass"></i>
+            <span>Yo'nalishlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'invites' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'invite_links' %}">
+            <i data-feather="link"></i>
+            <span>Taklif havolalari</span>
+          </a>
+        </li>
+        {% endif %}
+      {% endif %}
+
       {# ── HISOBOT ── #}
       {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
       <li class="sidebar-header">Tahlil</li>
