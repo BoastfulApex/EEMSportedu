@@ -147,7 +147,7 @@ async def show_latest_location(message: Message):
     location = await get_filial_location(message.from_user.id)
     if location:
         await message.answer(
-            f"📍 So'nggi manzil: {location.name or 'Noma\'lum'}",
+            f"📍 So'nggi manzil: {location.name or "Noma\'lum"}",
             reply_markup=address_bottom_keyboard()
         )
         if location.latitude and location.longitude:
