@@ -131,7 +131,7 @@
 
   <p class="sch-hint">
     <i data-feather="info" style="width:13px;height:13px;vertical-align:-2px"></i>
-    Kunni bosish — smena / lokatsiya biriktirish. Checkbox — bir nechta kun tanlash.
+    Kunni bosish — tanlash / bekor qilish. Bir nechta kun tanlash mumkin.
   </p>
 
 </div><!-- /content-wrapper -->
@@ -468,17 +468,21 @@ const CSRF = "{{ csrf_token }}";
 let activeDate = null;
 let selectedDates = new Set();
 
-// Click cell → modal
+// Click cell → checkbox toggle (select/deselect)
 document.querySelectorAll('.cal-cell:not(.is-past)').forEach(cell => {
   cell.addEventListener('click', function(e) {
-    if (e.target.classList.contains('day-check')) return;
-    openModal(this);
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+    const chk = this.querySelector('.day-check');
+    if (!chk) return;
+    chk.checked = !chk.checked;
+    chk.dispatchEvent(new Event('change'));
   });
 });
 
 // Checkbox multi-select
 document.querySelectorAll('.day-check').forEach(chk => {
-  chk.addEventListener('change', function() {
+  chk.addEventListener('change', function(e) {
+    e.stopPropagation();
     const date = this.dataset.date;
     const cell = this.closest('.cal-cell');
     if (this.checked) { selectedDates.add(date); cell.classList.add('selected'); }

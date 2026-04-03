@@ -95,7 +95,7 @@
               <tbody>
                 {% for wd in weekdays %}
                 {% with sd=existing_days|get_item:wd.id %}
-                <tr class="day-row {% if sd %}active{% endif %}" id="row-{{ wd.id }}"
+                <tr class="day-row {% if not sd %}day-inactive{% endif %}" id="row-{{ wd.id }}"
                     style="{% if sd %}background:#F0FBF4{% endif %}">
                   <td class="text-center align-middle">
                     <input type="checkbox" class="form-check-input day-check"
@@ -111,17 +111,15 @@
                   </td>
                   <td>
                     <input type="time" name="day_{{ wd.id }}_start"
-                           class="form-control form-control-sm"
+                           class="form-control form-control-sm time-input"
                            id="start-{{ wd.id }}"
-                           value="{% if sd %}{{ sd.start|time:'H:i' }}{% endif %}"
-                           {% if not sd %}disabled{% endif %}>
+                           value="{% if sd %}{{ sd.start|time:'H:i' }}{% endif %}">
                   </td>
                   <td>
                     <input type="time" name="day_{{ wd.id }}_end"
-                           class="form-control form-control-sm"
+                           class="form-control form-control-sm time-input"
                            id="end-{{ wd.id }}"
-                           value="{% if sd %}{{ sd.end|time:'H:i' }}{% endif %}"
-                           {% if not sd %}disabled{% endif %}>
+                           value="{% if sd %}{{ sd.end|time:'H:i' }}{% endif %}">
                   </td>
                 </tr>
                 {% endwith %}
@@ -149,6 +147,13 @@
 </div>
 {% endblock content %}
 
+{% block stylesheets %}
+<style>
+  .day-inactive { opacity: 0.45; }
+  .day-inactive .time-input { pointer-events: none; background: #f1f5f9; }
+</style>
+{% endblock %}
+
 {% block javascripts %}
 <script src="{% static 'js/app.js' %}"></script>
 <script>
@@ -158,12 +163,12 @@ function toggleDay(chk) {
   const s   = document.getElementById('start-' + id);
   const e   = document.getElementById('end-'   + id);
   if (chk.checked) {
+    row.classList.remove('day-inactive');
     row.style.background = '#F0FBF4';
-    s.disabled = false; e.disabled = false;
     if (!s.value) s.focus();
   } else {
+    row.classList.add('day-inactive');
     row.style.background = '';
-    s.disabled = true; e.disabled = true;
     s.value = ''; e.value = '';
   }
 }

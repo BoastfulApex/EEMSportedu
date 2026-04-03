@@ -62,7 +62,7 @@
               </thead>
               <tbody>
                 {% for wd in weekdays %}
-                <tr class="day-row" id="row-{{ wd.id }}">
+                <tr class="day-row day-inactive" id="row-{{ wd.id }}">
                   <td class="text-center align-middle">
                     <input type="checkbox" class="form-check-input day-check"
                            id="chk-{{ wd.id }}"
@@ -76,13 +76,13 @@
                   </td>
                   <td>
                     <input type="time" name="day_{{ wd.id }}_start"
-                           class="form-control form-control-sm"
-                           id="start-{{ wd.id }}" disabled>
+                           class="form-control form-control-sm time-input"
+                           id="start-{{ wd.id }}">
                   </td>
                   <td>
                     <input type="time" name="day_{{ wd.id }}_end"
-                           class="form-control form-control-sm"
-                           id="end-{{ wd.id }}" disabled>
+                           class="form-control form-control-sm time-input"
+                           id="end-{{ wd.id }}">
                   </td>
                 </tr>
                 {% endfor %}
@@ -109,6 +109,13 @@
 </div>
 {% endblock %}
 
+{% block stylesheets %}
+<style>
+  .day-inactive { opacity: 0.45; }
+  .day-inactive .time-input { pointer-events: none; background: #f1f5f9; }
+</style>
+{% endblock %}
+
 {% block javascripts %}
 <script src="{% static 'js/app.js' %}"></script>
 <script>
@@ -118,12 +125,12 @@ function toggleDay(chk) {
   const s   = document.getElementById('start-' + id);
   const e   = document.getElementById('end-'   + id);
   if (chk.checked) {
+    row.classList.remove('day-inactive');
     row.style.background = '#F0FBF4';
-    s.disabled = false; e.disabled = false;
     s.focus();
   } else {
+    row.classList.add('day-inactive');
     row.style.background = '';
-    s.disabled = true; e.disabled = true;
     s.value = ''; e.value = '';
   }
 }
