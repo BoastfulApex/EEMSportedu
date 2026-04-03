@@ -108,6 +108,9 @@
             </td>
             <td>
               <div class="d-flex gap-1 justify-content-end">
+                <a href="{% url 'group_schedule' group.id %}" class="btn btn-sm btn-outline-success" title="Jadval">
+                  <i data-feather="calendar" style="width:14px;height:14px"></i>
+                </a>
                 <a href="{% url 'group_students' group.id %}" class="btn btn-sm btn-outline-primary" title="Tinglovchilar">
                   <i data-feather="users" style="width:14px;height:14px"></i>
                 </a>

@@ -56,3 +56,6 @@ any_admin_required = _require_role(lambda a: True)
 
 # Faqat filial_admin roli
 filial_admin_required = _require_role(lambda a: a.role == 'filial_admin')
+
+# Lokatsiya boshqaruvi: org_admin + edu_admin
+location_admin_required = _require_role(lambda a: a.is_org_admin or a.is_edu_admin)

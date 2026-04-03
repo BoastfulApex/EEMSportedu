@@ -13,7 +13,7 @@ from apps.superadmin.models import Administrator, Filial, Organization
 from apps.main.models import Location
 from apps.superadmin.forms import FilialForm, AdminUserForm, FilialSubAdminForm
 from apps.main.forms import LocationForm
-from apps.superadmin.decorators import org_admin_required, filial_admin_required
+from apps.superadmin.decorators import org_admin_required, filial_admin_required, location_admin_required
 
 
 # ============================================================
@@ -190,13 +190,17 @@ def get_location_name(lat, lon):
         return "Geocoding vaqti tugadi"
 
 
-@org_admin_required
+@location_admin_required
 def locations(request):
     admin_user = Administrator.objects.get(user=request.user)
     all_filials = Filial.objects.filter(organization=admin_user.organization)
     data = {'filials': all_filials}
-    request.session['selected_filial_id'] = 'super_admin'
+    if admin_user.is_org_admin:
+        request.session['selected_filial_id'] = 'super_admin'
     locs = Location.objects.filter(organization=admin_user.organization)
+    # edu_admin faqat o'z filialining lokatsiyalarini ko'radi
+    if not admin_user.is_org_admin and admin_user.filial_id:
+        locs = locs.filter(filial_id=admin_user.filial_id)
     search_query = request.GET.get('q')
     if search_query:
         locs = locs.filter(Q(address__icontains=search_query))
@@ -216,19 +220,15 @@ def create_location_ajax(request):
     return JsonResponse({'success': False, 'errors': "Noto'g'ri so'rov"})
 
 
-@org_admin_required
+@location_admin_required
 def create_location(request):
     admin_user = Administrator.objects.get(user=request.user)
     data = {'filials': Filial.objects.filter(organization=admin_user.organization)}
     if request.method == 'POST':
         form = LocationForm(request.POST, admin_user=admin_user)
         if form.is_valid():
-            filial = form.cleaned_data.get('filial')
-            # Eski locationlarni o'chirish
             instance = form.save(commit=False)
-            name = get_location_name(instance.latitude, instance.longitude)
-            instance.name = name or "Unknown location"
-            instance.address = name
+            instance.address = form.cleaned_data.get('address') or ''
             instance.organization = admin_user.organization
             instance.save()
             return redirect('admin_locations')

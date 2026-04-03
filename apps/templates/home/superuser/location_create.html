@@ -39,6 +39,11 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="id_name">Lokatsiya nomi</label>
+                        {{ form.name }}
+                    </div>
+
+                    <div class="form-group">
                         <label>Joylashuvni xaritadan tanlang:</label>
                         <div id="map" style="height: 400px;"></div>
                     </div>
@@ -48,7 +53,7 @@
                 </br>
                 </br>
                     <div class="form-group">
-                        <label>Manzil (faqat o‘qish uchun)</label>
+                        <label>Manzil (xaritadan avtomatik)</label>
                         {{ form.address }}
                     </div>
                 </br>

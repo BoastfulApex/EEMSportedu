@@ -23,6 +23,17 @@ urlpatterns = [
     path('invites/', views.invite_links, name='invite_links'),
     path('invites/<int:pk>/regenerate/', views.regenerate_invite_token, name='regenerate_invite_token'),
 
+    # Smenalar
+    path('smenas/', views.smenas_list, name='smenas_list'),
+    path('smenas/create/', views.smena_create, name='smena_create'),
+    path('smenas/<int:pk>/', views.smena_detail, name='smena_detail'),
+    path('smenas/<int:pk>/delete/', views.SmenaDelete.as_view(), name='smena_delete'),
+
+    # Guruh jadvali (kalendar)
+    path('groups/<int:pk>/schedule/', views.group_schedule, name='group_schedule'),
+    path('groups/<int:pk>/schedule/save/', views.save_group_lessons, name='save_group_lessons'),
+    path('groups/<int:pk>/schedule/<str:date_str>/delete/', views.delete_group_lesson, name='delete_group_lesson'),
+
     # AJAX
     path('ajax/directions/', views.directions_by_filial, name='directions_by_filial'),
 ]

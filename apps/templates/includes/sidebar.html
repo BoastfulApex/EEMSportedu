@@ -80,6 +80,20 @@
             <span>Taklif havolalari</span>
           </a>
         </li>
+
+        <li class="sidebar-item {% if segment == 'smenas' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'smenas_list' %}">
+            <i data-feather="clock"></i>
+            <span>Smenalar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'locations' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'admin_locations' %}">
+            <i data-feather="map-pin"></i>
+            <span>Lokatsiyalar</span>
+          </a>
+        </li>
         {% endif %}
       {% endif %}
 

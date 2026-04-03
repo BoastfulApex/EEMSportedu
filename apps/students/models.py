@@ -15,6 +15,7 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 from apps.superadmin.models import Organization, Filial, Building, Administrator, Weekday
+from apps.main.models import Location
 
 
 MONTH_CHOICES = [
@@ -172,6 +173,50 @@ class Group(models.Model):
     class Meta:
         verbose_name = "Guruh"
         verbose_name_plural = "Guruhlar"
+
+
+class Smena(models.Model):
+    """Dars smenasi — para boshlanish vaqtlari"""
+    name = models.CharField(max_length=100, verbose_name="Smena nomi")
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='smenas'
+    )
+    filial = models.ForeignKey(
+        Filial, on_delete=models.SET_NULL, null=True, blank=True, related_name='smenas'
+    )
+    para1_start = models.TimeField(verbose_name="1-para boshlanishi")
+    para2_start = models.TimeField(null=True, blank=True, verbose_name="2-para boshlanishi")
+    para3_start = models.TimeField(null=True, blank=True, verbose_name="3-para boshlanishi")
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Smena"
+        verbose_name_plural = "Smenalar"
+
+
+class GroupLesson(models.Model):
+    """Guruh darsi — muayyan sana uchun lokatsiya va smena"""
+    group = models.ForeignKey(
+        'Group', on_delete=models.CASCADE, related_name='lessons'
+    )
+    date = models.DateField(verbose_name="Sana")
+    location = models.ForeignKey(
+        Location, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Lokatsiya"
+    )
+    smena = models.ForeignKey(
+        Smena, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Smena"
+    )
+
+    class Meta:
+        unique_together = ('group', 'date')
+        verbose_name = "Guruh darsi"
+        verbose_name_plural = "Guruh darslari"
+        ordering = ['date']
+
+    def __str__(self):
+        return f"{self.group.name} - {self.date}"
 
 
 class GroupSchedule(models.Model):

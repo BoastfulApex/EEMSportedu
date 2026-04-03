@@ -1,0 +1,63 @@
+{% extends "layouts/base.html" %}
+{% block title %}Smenalar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header d-flex align-items-center justify-content-between">
+    <h4 class="mb-0">Smenalar</h4>
+    <a href="{% url 'smena_create' %}" class="btn btn-sm btn-primary">
+      <i data-feather="plus" style="width:14px;height:14px"></i> Qo'shish
+    </a>
+  </div>
+
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Nomi</th>
+            <th>1-para</th>
+            <th>2-para</th>
+            <th>3-para</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in smenas %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
+            <td class="fw-semibold">{{ s.name }}</td>
+            <td><span class="badge bg-primary-subtle text-primary">{{ s.para1_start|time:"H:i" }}</span></td>
+            <td>{% if s.para2_start %}<span class="badge bg-secondary-subtle text-secondary">{{ s.para2_start|time:"H:i" }}</span>{% else %}—{% endif %}</td>
+            <td>{% if s.para3_start %}<span class="badge bg-secondary-subtle text-secondary">{{ s.para3_start|time:"H:i" }}</span>{% else %}—{% endif %}</td>
+            <td class="text-end">
+              <a href="{% url 'smena_detail' s.pk %}" class="btn btn-sm btn-outline-secondary">
+                <i data-feather="edit-2" style="width:13px;height:13px"></i>
+              </a>
+              <form method="post" action="{% url 'smena_delete' s.pk %}" class="d-inline"
+                    onsubmit="return confirm('O\'chirilsinmi?')">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger">
+                  <i data-feather="trash-2" style="width:13px;height:13px"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center py-5 text-muted">
+              <i data-feather="clock" style="width:36px;height:36px;opacity:.3;display:block;margin:0 auto 8px"></i>
+              Smenalar yo'q
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

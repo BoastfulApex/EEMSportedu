@@ -1,0 +1,558 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}{{ group.name }} — Jadval{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <!-- Header -->
+  <div class="sch-header">
+    <div class="sch-header-left">
+      <a href="{% url 'groups_list' %}" class="sch-back-btn">
+        <i data-feather="arrow-left"></i>
+      </a>
+      <div>
+        <h4 class="sch-title">{{ group.name }}</h4>
+        <span class="sch-subtitle">
+          <i data-feather="calendar" class="sch-icon-xs"></i>
+          {{ group.year }} yil &mdash; {{ group.get_month_display }}
+          {% if group.filial %}&nbsp;&bull;&nbsp;{{ group.filial.filial_name }}{% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="sch-header-right">
+      <span class="sch-legend"><span class="sch-dot dot-scheduled"></span> Belgilangan</span>
+      <span class="sch-legend"><span class="sch-dot dot-empty"></span> Bo'sh</span>
+      <span class="sch-legend"><span class="sch-dot dot-past"></span> O'tgan</span>
+    </div>
+  </div>
+
+  <!-- Bulk assign panel (appears when days are selected) -->
+  <div class="bulk-panel" id="bulk-panel">
+    <div class="bulk-panel-inner">
+      <div class="bulk-panel-info">
+        <span class="bulk-count-badge" id="sel-count">0</span>
+        <span class="bulk-label">kun tanlandi</span>
+      </div>
+      <div class="bulk-panel-fields">
+        <div class="bulk-field">
+          <label>Smena</label>
+          <select id="bulk-smena" class="form-select form-select-sm">
+            <option value="">— Tanlang —</option>
+            {% for sm in smenas %}
+            <option value="{{ sm.pk }}">{{ sm.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="bulk-field">
+          <label>Lokatsiya</label>
+          <select id="bulk-location" class="form-select form-select-sm">
+            <option value="">— Tanlang —</option>
+            {% for loc in locations %}
+            <option value="{{ loc.pk }}">{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="bulk-panel-actions">
+        <button class="btn btn-sm btn-primary" id="btn-bulk-save">
+          <i data-feather="check" style="width:14px;height:14px"></i>
+          <span class="d-none d-sm-inline">Saqlash</span>
+        </button>
+        <button class="btn btn-sm btn-ghost" id="btn-clear-sel">
+          <i data-feather="x" style="width:14px;height:14px"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar card -->
+  <div class="cal-card">
+
+    <!-- Weekday headers -->
+    <div class="cal-weekdays">
+      {% for name in weekday_names %}
+      <div class="cal-wday">{{ name }}</div>
+      {% endfor %}
+    </div>
+
+    <!-- Days grid -->
+    <div class="cal-grid">
+      {% for week in weeks %}
+        {% for cell in week %}
+        {% if cell is None %}
+          <div class="cal-cell cal-empty"></div>
+        {% else %}
+          <div class="cal-cell {% if cell.lesson %}has-lesson{% endif %} {% if cell.is_past %}is-past{% endif %}"
+               data-date="{{ cell.date }}"
+               data-smena="{{ cell.lesson.smena.pk|default:'' }}"
+               data-location="{{ cell.lesson.location.pk|default:'' }}">
+
+            <!-- Top row: checkbox + day number -->
+            <div class="cal-top">
+              {% if not cell.is_past %}
+              <input type="checkbox" class="day-check" data-date="{{ cell.date }}">
+              {% endif %}
+              <span class="cal-day-num {% if cell.lesson %}has-data{% endif %}">{{ cell.day }}</span>
+            </div>
+
+            <!-- Lesson info badges -->
+            {% if cell.lesson %}
+            <div class="cal-info">
+              {% if cell.lesson.smena %}
+              <span class="cal-badge cal-badge-smena" title="{{ cell.lesson.smena.name }}">
+                <i data-feather="clock" class="sch-icon-xs"></i>
+                <span class="cal-badge-text">{{ cell.lesson.smena.name }}</span>
+              </span>
+              {% endif %}
+              {% if cell.lesson.location %}
+              <span class="cal-badge cal-badge-loc" title="{{ cell.lesson.location.name }}">
+                <i data-feather="map-pin" class="sch-icon-xs"></i>
+                <span class="cal-badge-text">{{ cell.lesson.location.name }}</span>
+              </span>
+              {% endif %}
+            </div>
+            {% else %}
+              {% if not cell.is_past %}
+              <div class="cal-add-hint">
+                <i data-feather="plus" class="sch-icon-xs"></i>
+              </div>
+              {% endif %}
+            {% endif %}
+
+          </div>
+        {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+
+  </div><!-- /cal-card -->
+
+  <p class="sch-hint">
+    <i data-feather="info" style="width:13px;height:13px;vertical-align:-2px"></i>
+    Kunni bosish — smena / lokatsiya biriktirish. Checkbox — bir nechta kun tanlash.
+  </p>
+
+</div><!-- /content-wrapper -->
+
+<!-- ── Edit / Add Modal ─────────────────────────────── -->
+<div class="modal fade" id="lessonModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
+    <div class="modal-content lesson-modal">
+
+      <div class="lesson-modal-header">
+        <div class="lesson-modal-date" id="modal-date-title"></div>
+        <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="lesson-modal-body">
+        <div class="modal-field">
+          <label><i data-feather="clock" class="sch-icon-xs"></i> Smena</label>
+          <select id="modal-smena" class="form-select form-select-sm">
+            <option value="">— Tanlang —</option>
+            {% for sm in smenas %}
+            <option value="{{ sm.pk }}">
+              {{ sm.name }}
+              ({{ sm.para1_start|time:"H:i" }}{% if sm.para2_start %}, {{ sm.para2_start|time:"H:i" }}{% endif %}{% if sm.para3_start %}, {{ sm.para3_start|time:"H:i" }}{% endif %})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-field">
+          <label><i data-feather="map-pin" class="sch-icon-xs"></i> Lokatsiya</label>
+          <select id="modal-location" class="form-select form-select-sm">
+            <option value="">— Tanlang —</option>
+            {% for loc in locations %}
+            <option value="{{ loc.pk }}">{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="lesson-modal-footer">
+        <button class="btn btn-sm btn-outline-danger" id="btn-modal-delete" style="display:none">
+          <i data-feather="trash-2" style="width:13px;height:13px"></i>
+        </button>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-sm btn-ghost" data-bs-dismiss="modal">Bekor</button>
+          <button class="btn btn-sm btn-primary" id="btn-modal-save">Saqlash</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Styles ─────────────────────────────────────── -->
+<style>
+/* ─── Page Header ─────────────────────────── */
+.sch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sch-header-left { display: flex; align-items: center; gap: 12px; }
+.sch-back-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  border: 1.5px solid #e5e7eb;
+  color: #6b7280;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s;
+}
+.sch-back-btn:hover { background: #f3f4f6; border-color: #d1d5db; color: #374151; }
+.sch-back-btn svg { width: 16px; height: 16px; }
+.sch-title { font-size: 1.1rem; font-weight: 700; color: #111827; margin: 0; }
+.sch-subtitle { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.sch-icon-xs { width: 12px; height: 12px; vertical-align: -1px; }
+.sch-header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sch-legend { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
+.sch-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.dot-scheduled { background: #22c55e; }
+.dot-empty { background: #e5e7eb; }
+.dot-past { background: #d1d5db; opacity: .5; }
+
+/* ─── Bulk Panel ──────────────────────────── */
+.bulk-panel {
+  background: #1e1b4b;
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  display: none;
+  animation: slideDown .2s ease;
+}
+@keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+.bulk-panel-inner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.bulk-panel-info { display: flex; align-items: center; gap: 8px; }
+.bulk-count-badge {
+  background: #6366f1;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 6px;
+}
+.bulk-label { color: #a5b4fc; font-size: 12px; white-space: nowrap; }
+.bulk-panel-fields { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
+.bulk-field { display: flex; flex-direction: column; gap: 3px; min-width: 140px; flex: 1; }
+.bulk-field label { color: #a5b4fc; font-size: 11px; font-weight: 600; }
+.bulk-field .form-select { background-color: #312e81; border-color: #4338ca; color: #e0e7ff; font-size: 12px; }
+.bulk-field .form-select:focus { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(129,140,248,.2); }
+.bulk-panel-actions { display: flex; gap: 6px; align-items: center; }
+.btn-ghost {
+  background: transparent;
+  border: 1.5px solid rgba(255,255,255,.2);
+  color: #a5b4fc;
+  transition: background .15s;
+}
+.btn-ghost:hover { background: rgba(255,255,255,.08); color: #e0e7ff; }
+
+/* ─── Calendar Card ───────────────────────── */
+.cal-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 4px 16px rgba(0,0,0,.05);
+  overflow: hidden;
+}
+
+/* Weekday header row */
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.cal-wday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9ca3af;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: 4px 0;
+}
+
+/* Days grid */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-empty { background: transparent; }
+
+/* Individual day cell */
+.cal-cell {
+  position: relative;
+  background: #f9fafb;
+  border: 1.5px solid #f3f4f6;
+  border-radius: 10px;
+  padding: 8px 7px 7px;
+  cursor: pointer;
+  min-height: 80px;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  overflow: hidden;
+}
+.cal-cell:not(.is-past):hover {
+  border-color: #a5b4fc;
+  background: #f5f3ff;
+  box-shadow: 0 2px 8px rgba(99,102,241,.1);
+}
+.cal-cell.has-lesson {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.cal-cell.has-lesson:not(.is-past):hover {
+  border-color: #4ade80;
+  background: #dcfce7;
+  box-shadow: 0 2px 8px rgba(34,197,94,.1);
+}
+.cal-cell.is-past {
+  background: #f9fafb;
+  border-color: #f3f4f6;
+  cursor: default;
+  opacity: .6;
+}
+.cal-cell.selected {
+  border-color: #6366f1 !important;
+  background: #eef2ff !important;
+  box-shadow: 0 0 0 3px rgba(99,102,241,.15) !important;
+}
+
+/* Top row: checkbox + number */
+.cal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.day-check {
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid #d1d5db;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: #6366f1;
+}
+.cal-day-num {
+  font-size: 14px;
+  font-weight: 700;
+  color: #374151;
+  line-height: 1;
+}
+.cal-day-num.has-data { color: #15803d; }
+
+/* Badges inside cell */
+.cal-info { display: flex; flex-direction: column; gap: 3px; }
+.cal-badge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 5px;
+  padding: 2px 5px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.cal-badge svg { width: 10px; height: 10px; flex-shrink: 0; }
+.cal-badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-badge-smena {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+.cal-badge-loc {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* Add hint (empty future cell) */
+.cal-add-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  opacity: .3;
+}
+.cal-add-hint svg { width: 16px; height: 16px; }
+
+/* ─── Hint text ───────────────────────────── */
+.sch-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 10px;
+  padding-left: 2px;
+}
+
+/* ─── Modal ───────────────────────────────── */
+.lesson-modal { border: none; border-radius: 16px; overflow: hidden; }
+.lesson-modal-header {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lesson-modal-date {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .02em;
+}
+.lesson-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-field { display: flex; flex-direction: column; gap: 5px; }
+.modal-field label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.modal-field label svg { width: 12px; height: 12px; }
+.modal-field .form-select { font-size: 13px; border-radius: 8px; }
+.lesson-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+}
+
+/* ─── Responsive ──────────────────────────── */
+@media (max-width: 640px) {
+  .cal-card { padding: 10px 8px; border-radius: 12px; }
+  .cal-grid { gap: 3px; }
+  .cal-weekdays { gap: 3px; }
+  .cal-cell { min-height: 56px; padding: 5px 4px 4px; border-radius: 8px; }
+  .cal-day-num { font-size: 12px; }
+  .cal-badge-text { display: none; }
+  .cal-badge { padding: 2px 3px; }
+  .cal-badge svg { width: 11px; height: 11px; }
+  .cal-wday { font-size: 10px; }
+  .sch-header-right { display: none; }
+  .bulk-panel-fields { flex-direction: column; }
+}
+@media (max-width: 400px) {
+  .cal-cell { min-height: 46px; padding: 4px 3px; }
+  .cal-day-num { font-size: 11px; }
+  .day-check { width: 12px; height: 12px; }
+}
+</style>
+
+<!-- ── Script ─────────────────────────────── -->
+<script>
+const GROUP_PK = {{ group.pk }};
+const SAVE_URL = "{% url 'save_group_lessons' group.pk %}";
+const CSRF = "{{ csrf_token }}";
+
+let activeDate = null;
+let selectedDates = new Set();
+
+// Click cell → modal
+document.querySelectorAll('.cal-cell:not(.is-past)').forEach(cell => {
+  cell.addEventListener('click', function(e) {
+    if (e.target.classList.contains('day-check')) return;
+    openModal(this);
+  });
+});
+
+// Checkbox multi-select
+document.querySelectorAll('.day-check').forEach(chk => {
+  chk.addEventListener('change', function() {
+    const date = this.dataset.date;
+    const cell = this.closest('.cal-cell');
+    if (this.checked) { selectedDates.add(date); cell.classList.add('selected'); }
+    else { selectedDates.delete(date); cell.classList.remove('selected'); }
+    updateBulkPanel();
+  });
+});
+
+function updateBulkPanel() {
+  const panel = document.getElementById('bulk-panel');
+  document.getElementById('sel-count').textContent = selectedDates.size;
+  panel.style.display = selectedDates.size > 0 ? 'block' : 'none';
+}
+
+document.getElementById('btn-bulk-save').addEventListener('click', async function() {
+  if (selectedDates.size === 0) return;
+  const smenaId   = document.getElementById('bulk-smena').value;
+  const locationId = document.getElementById('bulk-location').value;
+  this.disabled = true;
+  await saveLessons([...selectedDates], smenaId, locationId);
+  clearSelection();
+  location.reload();
+});
+
+document.getElementById('btn-clear-sel').addEventListener('click', clearSelection);
+function clearSelection() {
+  selectedDates.clear();
+  document.querySelectorAll('.day-check').forEach(c => c.checked = false);
+  document.querySelectorAll('.cal-cell.selected').forEach(c => c.classList.remove('selected'));
+  updateBulkPanel();
+}
+
+// Modal
+const modal = new bootstrap.Modal(document.getElementById('lessonModal'));
+
+function openModal(cell) {
+  activeDate = cell.dataset.date;
+  // Format date for display
+  const d = new Date(activeDate);
+  const opts = { year:'numeric', month:'long', day:'numeric' };
+  document.getElementById('modal-date-title').textContent =
+    d.toLocaleDateString('uz-UZ', opts) || activeDate;
+  document.getElementById('modal-smena').value   = cell.dataset.smena    || '';
+  document.getElementById('modal-location').value = cell.dataset.location || '';
+  const hasLesson = cell.classList.contains('has-lesson');
+  document.getElementById('btn-modal-delete').style.display = hasLesson ? '' : 'none';
+  modal.show();
+}
+
+document.getElementById('btn-modal-save').addEventListener('click', async function() {
+  const smenaId    = document.getElementById('modal-smena').value;
+  const locationId = document.getElementById('modal-location').value;
+  this.disabled = true;
+  await saveLessons([activeDate], smenaId, locationId);
+  modal.hide();
+  location.reload();
+});
+
+document.getElementById('btn-modal-delete').addEventListener('click', async function() {
+  if (!confirm('Bu kunning darsini o\'chirasizmi?')) return;
+  const resp = await fetch(`/students/groups/${GROUP_PK}/schedule/${activeDate}/delete/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF },
+  });
+  if ((await resp.json()).ok) { modal.hide(); location.reload(); }
+});
+
+async function saveLessons(dates, smenaId, locationId) {
+  const resp = await fetch(SAVE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ dates, smena_id: smenaId || null, location_id: locationId || null }),
+  });
+  return resp.json();
+}
+</script>
+{% endblock %}

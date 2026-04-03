@@ -98,9 +98,18 @@ class LocationForm(forms.ModelForm):
         widget=forms.Select(attrs={"class": "form-control"}),
         required=False,
     )
-    address = forms.CharField(
+    name = forms.CharField(
+        label="Lokatsiya nomi",
         widget=forms.TextInput(attrs={
-            "placeholder": "To'liq manzil avtomatik to'ladi",
+            "placeholder": "Masalan: Asosiy bino, 3-xona",
+            "class": "form-control",
+        }),
+        required=True,
+    )
+    address = forms.CharField(
+        label="Manzil (xaritadan avtomatik)",
+        widget=forms.TextInput(attrs={
+            "placeholder": "Xaritadan nuqta tanlang",
             "class": "form-control",
             "readonly": "readonly",
         }),
@@ -111,7 +120,7 @@ class LocationForm(forms.ModelForm):
 
     class Meta:
         model = Location
-        fields = ['filial', 'latitude', 'longitude']
+        fields = ['filial', 'name', 'latitude', 'longitude']
 
     def __init__(self, *args, **kwargs):
         admin_user = kwargs.pop('admin_user', None)

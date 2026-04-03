@@ -1,0 +1,43 @@
+{% extends "layouts/base.html" %}
+{% block title %}Smena{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper" style="max-width:520px">
+
+  <div class="page-header">
+    <h4>{% if smena %}Smenani tahrirlash{% else %}Yangi smena{% endif %}</h4>
+  </div>
+
+  <div class="card border-0 p-4">
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Smena nomi</label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-4">
+          <label class="form-label small fw-semibold">1-para boshlanishi <span class="text-danger">*</span></label>
+          {{ form.para1_start }}
+          {% if form.para1_start.errors %}<div class="text-danger small mt-1">{{ form.para1_start.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="col-4">
+          <label class="form-label small fw-semibold">2-para boshlanishi</label>
+          {{ form.para2_start }}
+        </div>
+        <div class="col-4">
+          <label class="form-label small fw-semibold">3-para boshlanishi</label>
+          {{ form.para3_start }}
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary btn-sm">Saqlash</button>
+        <a href="{% url 'smenas_list' %}" class="btn btn-outline-secondary btn-sm">Bekor qilish</a>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,4 +1,6 @@
 import os
+import calendar as _calendar
+import datetime as dt
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.http import HttpResponse, JsonResponse
@@ -15,8 +17,9 @@ from django.contrib.auth.models import User
 
 from apps.superadmin.decorators import edu_admin_required
 from apps.superadmin.models import Administrator
-from .models import Group, Direction, Student, MONTH_CHOICES
-from .forms import GroupForm, DirectionForm
+from apps.main.models import Location
+from .models import Group, Direction, Student, Smena, GroupLesson, MONTH_CHOICES
+from .forms import GroupForm, DirectionForm, SmenaForm
 
 
 def _generate_password():
@@ -470,3 +473,166 @@ def group_student_remove(request, pk, student_pk):
         group.students.remove(student_pk)
 
     return redirect('group_students', pk=pk)
+
+
+# ============================================================
+# SMENALAR
+# ============================================================
+
+@edu_admin_required
+def smenas_list(request):
+    admin_user, filial_id = _get_admin_filial(request)
+    smenas = Smena.objects.filter(organization=admin_user.organization)
+    if filial_id:
+        smenas = smenas.filter(filial_id=filial_id)
+    return render(request, 'home/students/smenas_list.html', {
+        'smenas': smenas,
+        'segment': 'smenas',
+    })
+
+
+@edu_admin_required
+def smena_create(request):
+    admin_user, filial_id = _get_admin_filial(request)
+    if request.method == 'POST':
+        form = SmenaForm(request.POST)
+        if form.is_valid():
+            smena = form.save(commit=False)
+            smena.organization = admin_user.organization
+            smena.filial_id = filial_id
+            smena.save()
+            return redirect('smenas_list')
+    else:
+        form = SmenaForm()
+    return render(request, 'home/students/smena_form.html', {'form': form, 'segment': 'smenas'})
+
+
+@edu_admin_required
+def smena_detail(request, pk):
+    smena = get_object_or_404(Smena, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+    if smena.organization != admin_user.organization:
+        return HttpResponse("Ruxsatnoma yo'q", status=403)
+    if request.method == 'POST':
+        form = SmenaForm(request.POST, instance=smena)
+        if form.is_valid():
+            form.save()
+            return redirect('smenas_list')
+    else:
+        form = SmenaForm(instance=smena)
+    return render(request, 'home/students/smena_form.html', {
+        'form': form, 'smena': smena, 'segment': 'smenas'
+    })
+
+
+class SmenaDelete(DeleteView):
+    model = Smena
+    success_url = reverse_lazy('smenas_list')
+    template_name = 'home/students/smena_confirm_delete.html'
+
+
+# ============================================================
+# GURUH JADVALI — KALENDAR
+# ============================================================
+
+@edu_admin_required
+def group_schedule(request, pk):
+    group = get_object_or_404(Group, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+    if group.organization != admin_user.organization:
+        return HttpResponse("Ruxsatnoma yo'q", status=403)
+
+    # Calendar weeks for the group's month
+    cal_weeks = _calendar.monthcalendar(group.year, group.month)
+
+    # Existing lessons for this group
+    lessons_qs = GroupLesson.objects.filter(group=group).select_related('location', 'smena')
+    lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+
+    # Build calendar data structure
+    weeks = []
+    for week in cal_weeks:
+        week_days = []
+        for day in week:
+            if day == 0:
+                week_days.append(None)
+            else:
+                date = dt.date(group.year, group.month, day)
+                week_days.append({
+                    'day': day,
+                    'date': date.isoformat(),
+                    'lesson': lesson_map.get(date),
+                    'is_past': date < dt.date.today(),
+                })
+        weeks.append(week_days)
+
+    smenas = Smena.objects.filter(organization=admin_user.organization)
+    locations = Location.objects.filter(organization=admin_user.organization)
+
+    return render(request, 'home/students/group_schedule.html', {
+        'group': group,
+        'weeks': weeks,
+        'smenas': smenas,
+        'locations': locations,
+        'segment': 'groups',
+        'weekday_names': ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya'],
+    })
+
+
+@edu_admin_required
+def save_group_lessons(request, pk):
+    """AJAX: bir yoki bir nechta sanaga smena+lokatsiya biriktirish"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    group = get_object_or_404(Group, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+    if group.organization != admin_user.organization:
+        return JsonResponse({'ok': False, 'error': 'Ruxsat yo\'q'}, status=403)
+
+    import json
+    data = json.loads(request.body)
+    dates = data.get('dates', [])      # list of 'YYYY-MM-DD'
+    smena_id = data.get('smena_id')
+    location_id = data.get('location_id')
+
+    if not dates:
+        return JsonResponse({'ok': False, 'error': 'Sana tanlanmagan'})
+
+    smena = Smena.objects.filter(pk=smena_id, organization=admin_user.organization).first() if smena_id else None
+    location = Location.objects.filter(pk=location_id, organization=admin_user.organization).first() if location_id else None
+
+    saved = []
+    for date_str in dates:
+        try:
+            date = dt.date.fromisoformat(date_str)
+        except ValueError:
+            continue
+        GroupLesson.objects.update_or_create(
+            group=group,
+            date=date,
+            defaults={'smena': smena, 'location': location},
+        )
+        saved.append(date_str)
+
+    return JsonResponse({'ok': True, 'saved': saved})
+
+
+@edu_admin_required
+def delete_group_lesson(request, pk, date_str):
+    """DELETE: muayyan sananing darsini o'chirish"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    group = get_object_or_404(Group, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+    if group.organization != admin_user.organization:
+        return JsonResponse({'ok': False}, status=403)
+
+    try:
+        date = dt.date.fromisoformat(date_str)
+    except ValueError:
+        return JsonResponse({'ok': False})
+
+    GroupLesson.objects.filter(group=group, date=date).delete()
+    return JsonResponse({'ok': True})

@@ -1,7 +1,8 @@
 from django import forms
 from datetime import datetime
 
-from .models import Group, Direction
+from .models import Group, Direction, Smena
+from apps.superadmin.models import Building
 
 
 class DirectionForm(forms.ModelForm):
@@ -50,3 +51,25 @@ class GroupForm(forms.ModelForm):
         if not self.instance.pk:
             self.fields['year'].initial = datetime.now().year
             self.fields['month'].initial = datetime.now().month
+
+
+class SmenaForm(forms.ModelForm):
+    class Meta:
+        model = Smena
+        fields = ['name', 'para1_start', 'para2_start', 'para3_start']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Smena nomi'}),
+            'para1_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
+            'para2_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
+            'para3_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
+        }
+
+
+class BuildingForm(forms.ModelForm):
+    class Meta:
+        model = Building
+        fields = ['name', 'address']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Lokatsiya nomi'}),
+            'address': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Manzil (ixtiyoriy)'}),
+        }
