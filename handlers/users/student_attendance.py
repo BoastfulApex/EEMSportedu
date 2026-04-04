@@ -73,7 +73,7 @@ async def student_photo_upload(message: Message, state: FSMContext):
         except Exception:
             pass
 
-    saved = await save_student_face_photo(user_id=user_id, photo_path=relative_path)
+    saved = await save_student_face_photo(telegram_id=user_id, photo_path=relative_path)
 
     if saved:
         await state.clear()
