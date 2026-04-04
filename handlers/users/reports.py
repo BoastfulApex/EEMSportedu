@@ -78,6 +78,33 @@ def _stats_block(s: dict) -> str:
 @router.callback_query(F.data == "my_reports", StateFilter(None))
 async def show_reports_overview(callback: CallbackQuery):
     user_id = callback.from_user.id
+
+    # Student bo'lsa student hisobotiga yo'naltir
+    from utils.db_api.database import is_user_student, get_student_report_months
+    if await is_user_student(user_id):
+        months = await get_student_report_months(user_id)
+        if not months:
+            await callback.message.edit_text(
+                "📭 Hozircha davomat ma'lumotlari topilmadi.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")]
+                ])
+            )
+            await callback.answer()
+            return
+        buttons = [
+            [InlineKeyboardButton(text=m['label'], callback_data=f"srep_{m['year']}_{m['month']}")]
+            for m in months
+        ]
+        buttons.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")])
+        await callback.message.edit_text(
+            "📊 <b>Davomat hisoboti</b>\nQaysi oyni ko'rmoqchisiz?",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+        await callback.answer()
+        return
+
     data = await get_emp_weekly_monthly_stats(user_id)
 
     if not data:
@@ -393,3 +420,80 @@ async def cancel_date_range(callback: CallbackQuery, state: FSMContext):
 
 
 # back_to_main callback stats.py da qayta ishlanadi — bu yerda ikkilanishdan saqlanish uchun yo'q.
+
+
+# ─────────────────────────────────────────────────────────────
+# TINGLOVCHI HISOBOTI — oy tanlanganda
+# ─────────────────────────────────────────────────────────────
+
+_PARA_STATUS_ICON = {'present': '✅', 'late': '🟡', 'absent': '❌'}
+
+@router.callback_query(F.data.startswith("srep_"), StateFilter(None))
+async def show_student_month_report(callback: CallbackQuery):
+    _, year_s, month_s = callback.data.split("_")
+    year, month = int(year_s), int(month_s)
+    user_id = callback.from_user.id
+
+    from utils.db_api.database import get_student_monthly_report
+    report = await get_student_monthly_report(user_id, year, month)
+
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Hisobotlar", callback_data="my_reports")]
+    ])
+
+    if not report or not report['rows']:
+        await callback.message.edit_text(
+            "📭 Bu oy uchun dars ma'lumotlari topilmadi.",
+            reply_markup=back_kb
+        )
+        await callback.answer()
+        return
+
+    month_name = f"{_UZ_MONTHS[month]} {year}"
+    lines = [
+        f"📊 <b>{month_name} — Davomat hisoboti</b>\n{'─'*28}"
+    ]
+
+    for row in report['rows']:
+        d_str = row['date'].strftime('%d-%b')
+        ci = row['check_in'].strftime('%H:%M') if row['check_in'] else '—'
+        lines.append(f"\n📅 <b>{d_str}</b> ({row['day_uz']})  ⏰ {ci}")
+
+        if row['paras']:
+            for p in row['paras']:
+                icon = _PARA_STATUS_ICON.get(p['status'], '—')
+                if p['status'] == 'late':
+                    lines.append(f"   {icon} {p['num']}-para: kechikdi ({p['late_min']} daqiqa)")
+                elif p['status'] == 'absent':
+                    lines.append(f"   {icon} {p['num']}-para: qatnashmadi")
+                else:
+                    lines.append(f"   {icon} {p['num']}-para: o'z vaqtida")
+        else:
+            lines.append("   — Smena ma'lumoti yo'q")
+
+    lines.append(
+        f"\n{'─'*28}\n"
+        f"📌 Jami paralar: <b>{report['total_paras']}</b>\n"
+        f"🟡 Kechikkan: <b>{report['late_paras']}</b> para\n"
+        f"❌ Qatnashmagan: <b>{report['absent_paras']}</b> para"
+    )
+
+    full_text = "\n".join(lines)
+
+    if len(full_text) <= 4000:
+        await callback.message.edit_text(full_text, parse_mode="HTML", reply_markup=back_kb)
+    else:
+        await callback.message.edit_text(
+            f"📊 <b>{month_name}</b> hisoboti (bo'linib yuboriladi)",
+            parse_mode="HTML"
+        )
+        chunk = ""
+        for line in lines[1:]:
+            if len(chunk) + len(line) > 3800:
+                await callback.message.answer(chunk, parse_mode="HTML")
+                chunk = ""
+            chunk += line + "\n"
+        if chunk:
+            await callback.message.answer(chunk, parse_mode="HTML", reply_markup=back_kb)
+
+    await callback.answer()

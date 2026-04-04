@@ -97,9 +97,10 @@ async def show_month_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "back_to_main", StateFilter(None))
 async def back_to_main(callback: CallbackQuery):
-    keyboard = await employee_main_keyboard()
-    await callback.message.edit_text(
-        "Asosiy menyu:",
-        reply_markup=keyboard
-    )
+    from utils.db_api.database import is_user_student
+    from keyboards.inline.main_inline import student_main_keyboard
+    if await is_user_student(callback.from_user.id):
+        await callback.message.edit_text("Asosiy menyu:", reply_markup=student_main_keyboard())
+    else:
+        await callback.message.edit_text("Asosiy menyu:", reply_markup=await employee_main_keyboard())
     await callback.answer()

@@ -1348,6 +1348,119 @@ def get_student_by_telegram_id(telegram_id: int):
 
 
 @sync_to_async
+def get_student_report_months(telegram_id: int):
+    """Tinglovchining davomat yozuvlari bo'lgan oylar ro'yxati (oxirgi 6 oy)"""
+    from apps.students.models import Student, StudentAttendance
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+    except Student.DoesNotExist:
+        return []
+    months_qs = (
+        StudentAttendance.objects
+        .filter(student=student)
+        .dates('date', 'month', order='DESC')[:6]
+    )
+    uz_months = {
+        1:'Yanvar', 2:'Fevral', 3:'Mart', 4:'Aprel', 5:'May', 6:'Iyun',
+        7:'Iyul', 8:'Avgust', 9:'Sentabr', 10:'Oktabr', 11:'Noyabr', 12:'Dekabr',
+    }
+    return [{'year': d.year, 'month': d.month, 'label': f"{uz_months[d.month]} {d.year}"} for d in months_qs]
+
+
+@sync_to_async
+def get_student_monthly_report(telegram_id: int, year: int, month: int):
+    """
+    Tinglovchining oylik hisoboti — har bir dars kuni uchun para holati.
+    Kechikish: kirish vaqti para boshlanishidan 15 daqiqa oldin bo'lmasa kechikkan.
+    """
+    from apps.students.models import Student, StudentAttendance, GroupLesson
+    from datetime import date, datetime, timedelta
+    import calendar as cal_mod
+
+    PARA_MINUTES = 80
+    LATE_THRESHOLD = 15
+
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+    except Student.DoesNotExist:
+        return None
+
+    group = student.groups.first()
+    if not group:
+        return None
+
+    attendances = {
+        a.date: a for a in StudentAttendance.objects.filter(
+            student=student, group=group, date__year=year, date__month=month
+        )
+    }
+    lessons = {
+        l.date: l for l in GroupLesson.objects.filter(
+            group=group, date__year=year, date__month=month
+        ).select_related('smena')
+    }
+
+    uz_days = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sha', 'Ya']
+    today = date.today()
+    _, days_in = cal_mod.monthrange(year, month)
+
+    results = []
+    total_paras = late_paras = absent_paras = 0
+
+    for day in range(1, days_in + 1):
+        d = date(year, month, day)
+        if d > today:
+            continue
+        lesson = lessons.get(d)
+        if not lesson:
+            continue
+
+        attendance = attendances.get(d)
+        smena = lesson.smena
+        check_in = attendance.check_in if attendance else None
+        paras = []
+
+        if smena:
+            for para_num, para_start in [
+                (1, smena.para1_start),
+                (2, smena.para2_start),
+                (3, smena.para3_start),
+            ]:
+                if not para_start:
+                    continue
+                total_paras += 1
+                para_end = (datetime.combine(d, para_start) + timedelta(minutes=PARA_MINUTES)).time()
+                threshold = (datetime.combine(d, para_start) - timedelta(minutes=LATE_THRESHOLD)).time()
+
+                if not check_in:
+                    paras.append({'num': para_num, 'status': 'absent', 'late_min': 0})
+                    absent_paras += 1
+                elif check_in <= threshold:
+                    paras.append({'num': para_num, 'status': 'present', 'late_min': 0})
+                elif check_in <= para_end:
+                    late_min = max(0, int(
+                        (datetime.combine(d, check_in) - datetime.combine(d, para_start)).total_seconds() / 60
+                    ))
+                    paras.append({'num': para_num, 'status': 'late', 'late_min': late_min})
+                    late_paras += 1
+                else:
+                    paras.append({'num': para_num, 'status': 'absent', 'late_min': 0})
+                    absent_paras += 1
+
+        results.append({
+            'date': d, 'day_uz': uz_days[d.weekday()],
+            'check_in': check_in, 'paras': paras,
+        })
+
+    return {
+        'rows': results,
+        'total_paras': total_paras,
+        'late_paras': late_paras,
+        'absent_paras': absent_paras,
+    }
+
+
+@sync_to_async
 def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
     """Tinglovchi yuz rasmini saqlash"""
     from apps.students.models import Student
