@@ -1113,3 +1113,215 @@ def get_report_months_for_employee(user_id: int) -> list:
         })
 
     return result
+
+
+# ============================================================
+# TINGLOVCHI DAVOMAT FUNKSIYALARI
+# ============================================================
+
+PARA_DURATION_MINUTES = 80
+
+
+def _get_lesson_times(group, today):
+    """
+    Guruh va sanaga mos dars vaqtlarini qaytaradi.
+
+    Qaytaradi: (expected_start, expected_end, lesson) yoki (None, None, None)
+
+    Ustuvorlik tartibi:
+      1. GroupLesson (muayyan kun uchun) → smena → para vaqtlari
+      2. GroupSchedule (haftalik jadval) → start_time / end_time
+    """
+    from apps.students.models import GroupLesson, GroupSchedule
+    from datetime import datetime, timedelta
+    from django.db import models
+
+    # ── 1. Muayyan kun uchun GroupLesson ──────────────────────
+    lesson = GroupLesson.objects.filter(group=group, date=today).select_related('smena').first()
+    if lesson and lesson.smena:
+        smena = lesson.smena
+        # Birinchi para = kirish vaqti
+        expected_start = smena.para1_start
+        # Oxirgi para + 80 daqiqa = chiqish vaqti
+        last_para = smena.para3_start or smena.para2_start or smena.para1_start
+        expected_end = (
+            datetime.combine(today, last_para) + timedelta(minutes=PARA_DURATION_MINUTES)
+        ).time()
+        return expected_start, expected_end, lesson
+
+    # ── 2. Haftalik GroupSchedule (fallback) ──────────────────
+    # Bugungi hafta kuni nomi (Weekday modeli bilan solishtirish uchun)
+    uz_weekdays = {
+        0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
+        3: 'Payshanba', 4: 'Juma',    5: 'Shanba',    6: 'Yakshanba',
+    }
+    weekday_name = uz_weekdays.get(today.weekday())
+    schedule = GroupSchedule.objects.filter(
+        group=group,
+        is_active=True,
+        weekdays__name=weekday_name,
+    ).filter(
+        models.Q(date_from__isnull=True) | models.Q(date_from__lte=today),
+        models.Q(date_to__isnull=True)   | models.Q(date_to__gte=today),
+    ).first()
+
+    if schedule:
+        return schedule.start_time, schedule.end_time, None
+
+    return None, None, None
+
+
+@sync_to_async
+def student_mark_check_in(telegram_id: int) -> dict:
+    """
+    Tinglovchini bugungi darsga keldi deb belgilash.
+    Kechikish dars jadvali/smenasiga qarab hisoblanadi.
+    Hech qanday xabar yuborilmaydi — faqat DB ga yoziladi.
+    """
+    from apps.students.models import Student, StudentAttendance
+    from datetime import date, datetime
+
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+    except Student.DoesNotExist:
+        return {'ok': False, 'error': 'student_not_found'}
+
+    today = date.today()
+    now_time = datetime.now().time()
+
+    # Bugungi dars guruhi — avval GroupLesson'da, keyin birinchi guruh
+    group = student.groups.filter(lessons__date=today).first()
+    if not group:
+        group = student.groups.first()
+    if not group:
+        return {'ok': False, 'error': 'no_group'}
+
+    # Allaqachon kirganligi tekshirish
+    existing = StudentAttendance.objects.filter(
+        student=student, group=group, date=today, check_in__isnull=False
+    ).first()
+    if existing:
+        return {
+            'ok': False,
+            'error': 'already_checked_in',
+            'time': existing.check_in.strftime('%H:%M'),
+        }
+
+    # Jadval vaqtlarini aniqlash
+    expected_start, expected_end, lesson = _get_lesson_times(group, today)
+
+    # Kechikishni hisoblash
+    late_minutes = 0
+    status = 'present'
+    if expected_start:
+        now_dt = datetime.combine(today, now_time)
+        exp_dt = datetime.combine(today, expected_start)
+        if now_dt > exp_dt:
+            late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+            status = 'late'
+
+    # Attendance yozish (mavjud bo'lsa yangilash, bo'lmasa yaratish)
+    attendance, created = StudentAttendance.objects.get_or_create(
+        student=student,
+        group=group,
+        date=today,
+        defaults={
+            'check_in': now_time,
+            'status': status,
+            'late_minutes': late_minutes,
+        }
+    )
+    if not created:
+        attendance.check_in = now_time
+        attendance.status = status
+        attendance.late_minutes = late_minutes
+        attendance.save(update_fields=['check_in', 'status', 'late_minutes'])
+
+    return {
+        'ok': True,
+        'time': now_time.strftime('%H:%M'),
+        'full_name': student.full_name,
+        'late_minutes': late_minutes,
+        'expected_start': expected_start.strftime('%H:%M') if expected_start else None,
+    }
+
+
+@sync_to_async
+def student_mark_check_out(telegram_id: int) -> dict:
+    """
+    Tinglovchini bugungi darsdan ketdi deb belgilash.
+    Erta ketish dars jadvali/smenasiga qarab hisoblanadi.
+    Hech qanday xabar yuborilmaydi — faqat DB ga yoziladi.
+    """
+    from apps.students.models import Student, StudentAttendance
+    from datetime import date, datetime
+
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+    except Student.DoesNotExist:
+        return {'ok': False, 'error': 'student_not_found'}
+
+    today = date.today()
+    now_time = datetime.now().time()
+
+    # Bugungi kirish yozuvini topish
+    attendance = StudentAttendance.objects.filter(
+        student=student, date=today, check_in__isnull=False
+    ).select_related('group').first()
+
+    if not attendance:
+        return {'ok': False, 'error': 'not_checked_in'}
+    if attendance.check_out:
+        return {
+            'ok': False,
+            'error': 'already_checked_out',
+            'time': attendance.check_out.strftime('%H:%M'),
+        }
+
+    # Jadval vaqtlarini aniqlash
+    expected_start, expected_end, lesson = _get_lesson_times(attendance.group, today)
+
+    # Erta ketishni hisoblash
+    early_leave_minutes = 0
+    if expected_end:
+        now_dt = datetime.combine(today, now_time)
+        exp_end_dt = datetime.combine(today, expected_end)
+        if now_dt < exp_end_dt:
+            early_leave_minutes = int((exp_end_dt - now_dt).total_seconds() / 60)
+
+    attendance.check_out = now_time
+    attendance.early_leave_minutes = early_leave_minutes
+    attendance.save(update_fields=['check_out', 'early_leave_minutes'])
+
+    return {
+        'ok': True,
+        'time': now_time.strftime('%H:%M'),
+        'full_name': student.full_name,
+        'early_leave_minutes': early_leave_minutes,
+        'expected_end': expected_end.strftime('%H:%M') if expected_end else None,
+    }
+
+
+@sync_to_async
+def get_student_by_telegram_id(telegram_id: int):
+    """Telegram ID bo'yicha tinglovchini qaytaradi"""
+    from apps.students.models import Student
+    try:
+        s = Student.objects.get(telegram_id=telegram_id)
+        return {'id': s.id, 'full_name': s.full_name, 'face_image': s.face_image.name if s.face_image else None}
+    except Student.DoesNotExist:
+        return None
+
+
+@sync_to_async
+def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
+    """Tinglovchi yuz rasmini saqlash"""
+    from apps.students.models import Student
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+        student.face_image = photo_path
+        student.face_verified = True
+        student.save(update_fields=['face_image', 'face_verified'])
+        return True
+    except Exception:
+        return False

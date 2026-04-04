@@ -10,6 +10,7 @@ from loader import dp, bot
 from states.users import EmployeeRegistration, StudentGroupSelect
 from keyboards.inline.main_inline import (
     employee_main_keyboard,
+    student_main_keyboard,
     get_user_approval_keyboard,
     get_organization_selection_keyboard,
     get_filial_selection_keyboard_by_org,
@@ -83,7 +84,7 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
     if await is_user_student(user.id):
         await message.answer(
             "✅ Xush kelibsiz!",
-            reply_markup=await employee_main_keyboard()
+            reply_markup=student_main_keyboard()
         )
         return
 
@@ -302,3 +303,7 @@ async def student_selected(callback: CallbackQuery, state: FSMContext):
         f"⚠️ Login va parolni eslab qoling!"
     )
     await callback.message.edit_text(text, parse_mode="HTML")
+    await callback.message.answer(
+        "📋 Asosiy menyu:",
+        reply_markup=student_main_keyboard()
+    )

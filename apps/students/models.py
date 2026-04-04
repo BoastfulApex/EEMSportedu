@@ -308,6 +308,7 @@ class StudentAttendance(models.Model):
         null=True, blank=True
     )
     late_minutes = models.IntegerField(default=0)
+    early_leave_minutes = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

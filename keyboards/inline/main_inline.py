@@ -17,6 +17,17 @@ async def employee_main_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def student_main_keyboard() -> InlineKeyboardMarkup:
+    """Tinglovchi uchun asosiy menyu — kirish va chiqish (foto orqali)"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔓 Kirish", callback_data="student_check_in"),
+            InlineKeyboardButton(text="🔒 Chiqish", callback_data="student_check_out"),
+        ],
+        [InlineKeyboardButton(text="📊 Hisobotlar", callback_data="my_reports")],
+    ])
+
+
 async def go_web_app() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
