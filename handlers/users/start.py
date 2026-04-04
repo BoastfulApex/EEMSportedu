@@ -218,7 +218,8 @@ async def receive_employee_photo(message: Message, state: FSMContext):
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
 
-    save_dir = os.path.join("files", "employee_photos")
+    from django.conf import settings
+    save_dir = os.path.join(settings.MEDIA_ROOT, "employee_photos")
     os.makedirs(save_dir, exist_ok=True)
     file_name = f"emp_{user_id}.jpg"
     abs_path = os.path.join(save_dir, file_name)
