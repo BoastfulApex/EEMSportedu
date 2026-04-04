@@ -27,6 +27,8 @@ from django.utils import timezone
 from rest_framework import serializers, generics
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
+from rest_framework.authentication import BasicAuthentication
+from rest_framework.permissions import AllowAny
 from PIL import Image
 
 try:
@@ -224,8 +226,10 @@ class StudentCheckSerializer(serializers.Serializer):
 # ============================================================
 
 class StudentCheckAPIView(generics.ListCreateAPIView):
-    serializer_class  = StudentCheckSerializer
-    renderer_classes  = [JSONRenderer]
+    serializer_class       = StudentCheckSerializer
+    renderer_classes       = [JSONRenderer]
+    authentication_classes = []   # CSRF tekshiruvi o'chiriladi
+    permission_classes     = [AllowAny]
 
     def get_queryset(self):
         return []

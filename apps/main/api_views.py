@@ -1,6 +1,7 @@
 from rest_framework.response import Response
 from rest_framework import serializers, generics
 from rest_framework.renderers import JSONRenderer
+from rest_framework.permissions import AllowAny
 from .models import Location, Attendance, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay
 from django.utils import timezone
 from apps.superadmin.models import Administrator
@@ -154,8 +155,10 @@ class CheckRequestSerializer(serializers.Serializer):
 # ============================================================
 
 class SimpleCheckAPIView(generics.ListCreateAPIView):
-    serializer_class = CheckRequestSerializer
-    renderer_classes = [JSONRenderer]
+    serializer_class       = CheckRequestSerializer
+    renderer_classes       = [JSONRenderer]
+    authentication_classes = []
+    permission_classes     = [AllowAny]
 
     def get_queryset(self):
         return []

@@ -9,6 +9,11 @@ BOT_TOKEN = str(os.getenv("BOT_TOKEN"))
 BOT_USERNAME = str(os.getenv("BOT_USERNAME", ""))  # @username (@ siz)
 URL = str(os.getenv("URL"))
 
+# Sayt asosiy manzili — URL ichida /web_app bo'lsa uni olib tashlaymiz
+# Masalan: https://example.com/web_app → https://example.com
+_raw_url = URL.rstrip('/')
+BASE_URL = _raw_url[:-len('/web_app')] if _raw_url.endswith('/web_app') else _raw_url
+
 GROUPS_ID = str(os.getenv("GROUPS_ID")).split(" ")
 CHANNEL_ID = str(os.getenv("CHANNEL_ID"))
 DATABASE = str(os.getenv("DATABASE"))

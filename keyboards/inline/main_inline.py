@@ -1,5 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from data.config import URL
+from data.config import URL, BASE_URL
 
 
 # ============================================================
@@ -19,7 +19,7 @@ async def employee_main_keyboard() -> InlineKeyboardMarkup:
 
 def student_main_keyboard() -> InlineKeyboardMarkup:
     """Tinglovchi uchun asosiy menyu — web app (lokatsiya + face ID) + hisobotlar"""
-    student_url = URL.rstrip('/') + '/students/web_app/'
+    student_url = BASE_URL.rstrip('/') + '/students/web_app/'
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(

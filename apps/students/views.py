@@ -640,5 +640,8 @@ def delete_group_lesson(request, pk, date_str):
 
 def student_web_app(request):
     """Tinglovchi davomat web sahifasi (Telegram WebApp orqali ochiladi)"""
+    from django.views.decorators.clickjacking import xframe_options_exempt
     html_template = loader.get_template('students/web_app_page.html')
-    return HttpResponse(html_template.render({}, request))
+    response = HttpResponse(html_template.render({}, request))
+    response['X-Frame-Options'] = 'ALLOWALL'
+    return response
