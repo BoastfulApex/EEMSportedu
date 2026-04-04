@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from loader import dp, bot
+from data.config import BASE_DIR
 from states.users import StudentCheckState
 from keyboards.inline.main_inline import student_main_keyboard
 from utils.db_api.database import (
@@ -79,7 +80,7 @@ async def student_photo_received(message: Message, state: FSMContext):
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
 
-    save_dir = os.path.join("files", "student_photos")
+    save_dir = os.path.join(BASE_DIR, "files", "student_photos")
     os.makedirs(save_dir, exist_ok=True)
     file_name = f"student_{user_id}_tmp.jpg"
     abs_path = os.path.join(save_dir, file_name)
