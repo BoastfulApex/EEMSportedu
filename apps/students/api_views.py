@@ -254,12 +254,6 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
         except Student.DoesNotExist:
             return Response({"status": "FAIL", "reason": "Tinglovchi topilmadi"}, status=404)
 
-        # ── 2. Yuz tekshirish ────────────────────────────────
-        face_result = verify_student_face(student, image_base64)
-        if face_result is not True:
-            reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
-            return Response({"status": "FAIL", "reason": reason}, status=403)
-
         # ── 3. Lokatsiya tekshirish ──────────────────────────
         today = timezone.localdate()
         now_time = timezone.localtime().time()
@@ -285,6 +279,12 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
 
         # ── 5. Davomat yozish ────────────────────────────────
         if check_type == 'check_in':
+            # Yuz tekshirish — faqat kirish uchun
+            face_result = verify_student_face(student, image_base64)
+            if face_result is not True:
+                reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
+                return Response({"status": "FAIL", "reason": reason}, status=403)
+
             existing = StudentAttendance.objects.filter(
                 student=student, group=group, date=today, check_in__isnull=False
             ).first()
@@ -339,13 +339,8 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                     "status": "FAIL",
                     "reason": "Avval kirish belgisini qo'ying."
                 }, status=400)
-            if attendance.check_out:
-                return Response({
-                    "status": "FAIL",
-                    "reason": f"Siz bugun allaqachon {attendance.check_out.strftime('%H:%M')} da chiqgansiz."
-                }, status=400)
 
-            # Erta ketishni hisoblash
+            # Erta ketishni hisoblash (oxirgi chiqish vaqti saqlanadi)
             early_leave_minutes = 0
             if expected_end:
                 now_dt = datetime.combine(today, now_time)

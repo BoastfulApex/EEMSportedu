@@ -180,13 +180,6 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
         except Employee.DoesNotExist:
             return Response({"status": "FAIL", "reason": "Foydalanuvchi topilmadi"}, status=404)
 
-        # Yuz tekshirish
-        if employee.image:
-            face_result = verify_face(employee, image_base64)
-            if face_result is not True:
-                reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
-                return Response({"status": "FAIL", "reason": reason}, status=403)
-
         # Hozirgi vaqt va hafta kuni
         today      = timezone.localdate()
         now_time   = timezone.localtime().time()
@@ -207,6 +200,13 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
         attendance, _ = Attendance.objects.get_or_create(employee=employee, date=today)
 
         if check_type == 'check_in':
+            # Yuz tekshirish — faqat kirish uchun
+            if employee.image:
+                face_result = verify_face(employee, image_base64)
+                if face_result is not True:
+                    reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
+                    return Response({"status": "FAIL", "reason": reason}, status=403)
+
             attendance.check_number = (attendance.check_number or 0) + 1
             attendance.check_in = attendance.check_in or now_time
 
