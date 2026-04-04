@@ -1,3 +1,8 @@
+"""
+Tinglovchi bot handlerlari.
+- Yuz rasmi yuklash (ro'yxatdan o'tgandan keyin yoki rasmi yo'q bo'lsa)
+- Kirish/chiqish endi web app orqali amalga oshiriladi (lokatsiya + Face ID)
+"""
 import os
 import logging
 
@@ -6,14 +11,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from loader import dp, bot
-from states.users import StudentCheckState
+from states.users import StudentPhotoUpload
 from keyboards.inline.main_inline import student_main_keyboard
-from utils.db_api.database import (
-    student_mark_check_in,
-    student_mark_check_out,
-    get_student_by_telegram_id,
-    save_student_face_photo,
-)
+from utils.db_api.database import save_student_face_photo
 from utils.face_check import detect_face
 
 router = Router()
@@ -23,72 +23,29 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# KIRISH tugmasi bosilganda
+# YUZ RASMI YUKLASH (ro'yxatdan o'tgandan keyin yoki rasmi yo'q bo'lganda)
 # ============================================================
 
-@router.callback_query(F.data == "student_check_in")
-async def student_check_in_start(callback: CallbackQuery, state: FSMContext):
-    student = await get_student_by_telegram_id(callback.from_user.id)
-    if not student:
-        await callback.answer("❌ Tinglovchi topilmadi!", show_alert=True)
-        return
-
-    await state.set_state(StudentCheckState.waiting_for_photo)
-    await state.update_data(action="check_in")
-
-    await callback.message.answer(
-        "📸 Kirish uchun <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-# ============================================================
-# CHIQISH tugmasi bosilganda
-# ============================================================
-
-@router.callback_query(F.data == "student_check_out")
-async def student_check_out_start(callback: CallbackQuery, state: FSMContext):
-    student = await get_student_by_telegram_id(callback.from_user.id)
-    if not student:
-        await callback.answer("❌ Tinglovchi topilmadi!", show_alert=True)
-        return
-
-    await state.set_state(StudentCheckState.waiting_for_photo)
-    await state.update_data(action="check_out")
-
-    await callback.message.answer(
-        "📸 Chiqish uchun <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-# ============================================================
-# FOTO QABUL QILISH
-# ============================================================
-
-@router.message(StudentCheckState.waiting_for_photo, F.photo)
-async def student_photo_received(message: Message, state: FSMContext):
-    data = await state.get_data()
-    action = data.get("action", "check_in")
+@router.message(StudentPhotoUpload.waiting_for_photo, F.photo)
+async def student_photo_upload(message: Message, state: FSMContext):
     user_id = message.from_user.id
 
     await message.answer("⏳ Rasm tekshirilmoqda...")
 
     photo = message.photo[-1]
-    file = await bot.get_file(photo.file_id)
+    file  = await bot.get_file(photo.file_id)
 
+    # Vaqtinchalik fayl — /tmp (ruxsat muammosi bo'lmaydi)
     import tempfile
-    file_name = f"student_{user_id}_tmp.jpg"
-    abs_path = os.path.join(tempfile.gettempdir(), file_name)
+    tmp_path = os.path.join(tempfile.gettempdir(), f"student_{user_id}_face.jpg")
 
-    await bot.download_file(file.file_path, destination=abs_path)
+    await bot.download_file(file.file_path, destination=tmp_path)
 
-    has_face = detect_face(abs_path)
+    # Yuz aniqlash
+    has_face = detect_face(tmp_path)
     if not has_face:
         try:
-            os.remove(abs_path)
+            os.remove(tmp_path)
         except Exception:
             pass
         await message.answer(
@@ -97,77 +54,47 @@ async def student_photo_received(message: Message, state: FSMContext):
             "Iltimos, <b>yuzingiz to'liq va aniq ko'ringan holda</b> qayta rasm yuboring:",
             parse_mode="HTML"
         )
-        return
+        return  # Holatni saqlaymiz — qayta rasm kutiladi
 
-    # Davomatni belgilash
-    if action == "check_in":
-        result = await student_mark_check_in(user_id)
-    else:
-        result = await student_mark_check_out(user_id)
-
-    await state.clear()
+    # Doimiy joyga saqlash — MEDIA_ROOT/student_faces/
+    from django.conf import settings
+    save_dir = os.path.join(settings.MEDIA_ROOT, "student_faces")
+    os.makedirs(save_dir, exist_ok=True)
+    file_name    = f"student_{user_id}.jpg"
+    final_path   = os.path.join(save_dir, file_name)
+    relative_path = os.path.join("student_faces", file_name)
 
     try:
-        os.remove(abs_path)
+        import shutil
+        shutil.move(tmp_path, final_path)
     except Exception:
-        pass
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
 
-    if not result['ok']:
-        error = result.get('error', '')
-        if error == 'already_checked_in':
-            text = f"⚠️ Siz bugun allaqachon {result['time']} da kirgansiz."
-        elif error == 'already_checked_out':
-            text = f"⚠️ Siz bugun allaqachon {result['time']} da chiqgansiz."
-        elif error == 'not_checked_in':
-            text = "⚠️ Avval kirish belgisini qo'ying."
-        elif error == 'no_group':
-            text = "⚠️ Guruhingiz topilmadi. Administrator bilan bog'laning."
-        else:
-            text = "❌ Xatolik yuz berdi. Administrator bilan bog'laning."
-        await message.answer(text, reply_markup=student_main_keyboard())
-        return
+    saved = await save_student_face_photo(user_id=user_id, photo_path=relative_path)
 
-    if action == "check_in":
-        late_min = result.get('late_minutes', 0)
-        exp_start = result.get('expected_start')
-        if late_min and late_min > 0:
-            text = (
-                f"✅ <b>{result['full_name']}</b>, kirish belgilandi!\n"
-                f"🕐 Kelgan vaqt: <b>{result['time']}</b>\n"
-                f"📅 Dars boshlanishi: {exp_start}\n"
-                f"⏰ Kechikish: <b>{late_min} daqiqa</b>"
-            )
-        else:
-            exp_str = f"\n📅 Dars boshlanishi: {exp_start}" if exp_start else ""
-            text = (
-                f"✅ <b>{result['full_name']}</b>, kirish belgilandi!\n"
-                f"🕐 Vaqt: <b>{result['time']}</b>{exp_str}\n"
-                f"👍 O'z vaqtida keldingiz!"
-            )
+    if saved:
+        await state.clear()
+        await message.answer(
+            "✅ <b>Yuz rasmi saqlandi!</b>\n\n"
+            "Endi kirish va chiqishda Face ID tekshiruvi ishlaydi.",
+            parse_mode="HTML",
+            reply_markup=student_main_keyboard()
+        )
     else:
-        early_min = result.get('early_leave_minutes', 0)
-        exp_end = result.get('expected_end')
-        if early_min and early_min > 0:
-            text = (
-                f"✅ <b>{result['full_name']}</b>, chiqish belgilandi!\n"
-                f"🕐 Ketgan vaqt: <b>{result['time']}</b>\n"
-                f"📅 Dars tugashi: {exp_end}\n"
-                f"⏰ Erta ketish: <b>{early_min} daqiqa</b>"
-            )
-        else:
-            exp_str = f"\n📅 Dars tugashi: {exp_end}" if exp_end else ""
-            text = (
-                f"✅ <b>{result['full_name']}</b>, chiqish belgilandi!\n"
-                f"🕐 Vaqt: <b>{result['time']}</b>{exp_str}"
-            )
-
-    await message.answer(text, parse_mode="HTML", reply_markup=student_main_keyboard())
+        await message.answer(
+            "❌ Rasm saqlanishda xatolik yuz berdi.\n"
+            "Iltimos, qayta urinib ko'ring."
+        )
 
 
-@router.message(StudentCheckState.waiting_for_photo, ~F.photo)
-async def student_wrong_input(message: Message):
+@router.message(StudentPhotoUpload.waiting_for_photo, ~F.photo)
+async def student_photo_wrong_input(message: Message):
     await message.answer(
-        "❌ Iltimos, faqat <b>rasm</b> yuboring.",
+        "❌ Iltimos, faqat <b>rasm</b> yuboring.\n\n"
+        "📌 Eslatma: Faylni hujjat sifatida emas, oddiy rasm sifatida yuboring.",
         parse_mode="HTML"
     )
 

@@ -13,6 +13,10 @@ class StudentGroupSelect(StatesGroup):
     selecting = State()   # tinglovchi o'z ismini tanlayapti
 
 
+class StudentPhotoUpload(StatesGroup):
+    waiting_for_photo = State()   # yangi ro'yxatdan o'tgan yoki rasmi yo'q student
+
+
 class StudentCheckState(StatesGroup):
     waiting_for_photo = State()   # foto kutilmoqda (check_in yoki check_out)
 

@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from loader import dp, bot
-from states.users import EmployeeRegistration, StudentGroupSelect
+from states.users import EmployeeRegistration, StudentGroupSelect, StudentPhotoUpload
 from keyboards.inline.main_inline import (
     employee_main_keyboard,
     student_main_keyboard,
@@ -29,6 +29,7 @@ from utils.db_api.database import (
     get_group_by_invite_token,
     get_students_by_group,
     link_student_telegram,
+    has_student_photo,
 )
 from utils.face_check import detect_face
 
@@ -82,10 +83,18 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
     # ── 3. Allaqachon tinglovchi ──────────────────────────────
     if await is_user_student(user.id):
-        await message.answer(
-            "✅ Xush kelibsiz!",
-            reply_markup=student_main_keyboard()
-        )
+        if await has_student_photo(user.id):
+            await message.answer(
+                "✅ Xush kelibsiz!",
+                reply_markup=student_main_keyboard()
+            )
+        else:
+            await state.set_state(StudentPhotoUpload.waiting_for_photo)
+            await message.answer(
+                "📸 Yuz rasmingiz saqlanmagan.\n\n"
+                "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                parse_mode="HTML"
+            )
         return
 
     # ── 4. Yangi foydalanuvchi — havolaga qarab yo'naltirish ──
@@ -304,7 +313,11 @@ async def student_selected(callback: CallbackQuery, state: FSMContext):
         f"⚠️ Login va parolni eslab qoling!"
     )
     await callback.message.edit_text(text, parse_mode="HTML")
+
+    # Ro'yxatdan o'tgandan so'ng darhol yuz rasmini so'rash
+    await state.set_state(StudentPhotoUpload.waiting_for_photo)
     await callback.message.answer(
-        "📋 Asosiy menyu:",
-        reply_markup=student_main_keyboard()
+        "📸 Tizimga kirish uchun <b>yuz rasmingiz</b> kerak.\n\n"
+        "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+        parse_mode="HTML"
     )

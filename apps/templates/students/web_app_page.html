@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Davomat — Tinglovchi</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg:       var(--tg-theme-bg-color,        #ffffff);
+      --text:     var(--tg-theme-text-color,       #1a1a2e);
+      --hint:     var(--tg-theme-hint-color,       #6c757d);
+      --btn:      var(--tg-theme-button-color,     #0d6efd);
+      --btn-text: var(--tg-theme-button-text-color,#ffffff);
+      --sec-bg:   var(--tg-theme-secondary-bg-color,#f0f4ff);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px 32px;
+    }
+
+    .header { text-align: center; margin-bottom: 20px; }
+    .header h1 { font-size: 1.4rem; font-weight: 700; }
+    .header p  { font-size: 0.82rem; color: var(--hint); margin-top: 4px; }
+
+    .camera-wrap {
+      position: relative;
+      width: 220px; height: 220px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: #111;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+      margin-bottom: 20px;
+    }
+    .camera-wrap video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    .camera-wrap .cam-overlay {
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 3px solid var(--btn);
+      pointer-events: none;
+    }
+    canvas { display: none; }
+
+    .status-card {
+      background: var(--sec-bg);
+      border-radius: 14px;
+      padding: 12px 20px;
+      width: 100%; max-width: 320px;
+      min-height: 52px;
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 20px;
+      font-size: 0.88rem;
+      transition: background 0.3s;
+    }
+    .status-card .icon { font-size: 1.4rem; flex-shrink: 0; }
+    .status-card .msg  { color: var(--text); line-height: 1.4; }
+    .status-card.success { background: #d4edda; }
+    .status-card.error   { background: #f8d7da; }
+
+    .spinner {
+      width: 20px; height: 20px;
+      border: 3px solid #ccc;
+      border-top-color: var(--btn);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn-row { display: flex; width: 100%; max-width: 320px; }
+    .btn {
+      flex: 1;
+      padding: 16px 10px;
+      border: none; border-radius: 14px;
+      font-size: 1.05rem; font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 4px;
+    }
+    .btn:active   { transform: scale(0.96); opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-enter { background: #198754; color: #fff; }
+    .btn-exit  { background: #dc3545; color: #fff; }
+    .btn span.lbl { font-size: 0.72rem; font-weight: 400; opacity: 0.85; }
+
+    /* Kechikish/erta ketish info bloki */
+    .info-block {
+      display: none;
+      width: 100%; max-width: 320px;
+      background: var(--sec-bg);
+      border-radius: 12px;
+      padding: 10px 16px;
+      margin-top: 12px;
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+    .info-block.visible { display: block; }
+    .info-block .late  { color: #c0392b; font-weight: 600; }
+    .info-block .early { color: #e67e22; font-weight: 600; }
+    .info-block .ok    { color: #27ae60; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1 id="pageTitle">📋 Davomat</h1>
+    <p id="dateLabel"></p>
+  </div>
+
+  <div class="camera-wrap">
+    <video id="camera" autoplay playsinline muted></video>
+    <div class="cam-overlay"></div>
+  </div>
+  <canvas id="snapshot"></canvas>
+
+  <div class="status-card" id="statusCard">
+    <span class="icon">📷</span>
+    <span class="msg" id="statusMsg">Kamera yoqilmoqda...</span>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="actionBtn" disabled>
+      <span id="actionBtnIcon">🪪</span>
+      <span id="actionBtnLbl" class="lbl">Yuklanyapti...</span>
+    </button>
+  </div>
+
+  <div class="info-block" id="infoBlock"></div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const video      = document.getElementById("camera");
+    const canvas     = document.getElementById("snapshot");
+    const statusCard = document.getElementById("statusCard");
+    const actionBtn  = document.getElementById("actionBtn");
+    const dateLabel  = document.getElementById("dateLabel");
+    const pageTitle  = document.getElementById("pageTitle");
+    const actionBtnIcon = document.getElementById("actionBtnIcon");
+    const actionBtnLbl  = document.getElementById("actionBtnLbl");
+    const infoBlock  = document.getElementById("infoBlock");
+
+    const user_id    = tg.initDataUnsafe?.user?.id || null;
+    const urlParams  = new URLSearchParams(window.location.search);
+    const actionType = urlParams.get("action") || "check_in";
+    const isCheckIn  = actionType === "check_in";
+
+    if (isCheckIn) {
+      pageTitle.textContent   = "🔓 Kirish";
+      actionBtn.classList.add("btn-enter");
+      actionBtnIcon.textContent = "🪪";
+      actionBtnLbl.textContent  = "Face ID orqali kirish";
+    } else {
+      pageTitle.textContent   = "🔒 Chiqish";
+      actionBtn.classList.add("btn-exit");
+      actionBtnIcon.textContent = "🪪";
+      actionBtnLbl.textContent  = "Face ID orqali chiqish";
+    }
+
+    const now = new Date();
+    dateLabel.textContent = now.toLocaleDateString("uz-UZ", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+
+    function setStatus(type, icon, msg) {
+      statusCard.className = "status-card " + type;
+      statusCard.innerHTML = `<span class="icon">${icon}</span><span class="msg">${msg}</span>`;
+    }
+    function setLoading(msg) {
+      statusCard.className = "status-card loading";
+      statusCard.innerHTML = `<div class="spinner"></div><span class="msg">${msg}</span>`;
+    }
+
+    function showInfoBlock(data) {
+      infoBlock.innerHTML = "";
+      infoBlock.classList.remove("visible");
+
+      if (isCheckIn) {
+        const lateMin = data.late_minutes || 0;
+        const expStart = data.expected_start;
+        if (lateMin > 0) {
+          infoBlock.innerHTML =
+            `📅 Dars boshlanishi: ${expStart}<br>` +
+            `<span class="late">⏰ Kechikish: ${lateMin} daqiqa</span>`;
+          infoBlock.classList.add("visible");
+        } else if (expStart) {
+          infoBlock.innerHTML =
+            `📅 Dars boshlanishi: ${expStart}<br>` +
+            `<span class="ok">👍 O'z vaqtida keldingiz!</span>`;
+          infoBlock.classList.add("visible");
+        }
+      } else {
+        const earlyMin = data.early_leave_minutes || 0;
+        const expEnd = data.expected_end;
+        if (earlyMin > 0) {
+          infoBlock.innerHTML =
+            `📅 Dars tugashi: ${expEnd}<br>` +
+            `<span class="early">⏰ Erta ketish: ${earlyMin} daqiqa</span>`;
+          infoBlock.classList.add("visible");
+        }
+      }
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: 640, height: 480 },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+        actionBtn.disabled = false;
+        const hint = isCheckIn ? "Kirish uchun tugmani bosing." : "Chiqish uchun tugmani bosing.";
+        setStatus("", "📷", hint);
+      } catch (err) {
+        setStatus("error", "❌", "Kamera yoqilmadi: " + err.message);
+      }
+    }
+
+    function takePhoto() {
+      if (!video.videoWidth || !video.videoHeight) return null;
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+      return canvas.toDataURL("image/jpeg", 0.85);
+    }
+
+    function getLocation() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation)
+          return reject(new Error("Geolokatsiya qo'llab-quvvatlanmaydi"));
+        navigator.geolocation.getCurrentPosition(
+          p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+          e => reject(e),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      });
+    }
+
+    async function performCheck() {
+      if (!user_id) {
+        setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi.");
+        return;
+      }
+      actionBtn.disabled = true;
+      setLoading("Joylashuv aniqlanmoqda...");
+
+      try {
+        const photo = takePhoto();
+        if (!photo) {
+          setStatus("error", "⚠️", "Kamera tayyor emas. Sahifani yangilang.");
+          actionBtn.disabled = false;
+          return;
+        }
+
+        setLoading("Yuborilmoqda...");
+        const { latitude, longitude } = await getLocation();
+
+        const res = await fetch("/students/api/check/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id, type: actionType, latitude, longitude, image: photo })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data?.status === "SUCCESS") {
+          const label = isCheckIn ? "Kirish qayd etildi" : "Chiqish qayd etildi";
+          const locStr = data.location ? ` — ${data.location}` : "";
+          setStatus("success", "✅", `${label}: ${data.time}${locStr}`);
+          showInfoBlock(data);
+          setTimeout(() => tg.close(), 3000);
+        } else {
+          const reason = data?.reason || data?.detail || "Noma'lum xato";
+          setStatus("error", "❌", reason);
+          actionBtn.disabled = false;
+        }
+      } catch (err) {
+        setStatus("error", "⚠️", "Xatolik: " + err.message);
+        actionBtn.disabled = false;
+      }
+    }
+
+    actionBtn.addEventListener("click", performCheck);
+    startCamera();
+  </script>
+</body>
+</html>

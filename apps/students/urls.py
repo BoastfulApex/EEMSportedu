@@ -1,7 +1,12 @@
 from django.urls import path
 from . import views
+from .api_views import StudentCheckAPIView
 
 urlpatterns = [
+    # Tinglovchi davomat web app va API
+    path('web_app/', views.student_web_app, name='student_web_app'),
+    path('api/check/', StudentCheckAPIView.as_view(), name='student-check'),
+
     # Guruhlar
     path('groups/', views.groups_list, name='groups_list'),
     path('groups/create/', views.group_create, name='group_create'),

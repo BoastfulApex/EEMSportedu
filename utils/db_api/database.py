@@ -1,3 +1,4 @@
+import os
 from datetime import date, datetime
 from typing import List, Any
 from asgiref.sync import sync_to_async
@@ -1300,6 +1301,39 @@ def student_mark_check_out(telegram_id: int) -> dict:
         'early_leave_minutes': early_leave_minutes,
         'expected_end': expected_end.strftime('%H:%M') if expected_end else None,
     }
+
+
+@sync_to_async
+def has_student_photo(telegram_id: int) -> bool:
+    """Tinglovchining yuz rasmi saqlanganligini tekshiradi"""
+    from apps.students.models import Student
+    student = Student.objects.filter(telegram_id=telegram_id).first()
+    if not student:
+        return False
+    return bool(student.face_image and student.face_verified)
+
+
+@sync_to_async
+def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
+    """Tinglovchi yuz rasmini saqlash va face_verified=True qo'yish"""
+    from apps.students.models import Student
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+        # Eski rasmni o'chirish
+        if student.face_image:
+            try:
+                old_path = student.face_image.path
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+            except Exception:
+                pass
+        student.face_image = photo_path
+        student.face_verified = True
+        student.save(update_fields=['face_image', 'face_verified'])
+        return True
+    except Exception as e:
+        print(f"save_student_face_photo xatosi: {e}")
+        return False
 
 
 @sync_to_async

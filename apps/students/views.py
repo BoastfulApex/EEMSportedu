@@ -636,3 +636,9 @@ def delete_group_lesson(request, pk, date_str):
 
     GroupLesson.objects.filter(group=group, date=date).delete()
     return JsonResponse({'ok': True})
+
+
+def student_web_app(request):
+    """Tinglovchi davomat web sahifasi (Telegram WebApp orqali ochiladi)"""
+    html_template = loader.get_template('students/web_app_page.html')
+    return HttpResponse(html_template.render({}, request))
