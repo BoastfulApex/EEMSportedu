@@ -5,11 +5,36 @@
     <i class="hamburger"></i>
   </button>
 
-  {# Server time #}
+  {# Live clock (Toshkent vaqti) #}
   <div class="server-time-chip ms-2 d-none d-md-inline-flex">
     <span class="dot"></span>
-    <span>{{ tashkent_time|date:"d.m.Y" }} &nbsp;<strong>{{ tashkent_time|date:"H:i" }}</strong></span>
+    <span id="live-clock-date">{{ tashkent_time|date:"d.m.Y" }}</span>
+    &nbsp;<strong id="live-clock-time">{{ tashkent_time|date:"H:i:s" }}</strong>
   </div>
+  <script>
+    (function () {
+      var TZ = "Asia/Tashkent";
+      function tick() {
+        var now = new Date();
+        var dateParts = new Intl.DateTimeFormat("ru-RU", {
+          timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric"
+        }).formatToParts(now);
+        var d = {}, p;
+        for (p of dateParts) d[p.type] = p.value;
+        var timeParts = new Intl.DateTimeFormat("ru-RU", {
+          timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+        }).formatToParts(now);
+        var t = {};
+        for (p of timeParts) t[p.type] = p.value;
+        var dateEl = document.getElementById("live-clock-date");
+        var timeEl = document.getElementById("live-clock-time");
+        if (dateEl) dateEl.textContent = d.day + "." + d.month + "." + d.year;
+        if (timeEl) timeEl.textContent = t.hour + ":" + t.minute + ":" + t.second;
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
 
   {# Right side #}
   <div class="navbar-collapse collapse">
