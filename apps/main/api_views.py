@@ -435,7 +435,7 @@ class TestDataUploadAPIView(APIView):
         for att_data in test_data.get('attendances', []):
             try:
                 emp = Employee.objects.get(
-                    telegram_user_id=att_data['employee_telegram_id']
+                    telegram_user_id=att_data['telegram_user_id']
                 )
                 loc = Location.objects.get(
                     name=att_data['location_name'],
@@ -446,17 +446,18 @@ class TestDataUploadAPIView(APIView):
                 check_in = dt.strptime(att_data['check_in'], '%H:%M').time()
                 check_out = dt.strptime(att_data['check_out'], '%H:%M').time()
 
-                att, _ = Attendance.objects.get_or_create(
+                att, created = Attendance.objects.get_or_create(
                     employee=emp,
                     date=date_obj,
                     defaults={
                         'check_in': check_in,
                         'check_out': check_out,
                         'location': loc,
-                        'status': att_data.get('status', 'present'),
+                        'check_number': 1,
                     }
                 )
-                results["attendances_created"] += 1
+                if created:
+                    results["attendances_created"] += 1
             except Exception as e:
                 results["errors"].append(f"Attendance: {str(e)}")
 
