@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Read(//d/Python/Projects/**)",
-      "Bash(.venv/Scripts/python manage.py migrate students)"
+      "Bash(.venv/Scripts/python manage.py migrate students)",
+      "Bash(xargs ls:*)"
     ]
   }
 }

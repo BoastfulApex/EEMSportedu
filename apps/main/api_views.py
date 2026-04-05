@@ -2,7 +2,7 @@ from rest_framework.response import Response
 from rest_framework import serializers, generics
 from rest_framework.renderers import JSONRenderer
 from rest_framework.permissions import AllowAny
-from .models import Location, Attendance, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay
+from .models import Location, Attendance, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay, TelegramUser
 from django.utils import timezone
 from apps.superadmin.models import Administrator
 from datetime import datetime
@@ -269,4 +269,199 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
             "type": check_type,
             "time": now_time.strftime('%H:%M:%S'),
             "location": location.name or "Noma'lum lokatsiya"
+        }, status=200)
+
+
+# ════════════════════════════════════════════════════════════════
+# TEST DATA UPLOAD API
+# ════════════════════════════════════════════════════════════════
+
+from rest_framework.views import APIView
+from django.contrib.auth.models import User
+from apps.superadmin.models import Organization, Filial
+
+class TestDataUploadAPIView(APIView):
+    """
+    Test datalarini yuklash uchun API.
+
+    POST /api/test-upload/
+    {
+        "org_id": 1,
+        "filial_id": 1,
+        "test_data": {...}
+    }
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        from datetime import datetime as dt
+        import json
+
+        org_id = request.data.get('org_id')
+        filial_id = request.data.get('filial_id')
+        test_data = request.data.get('test_data')
+
+        # test_data dict emas bo'lsa parse qilamiz
+        if test_data and not isinstance(test_data, dict):
+            try:
+                if hasattr(test_data, 'read'):
+                    # File object
+                    test_data = json.loads(test_data.read().decode('utf-8'))
+                else:
+                    # String
+                    test_data = json.loads(str(test_data))
+            except:
+                return Response({
+                    "status": "FAIL",
+                    "reason": "test_data JSON parse xatosi"
+                }, status=400)
+
+        if not all([org_id, filial_id, test_data]):
+            return Response({
+                "status": "FAIL",
+                "reason": "org_id, filial_id va test_data majbur"
+            }, status=400)
+
+        try:
+            org = Organization.objects.get(id=org_id)
+            filial = Filial.objects.get(id=filial_id, organization=org)
+        except Exception as e:
+            return Response({
+                "status": "FAIL",
+                "reason": f"Organization yoki Filial topilmadi: {str(e)}"
+            }, status=404)
+
+        results = {
+            "locations_created": 0,
+            "employees_created": 0,
+            "schedules_created": 0,
+            "attendances_created": 0,
+            "errors": []
+        }
+
+        # Debug
+        print(f"DEBUG: org={org}, filial={filial}")
+        print(f"DEBUG: test_data keys = {list(test_data.keys())}")
+        print(f"DEBUG: locations count = {len(test_data.get('locations', []))}")
+        print(f"DEBUG: employees count = {len(test_data.get('employees', []))}")
+
+        # ── Locations ──
+        for loc_data in test_data.get('locations', []):
+            try:
+                loc, created = Location.objects.get_or_create(
+                    name=loc_data['name'],
+                    organization=org,
+                    defaults={
+                        'latitude': loc_data['latitude'],
+                        'longitude': loc_data['longitude'],
+                    }
+                )
+                if created:
+                    results["locations_created"] += 1
+            except Exception as e:
+                results["errors"].append(f"Location '{loc_data.get('name')}': {str(e)}")
+
+        # ── Employees ──
+        print(f"DEBUG: Processing {len(test_data.get('employees', []))} employees")
+        for emp_data in test_data.get('employees', []):
+            try:
+                tg_user, _ = TelegramUser.objects.get_or_create(
+                    user_id=emp_data['telegram_user_id']
+                )
+                emp, created = Employee.objects.get_or_create(
+                    telegram_user_id=emp_data['telegram_user_id'],
+                    defaults={
+                        'name': emp_data['name'],
+                        'employee_type': emp_data.get('employee_type', 'employee'),
+                        'filial': filial,
+                    }
+                )
+                if created:
+                    print(f"  ✓ Created: {emp_data['name']}")
+                    results["employees_created"] += 1
+                else:
+                    print(f"  - Already exists: {emp_data['name']}")
+            except Exception as e:
+                print(f"  ✗ Error: {str(e)}")
+                results["errors"].append(f"Employee '{emp_data.get('name')}': {str(e)}")
+
+        # ── Schedules ──
+        from apps.superadmin.models import Weekday
+        for sch_data in test_data.get('schedules', []):
+            try:
+                emp = Employee.objects.get(
+                    telegram_user_id=sch_data['employee_telegram_id']
+                )
+                loc = Location.objects.get(
+                    name=sch_data['location_name'],
+                    organization=org
+                )
+
+                sch, _ = Schedule.objects.get_or_create(
+                    name=sch_data['name'],
+                    employee=emp,
+                    location=loc,
+                    defaults={'filial': filial}
+                )
+
+                # Weekday'larni qo'shish
+                weekday_ids = sch_data.get('weekdays', [])
+                for wd_id in weekday_ids:
+                    try:
+                        weekday = Weekday.objects.get(id=wd_id)
+                        sch.weekday.add(weekday)
+                    except:
+                        pass
+
+                # ScheduleDay qo'shish
+                start_time = sch_data['start_time']
+                end_time = sch_data['end_time']
+                for day_num in weekday_ids:
+                    ScheduleDay.objects.get_or_create(
+                        schedule=sch,
+                        day=day_num,
+                        defaults={
+                            'start_time': start_time,
+                            'end_time': end_time,
+                        }
+                    )
+
+                results["schedules_created"] += 1
+            except Exception as e:
+                results["errors"].append(f"Schedule: {str(e)}")
+
+        # ── Attendances ──
+        for att_data in test_data.get('attendances', []):
+            try:
+                emp = Employee.objects.get(
+                    telegram_user_id=att_data['employee_telegram_id']
+                )
+                loc = Location.objects.get(
+                    name=att_data['location_name'],
+                    organization=org
+                )
+
+                date_obj = dt.strptime(att_data['date'], '%Y-%m-%d').date()
+                check_in = dt.strptime(att_data['check_in'], '%H:%M').time()
+                check_out = dt.strptime(att_data['check_out'], '%H:%M').time()
+
+                att, _ = Attendance.objects.get_or_create(
+                    employee=emp,
+                    date=date_obj,
+                    defaults={
+                        'check_in': check_in,
+                        'check_out': check_out,
+                        'location': loc,
+                        'status': att_data.get('status', 'present'),
+                    }
+                )
+                results["attendances_created"] += 1
+            except Exception as e:
+                results["errors"].append(f"Attendance: {str(e)}")
+
+        return Response({
+            "status": "SUCCESS",
+            "message": "Test datalar yuklandi",
+            "results": results
         }, status=200)
