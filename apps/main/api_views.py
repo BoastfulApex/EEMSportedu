@@ -466,3 +466,166 @@ class TestDataUploadAPIView(APIView):
             "message": "Test datalar yuklandi",
             "results": results
         }, status=200)
+
+
+# ════════════════════════════════════════════════════════════════
+# ATTENDANCE GENERATION API  —  oxirgi 45 kun uchun davomat
+# ════════════════════════════════════════════════════════════════
+
+class GenerateAttendanceAPIView(APIView):
+    """
+    Bazadagi mavjud xodimlar uchun oxirgi 45 kunlik
+    kirish/chiqish ma'lumotlarini generatsiya qiladi.
+
+    POST /web_app/api/generate-attendance/
+    {
+        "secret": "dev_only",          # majburiy
+        "skip_weekends": true,         # ixtiyoriy, default true
+        "absent_probability": 0.1,     # ixtiyoriy, default 0.1 (10%)
+        "overwrite": false             # ixtiyoriy, default false
+    }
+
+    Javob:
+    {
+        "status": "SUCCESS",
+        "employees_count": 42,
+        "days_range": 45,
+        "attendances_created": 1512,
+        "attendances_skipped": 38,
+        "absent_days": 120
+    }
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    SECRET = "dev_only"
+
+    def post(self, request):
+        import random
+        from datetime import date, timedelta, time as dt_time
+
+        # ── Autentifikatsiya ──
+        if request.data.get("secret") != self.SECRET:
+            return Response({"status": "FAIL", "reason": "Secret noto'g'ri"}, status=403)
+
+        # ── Parametrlar ──
+        skip_weekends     = request.data.get("skip_weekends", True)
+        absent_prob       = float(request.data.get("absent_probability", 0.10))
+        overwrite         = request.data.get("overwrite", False)
+        days_range        = int(request.data.get("days", 45))
+
+        # ── Sana oralig'i ──
+        today   = date.today()
+        start   = today - timedelta(days=days_range - 1)
+        dates   = []
+        d = start
+        while d <= today:
+            if skip_weekends and d.weekday() >= 5:   # 5=shanba, 6=yakshanba
+                d += timedelta(days=1)
+                continue
+            dates.append(d)
+            d += timedelta(days=1)
+
+        # ── Xodimlar va lokatsiyalar ──
+        employees = list(Employee.objects.select_related('filial__organization').all())
+        if not employees:
+            return Response({"status": "FAIL", "reason": "Bazada xodim yo'q"}, status=404)
+
+        # Har xodim uchun uning filialiga tegishli locationlarni topamiz
+        def get_locations_for_employee(emp):
+            if emp.filial and emp.filial.organization:
+                locs = list(Location.objects.filter(
+                    organization=emp.filial.organization,
+                    latitude__isnull=False,
+                    longitude__isnull=False
+                ))
+                if locs:
+                    return locs
+            # fallback — barcha locationlar
+            return list(Location.objects.filter(
+                latitude__isnull=False,
+                longitude__isnull=False
+            ))
+
+        # ── Vaqt generatsiyasi ──
+        # Har xodimga o'ziga xos ish vaqti (turlilik uchun)
+        SHIFT_PROFILES = [
+            {"base_in": (8, 0),  "base_out": (17, 0)},
+            {"base_in": (9, 0),  "base_out": (18, 0)},
+            {"base_in": (8, 30), "base_out": (17, 30)},
+        ]
+
+        def random_time_near(hour, minute, variance_min=20):
+            """Berilgan vaqt atrofida ±variance_min daqiqa ichida random vaqt"""
+            base_minutes = hour * 60 + minute
+            delta = random.randint(-variance_min, variance_min)
+            total = max(0, min(23 * 60 + 59, base_minutes + delta))
+            return dt_time(total // 60, total % 60)
+
+        # ── Generatsiya ──
+        created_count  = 0
+        skipped_count  = 0
+        absent_count   = 0
+
+        for emp in employees:
+            profile = random.choice(SHIFT_PROFILES)
+            locations = get_locations_for_employee(emp)
+            location  = random.choice(locations) if locations else None
+
+            for day in dates:
+                # Yo'qlik holati
+                if random.random() < absent_prob:
+                    absent_count += 1
+                    continue
+
+                check_in  = random_time_near(*profile["base_in"])
+                check_out = random_time_near(*profile["base_out"])
+
+                # check_out har doim check_in dan keyin bo'lsin
+                in_min  = check_in.hour  * 60 + check_in.minute
+                out_min = check_out.hour * 60 + check_out.minute
+                if out_min <= in_min:
+                    out_min = in_min + random.randint(420, 540)  # 7-9 soat
+                    out_min = min(out_min, 23 * 60 + 59)
+                    check_out = dt_time(out_min // 60, out_min % 60)
+
+                if overwrite:
+                    att, created = Attendance.objects.update_or_create(
+                        employee=emp,
+                        date=day,
+                        location=location,
+                        defaults={
+                            "check_in":      check_in,
+                            "check_out":     check_out,
+                            "check_number":  1,
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        skipped_count += 1
+                else:
+                    att, created = Attendance.objects.get_or_create(
+                        employee=emp,
+                        date=day,
+                        location=location,
+                        defaults={
+                            "check_in":      check_in,
+                            "check_out":     check_out,
+                            "check_number":  1,
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        skipped_count += 1
+
+        return Response({
+            "status":              "SUCCESS",
+            "employees_count":     len(employees),
+            "days_range":          days_range,
+            "working_days":        len(dates),
+            "attendances_created": created_count,
+            "attendances_skipped": skipped_count,
+            "absent_days":         absent_count,
+        }, status=200)
