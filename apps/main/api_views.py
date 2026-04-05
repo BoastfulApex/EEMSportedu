@@ -629,3 +629,252 @@ class GenerateAttendanceAPIView(APIView):
             "attendances_skipped": skipped_count,
             "absent_days":         absent_count,
         }, status=200)
+
+
+# ════════════════════════════════════════════════════════════════
+# RESET & SEED API  —  tozalab, yangi ma'lumot yuklash
+# ════════════════════════════════════════════════════════════════
+
+class ResetAndSeedAPIView(APIView):
+    """
+    Barcha eski ma'lumotlarni o'chirib, JSON dan yangisini yuklaydi.
+
+    POST /web_app/api/reset-and-seed/
+    {
+        "secret": "dev_only",
+        "clear_existing": true,
+        "date_from": "2026-03-01",
+        "date_to": "2026-04-04",
+        "work_days": [1,2,3,4,5,6],       // 1=Dushanba...7=Yakshanba
+        "absent_probability": 0.08,
+        "locations": [
+            {"name": "...", "latitude": ..., "longitude": ..., "filial_id": 1}
+        ],
+        "employees": [
+            {"name": "...", "telegram_id": 100000001, "type": "employee",
+             "schedule_name": "Standart jadval", "location_name": "..."}
+        ],
+        "schedules": [
+            {"name": "Standart jadval", "start": "08:00", "end": "17:00",
+             "filial_id": 1, "location_name": "..."}
+        ]
+    }
+    """
+    permission_classes    = [AllowAny]
+    authentication_classes = []
+    SECRET                = "dev_only"
+
+    WEEKDAY_NAMES = {
+        1: ("Dushanba",   "Monday"),
+        2: ("Seshanba",   "Tuesday"),
+        3: ("Chorshanba", "Wednesday"),
+        4: ("Payshanba",  "Thursday"),
+        5: ("Juma",       "Friday"),
+        6: ("Shanba",     "Saturday"),
+        7: ("Yakshanba",  "Sunday"),
+    }
+
+    def post(self, request):
+        import random
+        from datetime import date, timedelta, time as dt_time
+        from apps.superadmin.models import Weekday, Filial
+
+        if request.data.get("secret") != self.SECRET:
+            return Response({"status": "FAIL", "reason": "Secret noto'g'ri"}, status=403)
+
+        data             = request.data
+        clear_existing   = data.get("clear_existing", True)
+        date_from_str    = data.get("date_from", "2026-03-01")
+        date_to_str      = data.get("date_to",   "2026-04-04")
+        work_days        = data.get("work_days",  [1, 2, 3, 4, 5, 6])
+        absent_prob      = float(data.get("absent_probability", 0.08))
+        locations_data   = data.get("locations",  [])
+        employees_data   = data.get("employees",  [])
+        schedules_data   = data.get("schedules",  [])
+
+        results = {
+            "cleared":             {},
+            "locations_created":   0,
+            "employees_created":   0,
+            "schedules_created":   0,
+            "attendances_created": 0,
+            "absent_days":         0,
+            "errors":              [],
+        }
+
+        # ── 1. O'chirish ──────────────────────────────────────────
+        if clear_existing:
+            from .models import (
+                Attendance, Schedule, ScheduleDay,
+                WorkSchedule, ExtraSchedule, Employee, TelegramUser
+            )
+            results["cleared"]["attendances"]    = Attendance.objects.count()
+            results["cleared"]["schedules"]      = Schedule.objects.count()
+            results["cleared"]["work_schedules"] = WorkSchedule.objects.count()
+            results["cleared"]["extra_schedules"]= ExtraSchedule.objects.count()
+            results["cleared"]["employees"]      = Employee.objects.count()
+            results["cleared"]["telegram_users"] = TelegramUser.objects.count()
+
+            Attendance.objects.all().delete()
+            ScheduleDay.objects.all().delete()
+            Schedule.objects.all().delete()
+            WorkSchedule.objects.all().delete()
+            ExtraSchedule.objects.all().delete()
+            Employee.objects.all().delete()
+            TelegramUser.objects.all().delete()
+
+        # ── 2. Weekday obyektlarini tayyorlash ────────────────────
+        weekday_map = {}   # {1: Weekday, 2: Weekday, ...}
+        for num, (uz_name, en_name) in self.WEEKDAY_NAMES.items():
+            wd, _ = Weekday.objects.get_or_create(
+                name=uz_name,
+                defaults={"name_en": en_name}
+            )
+            weekday_map[num] = wd
+
+        # ── 3. Locationlar ────────────────────────────────────────
+        location_map = {}  # {name: Location}
+        for loc_d in locations_data:
+            try:
+                filial = Filial.objects.get(id=loc_d["filial_id"]) if loc_d.get("filial_id") else None
+                org    = filial.organization if filial else None
+                loc, created = Location.objects.get_or_create(
+                    name=loc_d["name"],
+                    defaults={
+                        "latitude":     loc_d.get("latitude"),
+                        "longitude":    loc_d.get("longitude"),
+                        "address":      loc_d.get("address", ""),
+                        "filial":       filial,
+                        "organization": org,
+                    }
+                )
+                location_map[loc.name] = loc
+                if created:
+                    results["locations_created"] += 1
+            except Exception as e:
+                results["errors"].append(f"Location '{loc_d.get('name')}': {e}")
+
+        # ── 4. Jadvallar (Schedule + ScheduleDay) ─────────────────
+        schedule_map = {}  # {name: Schedule}
+        for sch_d in schedules_data:
+            try:
+                filial   = Filial.objects.get(id=sch_d["filial_id"]) if sch_d.get("filial_id") else None
+                loc_name = sch_d.get("location_name", "")
+                loc      = location_map.get(loc_name)
+
+                sch = Schedule.objects.create(
+                    name=sch_d["name"],
+                    filial=filial,
+                    location=loc,
+                )
+
+                # Har ish kuni uchun ScheduleDay yaratamiz
+                start_t = dt_time(*map(int, sch_d["start"].split(":")))
+                end_t   = dt_time(*map(int, sch_d["end"].split(":")))
+                for day_num in work_days:
+                    wd = weekday_map.get(day_num)
+                    if wd:
+                        ScheduleDay.objects.create(
+                            schedule=sch,
+                            weekday=wd,
+                            start=start_t,
+                            end=end_t,
+                        )
+
+                schedule_map[sch.name] = sch
+                results["schedules_created"] += 1
+            except Exception as e:
+                results["errors"].append(f"Schedule '{sch_d.get('name')}': {e}")
+
+        # ── 5. Xodimlar ───────────────────────────────────────────
+        employee_list = []
+        for emp_d in employees_data:
+            try:
+                tg, _ = TelegramUser.objects.get_or_create(
+                    user_id=emp_d["telegram_id"]
+                )
+                emp = Employee.objects.create(
+                    name=emp_d["name"],
+                    telegram_user_id=emp_d["telegram_id"],
+                    employee_type=emp_d.get("type", "employee"),
+                    filial=Filial.objects.get(id=emp_d["filial_id"]) if emp_d.get("filial_id") else None,
+                )
+                # Jadval biriktirish
+                sch_name = emp_d.get("schedule_name")
+                if sch_name and sch_name in schedule_map:
+                    emp.schedules.add(schedule_map[sch_name])
+
+                employee_list.append((emp, emp_d.get("location_name", "")))
+                results["employees_created"] += 1
+            except Exception as e:
+                results["errors"].append(f"Employee '{emp_d.get('name')}': {e}")
+
+        # ── 6. Sana oralig'ini hisoblash ──────────────────────────
+        date_from = date.fromisoformat(date_from_str)
+        date_to   = date.fromisoformat(date_to_str)
+        work_days_set = set(work_days)   # python weekday: Mon=0...Sun=6
+        # work_days bizda 1=Mon...7=Sun → python da 0=Mon...6=Sun
+        python_work_days = {wd - 1 for wd in work_days_set}
+
+        working_dates = []
+        d = date_from
+        while d <= date_to:
+            if d.weekday() in python_work_days:
+                working_dates.append(d)
+            d += timedelta(days=1)
+
+        # ── 7. Attendancelar ──────────────────────────────────────
+        def random_time_near(base_hour, base_minute, variance=20):
+            total = base_hour * 60 + base_minute + random.randint(-variance, variance)
+            total = max(0, min(23 * 60 + 59, total))
+            return dt_time(total // 60, total % 60)
+
+        PROFILES = [
+            (8, 0,  17, 0),
+            (9, 0,  18, 0),
+            (8, 30, 17, 30),
+        ]
+
+        for emp, loc_name in employee_list:
+            loc = location_map.get(loc_name)
+            if not loc:
+                # xodim jadvalidagi locationni ishlatamiz
+                sch = emp.schedules.first()
+                loc = sch.location if sch else None
+            if not loc:
+                results["errors"].append(f"Location topilmadi: {emp.name}")
+                continue
+
+            in_h, in_m, out_h, out_m = random.choice(PROFILES)
+
+            for day in working_dates:
+                if random.random() < absent_prob:
+                    results["absent_days"] += 1
+                    continue
+
+                check_in  = random_time_near(in_h, in_m)
+                check_out = random_time_near(out_h, out_m)
+
+                # check_out >= check_in + 7 soat
+                ci_min = check_in.hour  * 60 + check_in.minute
+                co_min = check_out.hour * 60 + check_out.minute
+                if co_min < ci_min + 420:
+                    co_min = ci_min + random.randint(420, 540)
+                    co_min = min(co_min, 23 * 60 + 59)
+                    check_out = dt_time(co_min // 60, co_min % 60)
+
+                try:
+                    Attendance.objects.create(
+                        employee=emp,
+                        date=day,
+                        location=loc,
+                        check_in=check_in,
+                        check_out=check_out,
+                        check_number=1,
+                    )
+                    results["attendances_created"] += 1
+                except Exception as e:
+                    results["errors"].append(f"Attendance {emp.name} {day}: {e}")
+
+        results["working_days"] = len(working_dates)
+        return Response({"status": "SUCCESS", **results}, status=200)
