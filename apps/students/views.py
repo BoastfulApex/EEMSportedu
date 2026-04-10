@@ -76,7 +76,7 @@ def groups_list(request):
         organization=admin_user.organization,
         year=filter_year,
         month=filter_month,
-    ).select_related('filial', 'direction')
+    ).select_related('filial', 'direction').order_by('name')
 
     if filial_id:
         groups = groups.filter(filial_id=filial_id)
@@ -187,7 +187,7 @@ class GroupDelete(DeleteView):
 def directions_list(request):
     admin_user, filial_id = _get_admin_filial(request)
 
-    directions = Direction.objects.filter(organization=admin_user.organization)
+    directions = Direction.objects.filter(organization=admin_user.organization).order_by('name')
     if filial_id:
         directions = directions.filter(filial_id=filial_id)
 
