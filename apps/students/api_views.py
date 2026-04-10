@@ -32,10 +32,10 @@ from rest_framework.permissions import AllowAny
 from PIL import Image
 
 try:
-    from deepface import DeepFace
-    DEEPFACE_AVAILABLE = True
+    import face_recognition
+    FACE_RECOGNITION_AVAILABLE = True
 except ImportError:
-    DEEPFACE_AVAILABLE = False
+    FACE_RECOGNITION_AVAILABLE = False
 
 PARA_DURATION_MINUTES = 80
 
@@ -59,37 +59,35 @@ def get_distance_meters(lat1, lon1, lat2, lon2):
 
 def verify_student_face(student, base64_image):
     """
-    Tinglovchi yuzini saqlangan rasm bilan DeepFace orqali solishtiradi.
-    face_image yo'q bo'lsa → o'tkazib yuboradi (ro'yxatdan o'tish oqimida saqlangan bo'lishi kerak).
+    Tinglovchi yuzini saqlangan rasm bilan face_recognition orqali solishtiradi.
+    face_image yo'q bo'lsa → o'tkazib yuboradi.
     """
     if not student.face_image:
-        return True  # Rasm yo'q — tekshiruvdan o'tkazib yuborish
+        return True
 
-    try:
-        unknown_pil = base64_to_pil(base64_image)
-    except Exception:
-        return False, "Yuklangan rasm o'qilmadi"
-
-    if not DEEPFACE_AVAILABLE:
+    if not FACE_RECOGNITION_AVAILABLE:
         return True
 
     try:
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-            unknown_pil.save(tmp.name, format='JPEG')
-            tmp_path = tmp.name
+        import numpy as np
+        unknown_pil = base64_to_pil(base64_image)
+        unknown_arr = np.array(unknown_pil)
 
-        result = DeepFace.verify(
-            img1_path=student.face_image.path,
-            img2_path=tmp_path,
-            model_name="Facenet",
-            enforce_detection=False,
-            silent=True,
+        known_arr = face_recognition.load_image_file(student.face_image.path)
+        known_encodings = face_recognition.face_encodings(known_arr)
+        if not known_encodings:
+            return True  # Bazadagi rasmda yuz topilmadi
+
+        unknown_encodings = face_recognition.face_encodings(unknown_arr)
+        if not unknown_encodings:
+            return False, "Rasmda yuz aniqlanmadi"
+
+        match = face_recognition.compare_faces(
+            [known_encodings[0]], unknown_encodings[0], tolerance=0.5
         )
-        os.unlink(tmp_path)
-
-        if result["verified"]:
+        if match[0]:
             return True
-        distance = round(result.get("distance", 0), 2)
+        distance = round(face_recognition.face_distance([known_encodings[0]], unknown_encodings[0])[0], 2)
         return False, f"Yuz mos kelmadi (masofa: {distance})"
 
     except Exception:
@@ -280,7 +278,7 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
         # ── 5. Davomat yozish ────────────────────────────────
         if check_type == 'check_in':
             # Yuz tekshirish — faqat DeepFace o'rnatilgan va rasm yuborilgan bo'lsa
-            if DEEPFACE_AVAILABLE and image_base64:
+            if FACE_RECOGNITION_AVAILABLE and image_base64:
                 face_result = verify_student_face(student, image_base64)
                 if face_result is not True:
                     reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"

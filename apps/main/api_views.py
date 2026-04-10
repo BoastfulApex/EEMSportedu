@@ -13,10 +13,10 @@ import numpy as np
 from PIL import Image
 
 try:
-    from deepface import DeepFace
-    DEEPFACE_AVAILABLE = True
+    import face_recognition
+    FACE_RECOGNITION_AVAILABLE = True
 except ImportError:
-    DEEPFACE_AVAILABLE = False
+    FACE_RECOGNITION_AVAILABLE = False
 
 
 # ============================================================
@@ -35,41 +35,35 @@ def base64_to_pil(base64_image):
 
 def verify_face(employee, base64_image):
     if not employee.image:
-        return False, "Xodim rasmi topilmadi"
+        return True  # Rasm yo'q — o'tkazib yuborish
+
+    if not FACE_RECOGNITION_AVAILABLE:
+        return True
 
     try:
         unknown_pil = base64_to_pil(base64_image)
-    except Exception as e:
-        return False, f"Yuklangan rasm o'qilmadi: {e}"
+        unknown_arr = np.array(unknown_pil)
 
-    if not DEEPFACE_AVAILABLE:
-        # DeepFace yo'q bo'lsa — o'tkazib yuborish
-        return True
+        known_arr = face_recognition.load_image_file(employee.image.path)
+        known_encodings = face_recognition.face_encodings(known_arr)
+        if not known_encodings:
+            return True  # Bazadagi rasmda yuz topilmadi
 
-    try:
-        # Vaqtincha fayl sifatida saqlash (DeepFace fayl yo'li talab qiladi)
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-            unknown_pil.save(tmp.name, format='JPEG')
-            tmp_path = tmp.name
+        unknown_encodings = face_recognition.face_encodings(unknown_arr)
+        if not unknown_encodings:
+            return False, "Rasmda yuz aniqlanmadi"
 
-        result = DeepFace.verify(
-            img1_path=employee.image.path,
-            img2_path=tmp_path,
-            model_name="Facenet",
-            enforce_detection=False,
-            silent=True,
+        match = face_recognition.compare_faces(
+            [known_encodings[0]], unknown_encodings[0], tolerance=0.5
         )
-        os.unlink(tmp_path)
-
-        if result["verified"]:
+        if match[0]:
             return True
         else:
-            distance = round(result.get("distance", 0), 2)
+            distance = round(face_recognition.face_distance([known_encodings[0]], unknown_encodings[0])[0], 2)
             return False, f"Yuz mos kelmadi (masofa: {distance})"
 
-    except Exception as e:
-        # Xato bo'lsa — o'tkazib yuborish
-        return True
+    except Exception:
+        return True  # Xato bo'lsa — o'tkazib yuborish
 
 
 def get_distance_meters(lat1, lon1, lat2, lon2):
@@ -196,7 +190,7 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
 
         if check_type == 'check_in':
             # Yuz tekshirish — faqat DeepFace o'rnatilgan bo'lsa
-            if DEEPFACE_AVAILABLE and employee.image and image_base64:
+            if FACE_RECOGNITION_AVAILABLE and employee.image and image_base64:
                 face_result = verify_face(employee, image_base64)
                 if face_result is not True:
                     reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
