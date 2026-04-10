@@ -94,6 +94,7 @@
             <span>Lokatsiyalar</span>
           </a>
         </li>
+
         {% endif %}
       {% endif %}
 
@@ -181,6 +182,13 @@
               </a>
             </li>
           </ul>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'student_report' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'student_report' %}">
+            <i data-feather="users"></i>
+            <span>Tinglovchilar hisoboti</span>
+          </a>
         </li>
         {% endif %}
       {% endif %}

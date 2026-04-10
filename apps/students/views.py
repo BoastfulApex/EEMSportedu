@@ -15,7 +15,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from django.contrib.auth.models import User
 
-from apps.superadmin.decorators import edu_admin_required
+from apps.superadmin.decorators import edu_admin_required, monitoring_required
 from apps.superadmin.models import Administrator
 from apps.main.models import Location
 from .models import Group, Direction, Student, Smena, GroupLesson, MONTH_CHOICES
@@ -644,4 +644,195 @@ def student_web_app(request):
     html_template = loader.get_template('students/web_app_page.html')
     response = HttpResponse(html_template.render({}, request))
     response['X-Frame-Options'] = 'ALLOWALL'
+    return response
+
+
+# ============================================================
+# TINGLOVCHILAR HISOBOTI
+# ============================================================
+
+def _build_student_report(group, date_from, date_to):
+    """
+    Guruh tinglovchilari bo'yicha davomat hisobotini qaytaradi.
+    Har bir tinglovchi uchun: kelgan kun, kelmagan, kechikish, erta ketish.
+    """
+    from .models import StudentAttendance, GroupLesson
+    from django.db.models import Count, Sum, Q
+
+    # Guruh darslari soni (sana oralig'ida)
+    total_lessons = GroupLesson.objects.filter(
+        group=group,
+        date__gte=date_from,
+        date__lte=date_to,
+    ).count()
+
+    students = group.students.order_by('full_name')
+    rows = []
+    for student in students:
+        atts = StudentAttendance.objects.filter(
+            student=student,
+            group=group,
+            date__gte=date_from,
+            date__lte=date_to,
+        )
+        present_count = atts.filter(status__in=['present', 'late']).count()
+        absent_count  = atts.filter(status='absent').count()
+        late_count    = atts.filter(status='late').count()
+        late_mins     = atts.filter(status='late').aggregate(s=Sum('late_minutes'))['s'] or 0
+        early_count   = atts.filter(early_leave_minutes__gt=0).count()
+        early_mins    = atts.filter(early_leave_minutes__gt=0).aggregate(s=Sum('early_leave_minutes'))['s'] or 0
+        # Belgilanmagan (davomat yozilmagan) kunlar
+        recorded      = atts.count()
+        not_recorded  = max(0, total_lessons - recorded)
+        absent_total  = absent_count + not_recorded
+
+        percent = round(present_count / total_lessons * 100) if total_lessons else 0
+
+        rows.append({
+            'student':      student,
+            'present':      present_count,
+            'absent':       absent_total,
+            'late_count':   late_count,
+            'late_mins':    late_mins,
+            'early_count':  early_count,
+            'early_mins':   early_mins,
+            'percent':      percent,
+            'total':        total_lessons,
+        })
+
+    return rows, total_lessons
+
+
+@monitoring_required
+def student_report(request):
+    admin_user, filial_id = _get_admin_filial(request)
+    now = datetime.now()
+
+    # Guruhlar ro'yxati (filter uchun)
+    groups_qs = Group.objects.filter(
+        organization=admin_user.organization
+    ).select_related('filial', 'direction').order_by('-year', '-month', 'name')
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    group_id = request.GET.get('group_id')
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to',   '')
+
+    selected_group = None
+    rows = []
+    total_lessons = 0
+    error = None
+
+    if group_id:
+        selected_group = groups_qs.filter(pk=group_id).first()
+        if selected_group:
+            # Sana oraligi — default: guruh oyining birinchi va oxirgi kuni
+            try:
+                date_from = dt.date.fromisoformat(date_from_str) if date_from_str else \
+                            dt.date(selected_group.year, selected_group.month, 1)
+                last_day  = _calendar.monthrange(selected_group.year, selected_group.month)[1]
+                date_to   = dt.date.fromisoformat(date_to_str) if date_to_str else \
+                            dt.date(selected_group.year, selected_group.month, last_day)
+            except ValueError:
+                error = "Sana formati noto'g'ri."
+                date_from = dt.date(selected_group.year, selected_group.month, 1)
+                last_day  = _calendar.monthrange(selected_group.year, selected_group.month)[1]
+                date_to   = dt.date(selected_group.year, selected_group.month, last_day)
+
+            if request.GET.get('export') == 'xlsx':
+                return _export_student_report_xlsx(selected_group, date_from, date_to)
+
+            rows, total_lessons = _build_student_report(selected_group, date_from, date_to)
+        else:
+            error = "Guruh topilmadi."
+            date_from = dt.date(now.year, now.month, 1)
+            date_to   = dt.date.today()
+    else:
+        date_from = dt.date(now.year, now.month, 1)
+        date_to   = dt.date.today()
+
+    context = {
+        'groups':         groups_qs,
+        'selected_group': selected_group,
+        'rows':           rows,
+        'total_lessons':  total_lessons,
+        'date_from':      date_from,
+        'date_to':        date_to,
+        'date_from_str':  date_from.isoformat() if date_from else '',
+        'date_to_str':    date_to.isoformat() if date_to else '',
+        'error':          error,
+        'segment':        'student_report',
+    }
+    return render(request, 'home/students/student_report.html', context)
+
+
+def _export_student_report_xlsx(group, date_from, date_to):
+    rows, total_lessons = _build_student_report(group, date_from, date_to)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Tinglovchilar hisoboti"
+
+    # Styles
+    hdr_font  = Font(bold=True, color='FFFFFF', size=11)
+    hdr_fill  = PatternFill(start_color='2563EB', end_color='2563EB', fill_type='solid')
+    hdr_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    thin      = Side(style='thin', color='CCCCCC')
+    brd       = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center    = Alignment(horizontal='center', vertical='center')
+
+    # Sarlavha
+    ws.merge_cells('A1:J1')
+    title_cell = ws['A1']
+    title_cell.value = f"{group.name} — Davomat hisoboti  ({date_from} – {date_to})"
+    title_cell.font  = Font(bold=True, size=13)
+    title_cell.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 24
+
+    headers = [
+        '#', 'F.I.Sh',
+        f'Jami dars\n({total_lessons})', 'Keldi', 'Kelmadi',
+        'Kechikdi (marta)', 'Kechikish (daqiqa)',
+        'Erta ketdi (marta)', 'Erta ketish (daqiqa)',
+        'Davomat %'
+    ]
+    widths = [5, 32, 12, 10, 10, 18, 18, 18, 18, 12]
+
+    for col, (h, w) in enumerate(zip(headers, widths), 1):
+        cell = ws.cell(row=2, column=col, value=h)
+        cell.font      = hdr_font
+        cell.fill      = hdr_fill
+        cell.alignment = hdr_align
+        cell.border    = brd
+        ws.column_dimensions[cell.column_letter].width = w
+    ws.row_dimensions[2].height = 32
+
+    for i, r in enumerate(rows, 1):
+        row_data = [
+            i,
+            r['student'].full_name,
+            r['total'],
+            r['present'],
+            r['absent'],
+            r['late_count'],
+            r['late_mins'],
+            r['early_count'],
+            r['early_mins'],
+            f"{r['percent']}%",
+        ]
+        fill_color = 'FFF3CD' if r['percent'] < 70 else None
+        for col, val in enumerate(row_data, 1):
+            cell = ws.cell(row=i + 2, column=col, value=val)
+            cell.border = brd
+            cell.alignment = center
+            if fill_color:
+                cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type='solid')
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    fname = f"student_report_{group.pk}_{date_from}_{date_to}.xlsx"
+    response['Content-Disposition'] = f'attachment; filename="{fname}"'
+    wb.save(response)
     return response

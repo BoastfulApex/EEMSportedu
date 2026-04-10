@@ -39,6 +39,9 @@ urlpatterns = [
     path('groups/<int:pk>/schedule/save/', views.save_group_lessons, name='save_group_lessons'),
     path('groups/<int:pk>/schedule/<str:date_str>/delete/', views.delete_group_lesson, name='delete_group_lesson'),
 
+    # Hisobot
+    path('reports/', views.student_report, name='student_report'),
+
     # AJAX
     path('ajax/directions/', views.directions_by_filial, name='directions_by_filial'),
 ]
