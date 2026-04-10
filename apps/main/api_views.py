@@ -142,12 +142,7 @@ class CheckRequestSerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=['check_in', 'check_out'])
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
-    image = serializers.CharField()
-
-    def validate(self, attrs):
-        if not attrs.get("image"):
-            raise serializers.ValidationError("Image majburiy.")
-        return attrs
+    image = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 # ============================================================
@@ -200,8 +195,8 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
         attendance, _ = Attendance.objects.get_or_create(employee=employee, date=today)
 
         if check_type == 'check_in':
-            # Yuz tekshirish — faqat kirish uchun
-            if employee.image:
+            # Yuz tekshirish — faqat DeepFace o'rnatilgan bo'lsa
+            if DEEPFACE_AVAILABLE and employee.image and image_base64:
                 face_result = verify_face(employee, image_base64)
                 if face_result is not True:
                     reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"

@@ -218,7 +218,7 @@ class StudentCheckSerializer(serializers.Serializer):
     type      = serializers.ChoiceField(choices=['check_in', 'check_out'])
     latitude  = serializers.FloatField()
     longitude = serializers.FloatField()
-    image     = serializers.CharField()
+    image     = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 # ============================================================
@@ -279,11 +279,12 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
 
         # ── 5. Davomat yozish ────────────────────────────────
         if check_type == 'check_in':
-            # Yuz tekshirish — faqat kirish uchun
-            face_result = verify_student_face(student, image_base64)
-            if face_result is not True:
-                reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
-                return Response({"status": "FAIL", "reason": reason}, status=403)
+            # Yuz tekshirish — faqat DeepFace o'rnatilgan va rasm yuborilgan bo'lsa
+            if DEEPFACE_AVAILABLE and image_base64:
+                face_result = verify_student_face(student, image_base64)
+                if face_result is not True:
+                    reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
+                    return Response({"status": "FAIL", "reason": reason}, status=403)
 
             existing = StudentAttendance.objects.filter(
                 student=student, group=group, date=today, check_in__isnull=False
