@@ -104,7 +104,7 @@ def find_student_location(student, latitude, longitude, today):
       2. GroupSchedule → building (Building, lat/lng bor)
       3. Tashkilotning barcha Location lari (fallback)
 
-    Qaytaradi: (location_name, ok: bool, group, lesson)
+    Qaytaradi: (location_name, ok: bool, group, lesson, distance_meters)
     """
     from apps.students.models import GroupLesson, GroupSchedule
     from apps.main.models import Location
@@ -113,7 +113,7 @@ def find_student_location(student, latitude, longitude, today):
     if not group:
         group = student.groups.first()
     if not group:
-        return None, False, None, None
+        return None, False, None, None, None
 
     # ── 1. GroupLesson → Location ────────────────────────────
     lesson = GroupLesson.objects.filter(
@@ -125,10 +125,10 @@ def find_student_location(student, latitude, longitude, today):
         if loc.latitude and loc.longitude:
             dist = get_distance_meters(latitude, longitude, loc.latitude, loc.longitude)
             if dist < 150:
-                return loc.name or "Dars lokatsiyasi", True, group, lesson
+                return loc.name or "Dars lokatsiyasi", True, group, lesson, int(dist)
         else:
             # Koordinatlar yo'q — lokatsiyani o'tkazib yuborish
-            return loc.name or "Dars lokatsiyasi", True, group, lesson
+            return loc.name or "Dars lokatsiyasi", True, group, lesson, None
 
     # ── 2. GroupSchedule → Building ─────────────────────────
     uz_weekdays = {
@@ -151,9 +151,9 @@ def find_student_location(student, latitude, longitude, today):
         if b.latitude and b.longitude:
             dist = get_distance_meters(latitude, longitude, b.latitude, b.longitude)
             if dist < 150:
-                return b.name or "Dars binosi", True, group, None
+                return b.name or "Dars binosi", True, group, None, int(dist)
         else:
-            return b.name or "Dars binosi", True, group, None
+            return b.name or "Dars binosi", True, group, None, None
 
     # ── 3. Tashkilot lokatsiyalari (fallback) ───────────────
     if student.filial and student.filial.organization:
@@ -165,9 +165,9 @@ def find_student_location(student, latitude, longitude, today):
         for loc in locations:
             dist = get_distance_meters(latitude, longitude, loc.latitude, loc.longitude)
             if dist < 150:
-                return loc.name or "Lokatsiya", True, group, None
+                return loc.name or "Lokatsiya", True, group, None, int(dist)
 
-    return None, False, group, None
+    return None, False, group, None, None
 
 
 def get_lesson_schedule_times(group, today, lesson=None):
@@ -237,7 +237,7 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
         today = timezone.localdate()
         now_time = timezone.localtime().time()
 
-        loc_name, loc_ok, group, lesson = find_student_location(
+        loc_name, loc_ok, group, lesson, distance_m = find_student_location(
             student, latitude, longitude, today
         )
 
@@ -305,6 +305,7 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                 "type": "check_in",
                 "time": now_time.strftime('%H:%M'),
                 "location": loc_name,
+                "distance_meters": distance_m,
                 "late_minutes": late_minutes,
                 "expected_start": expected_start.strftime('%H:%M') if expected_start else None,
             }
@@ -337,6 +338,7 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                 "type": "check_out",
                 "time": now_time.strftime('%H:%M'),
                 "location": loc_name,
+                "distance_meters": distance_m,
                 "early_leave_minutes": early_leave_minutes,
                 "expected_end": expected_end.strftime('%H:%M') if expected_end else None,
             }

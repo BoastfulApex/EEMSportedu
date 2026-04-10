@@ -277,7 +277,8 @@
 
         if (res.ok && data?.status === "SUCCESS") {
           const label = isCheckIn ? "Kirish qayd etildi" : "Chiqish qayd etildi";
-          setStatus("success", "✅", label + (data.time ? ` — ${data.time}` : ""));
+          const distStr = data.distance_meters != null ? `<br><small style="color:var(--hint)">📍 Lokatsiyadan: ${data.distance_meters} m</small>` : "";
+          setStatus("success", "✅", label + (data.time ? ` — ${data.time}` : "") + distStr);
           setTimeout(() => tg.close(), 2500);
         } else {
           const reason = data?.reason || data?.detail || "Noma'lum xato";

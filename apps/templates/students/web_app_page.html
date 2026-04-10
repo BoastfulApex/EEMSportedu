@@ -283,7 +283,8 @@
         if (res.ok && data?.status === "SUCCESS") {
           const label = isCheckIn ? "Kirish qayd etildi" : "Chiqish qayd etildi";
           const locStr = data.location ? ` — ${data.location}` : "";
-          setStatus("success", "✅", `${label}: ${data.time}${locStr}`);
+          const distStr = data.distance_meters != null ? `<br><small style="color:var(--hint)">📍 Lokatsiyadan: ${data.distance_meters} m</small>` : "";
+          setStatus("success", "✅", `${label}: ${data.time}${locStr}${distStr}`);
           showInfoBlock(data);
           setTimeout(() => tg.close(), 3000);
         } else {

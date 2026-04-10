@@ -93,7 +93,7 @@ def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
     1. Employee.schedules (yangi) — bugungi kunga mos jadvallarni tekshir
     2. Tashkilotning barcha lokatsiyalari — umumiy fallback
 
-    Qaytaradi: (location, schedule, schedule_type) yoki (None, None, None)
+    Qaytaradi: (location, schedule, schedule_type, distance_meters) yoki (None, None, None, None)
     """
     # 1. Yangi ScheduleDay — xodimning bugungi kunga mos jadval kunlari
     schedule_days = ScheduleDay.objects.filter(
@@ -108,7 +108,7 @@ def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
         if loc.latitude and loc.longitude:
             dist = get_distance_meters(latitude, longitude, loc.latitude, loc.longitude)
             if dist < 150:
-                return loc, sd, 'main'
+                return loc, sd, 'main', int(dist)
         if matched_day is None:
             matched_day = sd
 
@@ -122,9 +122,9 @@ def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
         for loc in all_locations:
             dist = get_distance_meters(latitude, longitude, loc.latitude, loc.longitude)
             if dist < 150:
-                return loc, matched_day, 'fallback'
+                return loc, matched_day, 'fallback', int(dist)
 
-    return None, None, None
+    return None, None, None, None
 
 
 # ============================================================
@@ -175,7 +175,7 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
         weekday_id = today.weekday() + 1  # 1=Dushanba ... 7=Yakshanba
 
         # Lokatsiya topish
-        location, schedule, schedule_type = find_matching_location(
+        location, schedule, schedule_type, distance_m = find_matching_location(
             employee, latitude, longitude, weekday_id, now_time
         )
 
@@ -257,7 +257,8 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
             "status": "SUCCESS",
             "type": check_type,
             "time": now_time.strftime('%H:%M:%S'),
-            "location": location.name or "Noma'lum lokatsiya"
+            "location": location.name or "Noma'lum lokatsiya",
+            "distance_meters": distance_m,
         }, status=200)
 
 
