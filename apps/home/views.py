@@ -1244,9 +1244,9 @@ def _compute_student_stats(student, group, para_hours):
 
     att_qs = StudentAttendance.objects.filter(student=student, group=group)
 
-    # Guruh uchun rejalashtirilgan darslar (GroupLesson orqali)
+    # Faqat smena belgilangan GroupLesson kunlari hisobga olinadi
     scheduled_dates = set(
-        GroupLesson.objects.filter(group=group).values_list('date', flat=True)
+        GroupLesson.objects.filter(group=group, smena__isnull=False).values_list('date', flat=True)
     )
     # Yozilgan davomat sanalari
     recorded_dates = set(att_qs.values_list('date', flat=True))

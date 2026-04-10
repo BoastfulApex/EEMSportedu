@@ -177,32 +177,13 @@ def get_lesson_schedule_times(group, today, lesson=None):
     """
     from apps.students.models import GroupSchedule
 
-    # GroupLesson + Smena
+    # Faqat GroupLesson + Smena belgilangan bo'lsa vaqtlarni qaytaradi
     if lesson and lesson.smena:
         smena = lesson.smena
         start = smena.para1_start
         last_para = smena.para3_start or smena.para2_start or smena.para1_start
         end = (datetime.combine(today, last_para) + timedelta(minutes=PARA_DURATION_MINUTES)).time()
         return start, end
-
-    # GroupSchedule
-    uz_weekdays = {
-        0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
-        3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba',
-    }
-    weekday_name = uz_weekdays.get(today.weekday())
-    from django.db.models import Q
-    sched = GroupSchedule.objects.filter(
-        group=group,
-        is_active=True,
-        weekdays__name=weekday_name,
-    ).filter(
-        Q(date_from__isnull=True) | Q(date_from__lte=today),
-        Q(date_to__isnull=True)   | Q(date_to__gte=today),
-    ).first()
-
-    if sched:
-        return sched.start_time, sched.end_time
 
     return None, None
 
