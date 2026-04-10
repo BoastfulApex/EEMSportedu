@@ -197,7 +197,7 @@ def locations(request):
     data = {'filials': all_filials}
     if admin_user.is_org_admin:
         request.session['selected_filial_id'] = 'super_admin'
-    locs = Location.objects.filter(organization=admin_user.organization)
+    locs = Location.objects.filter(organization=admin_user.organization).order_by('name')
     # edu_admin faqat o'z filialining lokatsiyalarini ko'radi
     if not admin_user.is_org_admin and admin_user.filial_id:
         locs = locs.filter(filial_id=admin_user.filial_id)
