@@ -1,0 +1,409 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Tinglovchilar Hisoboti{% endblock %}
+
+{% block stylesheets %}
+<style>
+  /* ── Filter panel ── */
+  .filter-panel {
+    background: #fff;
+    border-radius: 12px;
+    padding: 22px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    margin-bottom: 24px;
+  }
+  .filter-panel .filter-title {
+    font-weight: 600; font-size: .95rem; color: #344563;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .filter-section {
+    border: 1px solid #e3e8ef;
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .filter-section.open {
+    border-color: #3a7bd5;
+    box-shadow: 0 0 0 2px rgba(58,123,213,.12);
+  }
+  .filter-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    user-select: none;
+  }
+  .filter-section-header .fs-label {
+    font-weight: 600; font-size: .88rem; color: #344563;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .filter-section-header .fs-label svg { width:16px;height:16px; }
+  .filter-section-body { margin-top: 12px; }
+  .filter-chevron { transition: transform .25s; }
+  .filter-section.open .filter-chevron { transform: rotate(180deg); }
+
+  /* ── Report table ── */
+  .report-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    overflow: hidden;
+  }
+  .report-card .card-header {
+    padding: 16px 22px;
+    border-bottom: 1px solid #f0f0f5;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .report-card .card-header .title {
+    font-weight: 600; color: #344563; font-size: .95rem;
+  }
+  .report-table { width:100%; border-collapse: collapse; font-size:.875rem; }
+  .report-table thead th {
+    background: #f4f6fb;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: #5a6a85;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    white-space: nowrap;
+    border-bottom: 1px solid #e8eaf0;
+  }
+  .report-table tbody tr {
+    border-bottom: 1px solid #f0f2f8;
+    transition: background .15s;
+  }
+  .report-table tbody tr:hover { background: #f8f9fd; }
+  .report-table td { padding: 10px 14px; vertical-align: middle; }
+
+  /* Progress bar */
+  .prog-wrap { display:flex; align-items:center; gap:10px; }
+  .prog-bar { flex:1; height:7px; background:#e8eaf0; border-radius:4px; overflow:hidden; min-width:70px; }
+  .prog-fill { height:100%; border-radius:4px; }
+  .prog-fill.green  { background: linear-gradient(90deg,#43c36f,#11998e); }
+  .prog-fill.yellow { background: linear-gradient(90deg,#f7c948,#f7971e); }
+  .prog-fill.red    { background: linear-gradient(90deg,#f45c43,#eb3349); }
+  .prog-pct { font-weight:600; font-size:.82rem; min-width:36px; }
+
+  /* Status badges */
+  .badge-present { background:#d1f5ea; color:#0a7c50; }
+  .badge-late    { background:#fff3cd; color:#856404; }
+  .badge-absent  { background:#fde8e8; color:#b82121; }
+  .badge-excused { background:#e8eaf8; color:#4c5680; }
+  .status-badge {
+    display:inline-block; padding:2px 8px;
+    border-radius:20px; font-size:.76rem; font-weight:600;
+  }
+
+  .empty-state {
+    text-align:center; padding:56px 20px; color:#aab0c0;
+  }
+  .empty-state svg { width:52px;height:52px; opacity:.4; margin-bottom:12px; }
+
+  /* Anchor highlight */
+  .filter-section:target, .filter-section.highlighted {
+    border-color:#3a7bd5;
+    animation: highlight-pulse .6s ease;
+  }
+  @keyframes highlight-pulse {
+    0%   { box-shadow:0 0 0 4px rgba(58,123,213,.3); }
+    100% { box-shadow: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    {# ── Sarlavha ── #}
+    <div class="d-flex align-items-center justify-content-between mb-4">
+      <div>
+        <h1 class="h3 mb-0 fw-bold">Tinglovchilar Hisoboti</h1>
+        <small class="text-muted">Davomatni filtrlash va tahlil qilish</small>
+      </div>
+      <a href="{% url 'monitoring_dashboard' %}" class="btn btn-outline-secondary btn-sm px-4">
+        <i data-feather="arrow-left" style="width:14px;height:14px;margin-right:5px;"></i>
+        Dashboard
+      </a>
+    </div>
+
+    {# ── Filter panel ── #}
+    <form method="get" action="" id="filterForm">
+      <div class="filter-panel">
+        <div class="filter-title">
+          <i data-feather="sliders" style="width:17px;height:17px;color:#3a7bd5;"></i>
+          Hisobotni filtrlash
+        </div>
+
+        <div class="row g-3">
+
+          {# Yo'nalish bo'yicha #}
+          <div class="col-12">
+            <div class="filter-section {% if f_direction %}open{% endif %}" id="by-direction">
+              <div class="filter-section-header" onclick="toggleSection(this)">
+                <span class="fs-label">
+                  <i data-feather="compass"></i> Yo'nalish bo'yicha
+                  {% if f_direction %}<span class="badge bg-primary ms-1">aktiv</span>{% endif %}
+                </span>
+                <svg class="filter-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+              <div class="filter-section-body {% if not f_direction %}d-none{% endif %}">
+                <select name="direction" class="form-select form-select-sm" style="max-width:340px;"
+                        onchange="document.getElementById('filterForm').submit()">
+                  <option value="">— Barcha yo'nalishlar —</option>
+                  {% for d in directions %}
+                    <option value="{{ d.id }}" {% if f_direction == d.id|stringformat:"s" %}selected{% endif %}>
+                      {{ d.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {# Guruh bo'yicha #}
+          <div class="col-12">
+            <div class="filter-section {% if f_group %}open{% endif %}" id="by-group">
+              <div class="filter-section-header" onclick="toggleSection(this)">
+                <span class="fs-label">
+                  <i data-feather="users"></i> Guruh bo'yicha
+                  {% if f_group %}<span class="badge bg-primary ms-1">aktiv</span>{% endif %}
+                </span>
+                <svg class="filter-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+              <div class="filter-section-body {% if not f_group %}d-none{% endif %}">
+                <select name="group" class="form-select form-select-sm" style="max-width:340px;"
+                        onchange="document.getElementById('filterForm').submit()">
+                  <option value="">— Barcha guruhlar —</option>
+                  {% for g in all_groups %}
+                    <option value="{{ g.id }}" {% if f_group == g.id|stringformat:"s" %}selected{% endif %}>
+                      {{ g.name }} ({{ g.year }}-{{ g.get_month_display }})
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {# Yil + Oy #}
+          <div class="col-md-6">
+            <div class="filter-section {% if f_year %}open{% endif %}" id="by-year">
+              <div class="filter-section-header" onclick="toggleSection(this)">
+                <span class="fs-label">
+                  <i data-feather="calendar"></i> Yil bo'yicha
+                  {% if f_year %}<span class="badge bg-primary ms-1">aktiv</span>{% endif %}
+                </span>
+                <svg class="filter-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+              <div class="filter-section-body {% if not f_year %}d-none{% endif %}">
+                <select name="year" class="form-select form-select-sm" style="max-width:200px;"
+                        onchange="document.getElementById('filterForm').submit()">
+                  <option value="">— Barcha yillar —</option>
+                  {% for y in years %}
+                    <option value="{{ y }}" {% if f_year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="filter-section {% if f_month %}open{% endif %}" id="by-month">
+              <div class="filter-section-header" onclick="toggleSection(this)">
+                <span class="fs-label">
+                  <i data-feather="clock"></i> Oy bo'yicha
+                  {% if f_month %}<span class="badge bg-primary ms-1">aktiv</span>{% endif %}
+                </span>
+                <svg class="filter-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+              <div class="filter-section-body {% if not f_month %}d-none{% endif %}">
+                <select name="month" class="form-select form-select-sm" style="max-width:200px;"
+                        onchange="document.getElementById('filterForm').submit()">
+                  <option value="">— Barcha oylar —</option>
+                  {% for num, name in months %}
+                    <option value="{{ num }}" {% if f_month == num|stringformat:"s" %}selected{% endif %}>{{ name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {# Filtrni tozalash #}
+        {% if any_filter %}
+        <div class="mt-3">
+          <a href="{% url 'monitoring_reports' %}" class="btn btn-outline-danger btn-sm">
+            <i data-feather="x" style="width:13px;height:13px;margin-right:4px;"></i>
+            Filtrni tozalash
+          </a>
+        </div>
+        {% endif %}
+
+      </div>
+    </form>
+
+    {# ── Natija jadvali ── #}
+    <div class="report-card">
+      <div class="card-header">
+        <span class="title">
+          <i data-feather="table" style="width:16px;height:16px;margin-right:6px;color:#3a7bd5;"></i>
+          Natijalar
+          {% if report_rows %}
+            <span class="badge bg-secondary ms-2">{{ report_rows|length }} tinglovchi</span>
+          {% endif %}
+        </span>
+      </div>
+
+      {% if not any_filter %}
+        <div class="empty-state">
+          <i data-feather="filter" style="display:block;margin:0 auto 12px;"></i>
+          <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Filtr tanlang</div>
+          <small>Natijalarni ko'rish uchun yuqoridagi filterlardan birini tanlang</small>
+        </div>
+      {% elif not report_rows %}
+        <div class="empty-state">
+          <i data-feather="inbox" style="display:block;margin:0 auto 12px;"></i>
+          <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Ma'lumot topilmadi</div>
+          <small>Tanlangan filtrlarga mos tinglovchi yoki davomat yozuvi yo'q</small>
+        </div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tinglovchi</th>
+                <th>Guruh</th>
+                <th>Yo'nalish</th>
+                <th>Yil / Oy</th>
+                <th>Jami dars</th>
+                <th>Keldi</th>
+                <th>Kechikdi</th>
+                <th>Kelmadi</th>
+                <th>Sababli</th>
+                <th>Qoldirilgan (para)</th>
+                <th>Qoldirilgan (soat)</th>
+                <th>Davomat %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report_rows %}
+              <tr {% if row.exceeded %}style="background:#fff5f5;"{% endif %}>
+                <td style="color:#aab0c0; font-size:.8rem;">{{ forloop.counter }}</td>
+                <td>
+                  <div style="font-weight:600; font-size:.88rem;">{{ row.student.full_name }}</div>
+                </td>
+                <td style="font-size:.85rem;">{{ row.group.name }}</td>
+                <td style="font-size:.85rem; color:#5a6a85;">
+                  {{ row.direction.name|default:"—" }}
+                </td>
+                <td style="font-size:.82rem; white-space:nowrap;">
+                  {{ row.year }} / {{ row.month }}
+                </td>
+                <td style="text-align:center; font-weight:600;">{{ row.total }}</td>
+                <td style="text-align:center;">
+                  {% if row.present %}
+                    <span class="status-badge badge-present">{{ row.present }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="text-align:center;">
+                  {% if row.late %}
+                    <span class="status-badge badge-late">{{ row.late }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="text-align:center;">
+                  {% if row.absent %}
+                    <span class="status-badge badge-absent">{{ row.absent }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="text-align:center;">
+                  {% if row.excused %}
+                    <span class="status-badge badge-excused">{{ row.excused }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="text-align:center; font-weight:700;">
+                  {% if row.missed_paras %}
+                    <span class="status-badge {% if row.exceeded %}badge-absent{% else %}badge-late{% endif %}">
+                      {{ row.missed_paras }} para
+                    </span>
+                  {% else %}—{% endif %}
+                </td>
+                <td style="text-align:center; font-weight:700;">
+                  {% if row.missed_hours %}
+                    <span class="status-badge {% if row.exceeded %}badge-absent{% else %}badge-late{% endif %}">
+                      {{ row.missed_hours }} soat
+                    </span>
+                    {% if row.exceeded %}
+                      <div style="font-size:.72rem; color:#b82121; margin-top:2px;">⚠ limit oshgan</div>
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  <div class="prog-wrap">
+                    <div class="prog-bar">
+                      <div class="prog-fill {% if row.pct >= 80 %}green{% elif row.pct >= 60 %}yellow{% else %}red{% endif %}"
+                           style="width:{{ row.pct }}%"></div>
+                    </div>
+                    <span class="prog-pct {% if row.pct >= 80 %}text-success{% elif row.pct >= 60 %}text-warning{% else %}text-danger{% endif %}">
+                      {{ row.pct }}%
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+// Filter section toggle
+function toggleSection(headerEl) {
+  const section = headerEl.closest('.filter-section');
+  const body    = section.querySelector('.filter-section-body');
+  const isOpen  = section.classList.contains('open');
+  section.classList.toggle('open', !isOpen);
+  body.classList.toggle('d-none', isOpen);
+}
+
+// Anchor scroll + highlight
+document.addEventListener('DOMContentLoaded', function () {
+  const hash = window.location.hash;
+  if (hash) {
+    const el = document.querySelector(hash);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Auto-open
+      const body = el.querySelector('.filter-section-body');
+      if (body) {
+        el.classList.add('open');
+        body.classList.remove('d-none');
+      }
+      el.classList.add('highlighted');
+      setTimeout(() => el.classList.remove('highlighted'), 1200);
+    }
+  }
+});
+</script>
+{% endblock %}

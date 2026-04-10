@@ -26,6 +26,12 @@ urlpatterns = [
     path('salaries/', views.salary_list, name='salary_list'),
     path('salaries/<int:pk>/update/', views.salary_update, name='salary_update'),
 
+    # Monitoring bo'limi
+    path('monitoring/', views.monitoring_dashboard, name='monitoring_dashboard'),
+    path('monitoring/reports/', views.monitoring_reports, name='monitoring_reports'),
+    path('monitoring/limit/', views.monitoring_limit_settings, name='monitoring_limit_settings'),
+    path('monitoring/exceeded/', views.monitoring_exceeded, name='monitoring_exceeded'),
+
     # path('users/', views.users_view, name='users'),
     # path('categories/', views.categories, name='home_categories'),
     # path('categories/<int:pk>', views.category_detail, name='category_update'),

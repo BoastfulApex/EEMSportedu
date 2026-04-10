@@ -380,6 +380,11 @@ def build_report_for_employee(employee_id, start_date, end_date):
 def index(request):
     admin_user = request.admin_user
 
+    # Monitoring admini to'g'ridan-to'g'ri monitoring dashboardga yo'naltiriladi
+    if admin_user.is_monitoring and not (admin_user.is_org_admin or admin_user.is_filial_admin
+                                          or admin_user.is_hr_admin or admin_user.is_edu_admin):
+        return redirect(reverse('monitoring_dashboard'))
+
     data = {}
     filial = ''
     total_attendance_count = 0
@@ -1208,3 +1213,312 @@ def salary_update(request, pk):
             'hourly_rate'    : round(cfg.hourly_rate, 0),
         })
     return JsonResponse({'ok': False, 'errors': form.errors}, status=400)
+
+
+# ============================================================
+# MONITORING BO'LIMI — TINGLOVCHILAR HISOBOTLARI
+# ============================================================
+
+def _get_attendance_limit(admin_user, filial_id):
+    """Filial yoki tashkilot uchun davomat limitini qaytaradi."""
+    from apps.students.models import AttendanceLimit
+    limit = None
+    if filial_id:
+        limit = AttendanceLimit.objects.filter(
+            organization=admin_user.organization, filial_id=filial_id
+        ).first()
+    if not limit:
+        limit = AttendanceLimit.objects.filter(
+            organization=admin_user.organization, filial=None
+        ).first()
+    return limit
+
+
+def _compute_student_stats(student, group, para_hours):
+    """
+    Tinglovchining davomat statistikasini hisoblaydi.
+    GroupLesson jadvalida bor, lekin StudentAttendance yozuvi yo'q kunlar — 'absent' hisoblanadi.
+    """
+    from apps.students.models import StudentAttendance, GroupLesson
+    from django.db.models import Q
+
+    att_qs = StudentAttendance.objects.filter(student=student, group=group)
+
+    # Guruh uchun rejalashtirilgan darslar (GroupLesson orqali)
+    scheduled_dates = set(
+        GroupLesson.objects.filter(group=group).values_list('date', flat=True)
+    )
+    # Yozilgan davomat sanalari
+    recorded_dates = set(att_qs.values_list('date', flat=True))
+    # Yozilmagan (kelmagan) kunlar
+    unrecorded = len(scheduled_dates - recorded_dates)
+
+    total   = max(len(scheduled_dates), att_qs.count()) if scheduled_dates else att_qs.count()
+    present = att_qs.filter(status__in=['present', 'late']).count()
+    late    = att_qs.filter(Q(late_minutes__gt=0) | Q(status='late')).count()
+    absent  = att_qs.filter(status='absent').count() + unrecorded
+    excused = att_qs.filter(status='excused').count()
+
+    missed_paras = absent + excused
+    missed_hours = round(missed_paras * para_hours, 1)
+    pct = round(present / total * 100) if total > 0 else 0
+
+    return {
+        'total':        total,
+        'present':      present,
+        'late':         late,
+        'absent':       absent,
+        'excused':      excused,
+        'missed_paras': missed_paras,
+        'missed_hours': missed_hours,
+        'pct':          pct,
+    }
+
+
+def _build_exceeded_students(groups_qs, limit):
+    """Limitdan oshgan tinglovchilar ro'yxatini qaytaradi."""
+    if not limit:
+        return []
+
+    exceeded = []
+    seen = set()
+
+    for group in groups_qs.prefetch_related('students', 'direction'):
+        for student in group.students.all():
+            key = (student.id, group.id)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            stats = _compute_student_stats(student, group, limit.para_hours)
+
+            if stats['missed_hours'] > limit.max_missed_hours:
+                exceeded.append({
+                    'student':      student,
+                    'group':        group,
+                    'direction':    group.direction,
+                    'missed_paras': stats['missed_paras'],
+                    'missed_hours': stats['missed_hours'],
+                    'max_hours':    limit.max_missed_hours,
+                    'over_hours':   round(stats['missed_hours'] - limit.max_missed_hours, 1),
+                    'pct':          stats['pct'],
+                })
+
+    exceeded.sort(key=lambda r: r['missed_hours'], reverse=True)
+    return exceeded
+
+
+@monitoring_required
+def monitoring_dashboard(request):
+    """Monitoring dashboard: guruhlar, tinglovchilar, kechikish foizi."""
+    from apps.students.models import Group, StudentAttendance, Direction
+    from django.db.models import Count, Q
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    groups_qs = Group.objects.filter(organization=admin_user.organization)
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    groups_count = groups_qs.count()
+
+    # Noyob tinglovchilar soni
+    student_ids = set()
+    for g in groups_qs.prefetch_related('students'):
+        student_ids.update(g.students.values_list('id', flat=True))
+    students_count = len(student_ids)
+
+    # Kechikish foizi (barcha vaqt uchun)
+    att_qs    = StudentAttendance.objects.filter(group__in=groups_qs)
+    total_att = att_qs.count()
+    late_att  = att_qs.filter(Q(late_minutes__gt=0) | Q(status='late')).count()
+    late_pct  = round(late_att / total_att * 100, 1) if total_att > 0 else 0
+
+    # Limitdan oshgan tinglovchilar + jami qoldirilgan soat
+    limit          = _get_attendance_limit(admin_user, filial_id)
+    para_hours     = limit.para_hours if limit else 2.0
+    exceeded_list  = _build_exceeded_students(groups_qs, limit)
+    exceeded_count = len(exceeded_list)
+
+    # Jami qoldirilgan soat (barcha guruh tinglovchilari bo'yicha)
+    total_missed_hours = 0.0
+    seen_keys = set()
+    for group in groups_qs.prefetch_related('students'):
+        for student in group.students.all():
+            key = (student.id, group.id)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            stats = _compute_student_stats(student, group, para_hours)
+            total_missed_hours += stats['missed_hours']
+    total_missed_hours = round(total_missed_hours, 1)
+
+    # So'nggi 30 kunlik trend (kunlik davomat soni)
+    from datetime import date, timedelta
+    today      = date.today()
+    trend_data = []
+    for i in range(29, -1, -1):
+        d      = today - timedelta(days=i)
+        count  = att_qs.filter(date=d, status__in=['present', 'late']).count()
+        trend_data.append({'date': str(d), 'count': count})
+
+    return render(request, 'monitoring/dashboard.html', {
+        'segment':        'monitoring_dashboard',
+        'groups_count':   groups_count,
+        'students_count': students_count,
+        'late_pct':       late_pct,
+        'total_att':      total_att,
+        'trend_data':     json.dumps(trend_data),
+        'exceeded_count':      exceeded_count,
+        'limit':               limit,
+        'total_missed_hours':  total_missed_hours,
+        'data':                {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':  timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_reports(request):
+    """Tinglovchilar davomati hisoboti — yo'nalish, guruh, yil, oy filtrlari."""
+    from apps.students.models import Group, Direction, MONTH_CHOICES
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    # Filter uchun ma'lumotlar
+    base_filter = {'organization': admin_user.organization}
+    if filial_id:
+        base_filter['filial_id'] = filial_id
+
+    directions = Direction.objects.filter(**base_filter).order_by('name')
+    all_groups = Group.objects.filter(**base_filter).order_by('name')
+    years      = sorted(all_groups.values_list('year', flat=True).distinct())
+
+    # GET parametrlar
+    direction_id = request.GET.get('direction', '')
+    group_id     = request.GET.get('group', '')
+    year         = request.GET.get('year', '')
+    month        = request.GET.get('month', '')
+
+    # Guruhlarni filtrlash
+    filtered_groups = all_groups
+    if direction_id:
+        filtered_groups = filtered_groups.filter(direction_id=direction_id)
+    if year:
+        filtered_groups = filtered_groups.filter(year=year)
+    if month:
+        filtered_groups = filtered_groups.filter(month=month)
+    if group_id:
+        filtered_groups = filtered_groups.filter(id=group_id)
+
+    # Hisobot qatorlari
+    report_rows = []
+    any_filter  = any([direction_id, group_id, year, month])
+
+    limit = _get_attendance_limit(admin_user, filial_id)
+    para_hours = limit.para_hours if limit else 2.0
+    max_hours  = limit.max_missed_hours if limit else None
+
+    if any_filter:
+        for group in filtered_groups.prefetch_related('students', 'direction'):
+            for student in group.students.all():
+                s = _compute_student_stats(student, group, para_hours)
+                exceeded = max_hours is not None and s['missed_hours'] > max_hours
+                report_rows.append({
+                    'student':      student,
+                    'group':        group,
+                    'direction':    group.direction,
+                    'year':         group.year,
+                    'month':        group.get_month_display(),
+                    'total':        s['total'],
+                    'present':      s['present'],
+                    'late':         s['late'],
+                    'absent':       s['absent'],
+                    'excused':      s['excused'],
+                    'missed_paras': s['missed_paras'],
+                    'missed_hours': s['missed_hours'],
+                    'pct':          s['pct'],
+                    'exceeded':     exceeded,
+                })
+        report_rows.sort(key=lambda r: r['pct'])
+
+    return render(request, 'monitoring/reports.html', {
+        'segment':       'monitoring_reports',
+        'directions':    directions,
+        'all_groups':    all_groups,
+        'years':         years,
+        'months':        MONTH_CHOICES,
+        'report_rows':   report_rows,
+        'any_filter':    any_filter,
+        'f_direction':   direction_id,
+        'f_group':       group_id,
+        'f_year':        year,
+        'f_month':       month,
+        'limit':         limit,
+        'para_hours':    para_hours,
+        'max_hours':     max_hours,
+        'data':          {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_limit_settings(request):
+    """Davomat limiti sozlamalari."""
+    from apps.students.models import AttendanceLimit
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    limit, _ = AttendanceLimit.objects.get_or_create(
+        organization=admin_user.organization,
+        filial_id=filial_id if filial_id else None,
+    )
+
+    if request.method == 'POST':
+        try:
+            para_hours     = float(request.POST.get('para_hours', 2.0))
+            max_missed_hours = float(request.POST.get('max_missed_hours', 20.0))
+            if para_hours <= 0 or max_missed_hours <= 0:
+                raise ValueError
+            limit.para_hours       = para_hours
+            limit.max_missed_hours = max_missed_hours
+            limit.save()
+            return redirect(reverse('monitoring_limit_settings') + '?saved=1')
+        except (ValueError, TypeError):
+            pass
+
+    saved = request.GET.get('saved') == '1'
+    return render(request, 'monitoring/limit_settings.html', {
+        'segment':   'monitoring_limit',
+        'limit':     limit,
+        'saved':     saved,
+        'data':      {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_exceeded(request):
+    """Limitdan oshgan tinglovchilar ro'yxati."""
+    from apps.students.models import Group
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    groups_qs = Group.objects.filter(organization=admin_user.organization)
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    limit         = _get_attendance_limit(admin_user, filial_id)
+    exceeded_list = _build_exceeded_students(groups_qs, limit)
+
+    return render(request, 'monitoring/exceeded.html', {
+        'segment':        'monitoring_exceeded',
+        'exceeded_list':  exceeded_list,
+        'limit':          limit,
+        'data':           {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':  timezone.localtime(timezone.now()),
+    })
+

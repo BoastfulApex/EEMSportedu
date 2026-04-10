@@ -261,6 +261,42 @@ class GroupSchedule(models.Model):
         verbose_name_plural = "Guruh dars jadvallari"
 
 
+class AttendanceLimit(models.Model):
+    """
+    Davomat limiti — qancha soat dars qoldirish mumkin.
+    1 para = para_hours soat (default 2).
+    """
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='attendance_limits'
+    )
+    filial = models.ForeignKey(
+        Filial, on_delete=models.SET_NULL, null=True, blank=True, related_name='attendance_limits'
+    )
+    para_hours = models.FloatField(
+        default=2.0,
+        verbose_name="1 para (soat)"
+    )
+    max_missed_hours = models.FloatField(
+        default=20.0,
+        verbose_name="Maksimal qoldirish mumkin bo'lgan soat"
+    )
+
+    class Meta:
+        unique_together = ('organization', 'filial')
+        verbose_name = "Davomat limiti"
+        verbose_name_plural = "Davomat limitlari"
+
+    def __str__(self):
+        filial_name = self.filial.filial_name if self.filial else "Barcha filiallar"
+        return f"{filial_name} — max {self.max_missed_hours} soat"
+
+    @property
+    def max_missed_paras(self):
+        if self.para_hours > 0:
+            return self.max_missed_hours / self.para_hours
+        return 0
+
+
 class StudentAttendance(models.Model):
     """
     Tinglovchi davomati.

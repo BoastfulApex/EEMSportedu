@@ -99,6 +99,7 @@
 
       {# ── HISOBOT ── #}
       {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+      {% if not is_monitoring %}
       <li class="sidebar-header">Tahlil</li>
       <li class="sidebar-item {% if segment == 'report' %}active{% endif %}">
         <a class="sidebar-link" href="{% url 'home_get_dates' %}">
@@ -106,6 +107,82 @@
           <span>Hisobotlar</span>
         </a>
       </li>
+      {% endif %}
+      {% endif %}
+
+      {# ── MONITORING BO'LIMI ── #}
+      {% if is_monitoring %}
+        {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+        <li class="sidebar-header">Monitoring</li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_dashboard' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_dashboard' %}">
+            <i data-feather="activity"></i>
+            <span>Dashboard</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_limit' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_limit_settings' %}">
+            <i data-feather="settings"></i>
+            <span>Limit sozlamalari</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_exceeded' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_exceeded' %}">
+            <i data-feather="alert-triangle"></i>
+            <span>Limitdan oshganlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_reports' %}active{% endif %}">
+          <a class="sidebar-link {% if segment != 'monitoring_reports' %}collapsed{% endif %}"
+             data-bs-toggle="collapse"
+             href="#monitoringReportsAccordion"
+             aria-expanded="{% if segment == 'monitoring_reports' %}true{% else %}false{% endif %}">
+            <i data-feather="bar-chart-2"></i>
+            <span>Hisobotlar</span>
+            <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </a>
+          <ul id="monitoringReportsAccordion"
+              class="collapse list-unstyled {% if segment == 'monitoring_reports' %}show{% endif %}">
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}?direction=&group=&year=&month=">
+                <i data-feather="list"></i>
+                <span>Barchasi</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-direction">
+                <i data-feather="compass"></i>
+                <span>Yo'nalish bo'yicha</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-group">
+                <i data-feather="users"></i>
+                <span>Guruh bo'yicha</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-year">
+                <i data-feather="calendar"></i>
+                <span>Yil bo'yicha</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-month">
+                <i data-feather="clock"></i>
+                <span>Oy bo'yicha</span>
+              </a>
+            </li>
+          </ul>
+        </li>
+        {% endif %}
       {% endif %}
 
       {# ── FILIAL ADMIN: Accordion ── #}
