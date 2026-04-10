@@ -96,47 +96,49 @@ def verify_student_face(student, base64_image):
 
 def find_student_location(student, latitude, longitude, today):
     """
-    Bugungi dars joylashuvini topadi va studentning GPS koordinatlari
-    shu joyga 150 metr ichida ekanini tekshiradi.
+    Tinglovchi guruhining BUGUNGI sanaga belgilangan lokatsiyasini topadi
+    va GPS koordinatlarini FAQAT shu lokatsiyaga nisbatan tekshiradi.
 
     Tekshiruv tartibi:
-      1. GroupLesson (muayyan kun) → lesson.location (Location, lat/lng bor)
-      2. GroupSchedule → building (Building, lat/lng bor)
-      3. Tashkilotning barcha Location lari (fallback)
+      1. GroupLesson (muayyan kun uchun alohida belgilangan) → lesson.location
+      2. GroupSchedule (haftalik jadval) → building — bugungi hafta kuni va sana oralig'iga mos
+
+    Agar bugun uchun lokatsiya topilmasa → (None, False, group, None, None) + sabab
+    Agar topilsa lekin student 150m dan uzoqda → (loc_name, False, group, lesson, dist)
+    Agar topilsa va yaqin → (loc_name, True, group, lesson, dist)
 
     Qaytaradi: (location_name, ok: bool, group, lesson, distance_meters)
     """
     from apps.students.models import GroupLesson, GroupSchedule
-    from apps.main.models import Location
+    from django.db.models import Q
 
-    group = student.groups.filter(lessons__date=today).first()
-    if not group:
-        group = student.groups.first()
+    # Tinglovchining guruhini aniqlash
+    group = student.groups.first()
     if not group:
         return None, False, None, None, None
 
-    # ── 1. GroupLesson → Location ────────────────────────────
+    # ── 1. GroupLesson — bugungi kun uchun maxsus belgilangan ──
     lesson = GroupLesson.objects.filter(
         group=group, date=today
     ).select_related('location', 'smena').first()
 
     if lesson and lesson.location:
         loc = lesson.location
+        loc_name = loc.name or "Dars lokatsiyasi"
         if loc.latitude and loc.longitude:
             dist = get_distance_meters(latitude, longitude, loc.latitude, loc.longitude)
-            if dist < 150:
-                return loc.name or "Dars lokatsiyasi", True, group, lesson, int(dist)
+            ok = dist < 150
+            return loc_name, ok, group, lesson, int(dist)
         else:
-            # Koordinatlar yo'q — lokatsiyani o'tkazib yuborish
-            return loc.name or "Dars lokatsiyasi", True, group, lesson, None
+            # Koordinatlar kiritilmagan — lokatsiya tekshiruvini o'tkazib yuborish
+            return loc_name, True, group, lesson, None
 
-    # ── 2. GroupSchedule → Building ─────────────────────────
+    # ── 2. GroupSchedule — haftalik jadval bo'yicha bino ──────
     uz_weekdays = {
         0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
         3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba',
     }
     weekday_name = uz_weekdays.get(today.weekday())
-    from django.db.models import Q
     schedule = GroupSchedule.objects.filter(
         group=group,
         is_active=True,
@@ -148,25 +150,16 @@ def find_student_location(student, latitude, longitude, today):
 
     if schedule and schedule.building:
         b = schedule.building
+        loc_name = b.name or "Dars binosi"
         if b.latitude and b.longitude:
             dist = get_distance_meters(latitude, longitude, b.latitude, b.longitude)
-            if dist < 150:
-                return b.name or "Dars binosi", True, group, None, int(dist)
+            ok = dist < 150
+            return loc_name, ok, group, None, int(dist)
         else:
-            return b.name or "Dars binosi", True, group, None, None
+            # Koordinatlar kiritilmagan — o'tkazib yuborish
+            return loc_name, True, group, None, None
 
-    # ── 3. Tashkilot lokatsiyalari (fallback) ───────────────
-    if student.filial and student.filial.organization:
-        locations = Location.objects.filter(
-            organization=student.filial.organization,
-            latitude__isnull=False,
-            longitude__isnull=False,
-        )
-        for loc in locations:
-            dist = get_distance_meters(latitude, longitude, loc.latitude, loc.longitude)
-            if dist < 150:
-                return loc.name or "Lokatsiya", True, group, None, int(dist)
-
+    # Bugun uchun lokatsiya belgilanmagan
     return None, False, group, None, None
 
 
@@ -248,10 +241,12 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
             }, status=403)
 
         if not loc_ok:
-            return Response({
-                "status": "FAIL",
-                "reason": "Siz dars lokatsiyasiga yaqin emassiz."
-            }, status=403)
+            if loc_name is None:
+                reason = "Bugun uchun dars lokatsiyasi belgilanmagan. Administrator bilan bog'laning."
+            else:
+                dist_txt = f" (siz {distance_m} m uzoqdasiz)" if distance_m is not None else ""
+                reason = f"Siz «{loc_name}» lokatsiyasiga yaqin emassiz{dist_txt}."
+            return Response({"status": "FAIL", "reason": reason}, status=403)
 
         # ── 4. Jadval vaqtlarini aniqlash ────────────────────
         expected_start, expected_end = get_lesson_schedule_times(group, today, lesson)
