@@ -24,3 +24,7 @@ class StudentCheckState(StatesGroup):
 class ReportDateRange(StatesGroup):
     waiting_start = State()   # foydalanuvchi boshlanish sanasini kiritadi
     waiting_end   = State()   # foydalanuvchi tugash sanasini kiritadi
+
+
+class EduAdminAttendance(StatesGroup):
+    waiting_for_photo = State()   # edu_admin tinglovchi rasmini yuborishi kutilmoqda

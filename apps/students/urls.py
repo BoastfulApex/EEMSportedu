@@ -44,4 +44,8 @@ urlpatterns = [
 
     # AJAX
     path('ajax/directions/', views.directions_by_filial, name='directions_by_filial'),
+
+    # Telegram ID tozalash
+    path('telegram-reset/', views.student_telegram_reset, name='student_telegram_reset'),
+    path('telegram-reset/<int:pk>/confirm/', views.student_telegram_reset_confirm, name='student_telegram_reset_confirm'),
 ]

@@ -30,6 +30,7 @@ from utils.db_api.database import (
     get_students_by_group,
     link_student_telegram,
     has_student_photo,
+    is_edu_admin_user,
 )
 from utils.face_check import detect_face
 
@@ -57,6 +58,16 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
     # ── 1. Admin ─────────────────────────────────────────────
     if await is_user_admin(user.id):
+        # Edu admin → alohida menyu
+        if await is_edu_admin_user(user.id):
+            from keyboards.inline.main_inline import edu_admin_keyboard
+            await message.answer(
+                "👋 Assalomu alaykum, <b>O'quv bo'limi</b> administratori!\n\n"
+                "Quyidagi bo'limlardan birini tanlang:",
+                parse_mode="HTML",
+                reply_markup=edu_admin_keyboard()
+            )
+            return
         from keyboards.inline.menu_button import admin_menu_keyboard
         await message.answer(
             "👋 Assalomu alaykum, Hurmatli Administrator!\n\n"

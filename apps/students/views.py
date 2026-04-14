@@ -638,6 +638,62 @@ def delete_group_lesson(request, pk, date_str):
     return JsonResponse({'ok': True})
 
 
+# ============================================================
+# TINGLOVCHI TELEGRAM ID TOZALASH
+# ============================================================
+
+@edu_admin_required
+def student_telegram_reset(request):
+    """
+    Tinglovchini ID yoki ismi bo'yicha qidirish va
+    Telegram bog'lanishini tozalash (qayta ro'yxatdan o'tish uchun).
+    """
+    admin_user, filial_id = _get_admin_filial(request)
+
+    query    = request.GET.get('q', '').strip()
+    students = []
+    searched = False
+
+    if query:
+        searched = True
+        qs = Student.objects.filter(organization=admin_user.organization)
+
+        # Raqam bo'lsa — ID bo'yicha ham qidirish
+        if query.isdigit():
+            qs = qs.filter(
+                Q(full_name__icontains=query) | Q(id=int(query))
+            )
+        else:
+            qs = qs.filter(full_name__icontains=query)
+
+        students = qs.order_by('full_name')[:50]
+
+    return render(request, 'home/students/telegram_reset.html', {
+        'segment':  'telegram_reset',
+        'query':    query,
+        'searched': searched,
+        'students': students,
+    })
+
+
+@edu_admin_required
+def student_telegram_reset_confirm(request, pk):
+    """POST: Tinglovchining Telegram ID va user bog'lanishini tozalaydi."""
+    from django.urls import reverse
+    if request.method != 'POST':
+        return redirect('student_telegram_reset')
+
+    admin_user, _ = _get_admin_filial(request)
+    student = get_object_or_404(Student, pk=pk, organization=admin_user.organization)
+
+    student.telegram_id = None
+    student.user        = None
+    student.save(update_fields=['telegram_id', 'user'])
+
+    url = reverse('student_telegram_reset')
+    return redirect(f"{url}?q={student.full_name}&reset_done={student.pk}")
+
+
 def student_web_app(request):
     """Tinglovchi davomat web sahifasi (Telegram WebApp orqali ochiladi)"""
     from django.views.decorators.clickjacking import xframe_options_exempt

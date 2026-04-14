@@ -95,6 +95,13 @@
           </a>
         </li>
 
+        <li class="sidebar-item {% if segment == 'telegram_reset' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'student_telegram_reset' %}">
+            <i data-feather="user-x"></i>
+            <span>Telegram ID tozalash</span>
+          </a>
+        </li>
+
         {% endif %}
       {% endif %}
 

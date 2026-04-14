@@ -1499,3 +1499,200 @@ def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
         return True
     except Exception:
         return False
+
+
+# ============================================================
+# EDU ADMIN — YUZNI TANIB DAVOMAT QAYD QILISH
+# ============================================================
+
+@sync_to_async
+def is_edu_admin_user(telegram_id: int) -> bool:
+    """Telegram ID bo'yicha edu_admin (yoki org_admin) ekanligini tekshiradi."""
+    return Administrator.objects.filter(
+        telegram_id=telegram_id,
+        role__in=['edu_admin', 'org_admin'],
+    ).exists()
+
+
+@sync_to_async
+def get_students_with_face_images(admin_telegram_id: int) -> list:
+    """
+    Edu admin tashkilotiga tegishli, yuz rasmi tasdiqlangan tinglovchilar ro'yxati.
+    Har bir element: {'id', 'full_name', 'phone', 'image_path'}
+    """
+    from apps.students.models import Student
+    from django.conf import settings
+    import os
+
+    admin = Administrator.objects.filter(telegram_id=admin_telegram_id).first()
+    if not admin:
+        return []
+
+    qs = Student.objects.filter(
+        organization=admin.organization,
+        face_image__isnull=False,
+        face_verified=True,
+    ).exclude(face_image='')
+
+    results = []
+    for s in qs:
+        abs_path = os.path.join(settings.MEDIA_ROOT, str(s.face_image))
+        if os.path.exists(abs_path):
+            results.append({
+                'id':         s.id,
+                'full_name':  s.full_name,
+                'phone':      s.phone or '',
+                'image_path': abs_path,
+            })
+    return results
+
+
+@sync_to_async
+def get_all_students_for_admin(admin_telegram_id: int, search: str = '') -> list:
+    """
+    Edu admin tashkilotidagi barcha tinglovchilar (qo'lda tanlash uchun).
+    search bo'lsa — ismi bo'yicha filtrlanadi.
+    """
+    from apps.students.models import Student
+
+    admin = Administrator.objects.filter(telegram_id=admin_telegram_id).first()
+    if not admin:
+        return []
+
+    qs = Student.objects.filter(organization=admin.organization).order_by('full_name')
+    if search:
+        qs = qs.filter(full_name__icontains=search)
+
+    return [
+        {
+            'id':        s.id,
+            'full_name': s.full_name,
+            'phone':     s.phone or '',
+            'has_face':  bool(s.face_image and s.face_verified),
+        }
+        for s in qs[:50]   # Telegramda ko'p tugma bo'lmasin
+    ]
+
+
+@sync_to_async
+def get_student_by_telegram_id(telegram_id: int, admin_telegram_id: int) -> dict | None:
+    """
+    Telegram ID bo'yicha tinglovchini topadi.
+    Faqat admin tashkilotiga tegishli tinglovchi qaytariladi.
+    """
+    from apps.students.models import Student
+
+    admin = Administrator.objects.filter(telegram_id=admin_telegram_id).first()
+    if not admin:
+        return None
+
+    try:
+        s = Student.objects.get(
+            telegram_id=telegram_id,
+            organization=admin.organization,
+        )
+        return {
+            'id':        s.id,
+            'full_name': s.full_name,
+            'phone':     s.phone or '',
+            'has_face':  bool(s.face_image and s.face_verified),
+            'telegram_id': s.telegram_id,
+        }
+    except Student.DoesNotExist:
+        return None
+
+
+@sync_to_async
+def admin_mark_student_attendance(student_id: int, admin_telegram_id: int) -> dict:
+    """
+    Edu admin tinglovchi uchun check_in yoki check_out qayd qiladi.
+
+    Mantiq:
+      - Bugun check_in yo'q → check_in qo'yiladi
+      - Bugun check_in bor, check_out yo'q → check_out qo'yiladi
+      - Ikkalasi ham bor → 'already_complete' xatosi
+    """
+    from apps.students.models import Student, StudentAttendance, GroupLesson
+    from datetime import date, datetime
+    from django.utils import timezone
+
+    today    = date.today()
+    now_time = timezone.localtime(timezone.now()).time()
+
+    try:
+        student = Student.objects.get(id=student_id)
+    except Student.DoesNotExist:
+        return {'ok': False, 'error': 'student_not_found'}
+
+    # Bugungi dars guruhi
+    group = student.groups.filter(lessons__date=today).first()
+    if not group:
+        group = student.groups.first()
+    if not group:
+        return {'ok': False, 'error': 'no_group', 'student_name': student.full_name}
+
+    att = StudentAttendance.objects.filter(
+        student=student, group=group, date=today
+    ).first()
+
+    # ── CHECK_IN ─────────────────────────────────────────────
+    if att is None or not att.check_in:
+        lesson = GroupLesson.objects.filter(
+            group=group, date=today, smena__isnull=False
+        ).select_related('smena').first()
+
+        late_minutes = 0
+        status = 'present'
+        if lesson and lesson.smena:
+            exp_dt = datetime.combine(today, lesson.smena.para1_start)
+            now_dt = datetime.combine(today, now_time)
+            if now_dt > exp_dt:
+                late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+                status = 'late'
+
+        if att is None:
+            StudentAttendance.objects.create(
+                student=student,
+                group=group,
+                date=today,
+                check_in=now_time,
+                status=status,
+                late_minutes=late_minutes,
+            )
+        else:
+            att.check_in     = now_time
+            att.status       = status
+            att.late_minutes = late_minutes
+            att.save(update_fields=['check_in', 'status', 'late_minutes'])
+
+        return {
+            'ok':           True,
+            'action':       'check_in',
+            'time':         now_time.strftime('%H:%M'),
+            'student_name': student.full_name,
+            'group_name':   group.name,
+            'late_minutes': late_minutes,
+        }
+
+    # ── CHECK_OUT ────────────────────────────────────────────
+    if not att.check_out:
+        att.check_out = now_time
+        att.save(update_fields=['check_out'])
+        return {
+            'ok':           True,
+            'action':       'check_out',
+            'time':         now_time.strftime('%H:%M'),
+            'student_name': student.full_name,
+            'group_name':   group.name,
+            'check_in':     att.check_in.strftime('%H:%M'),
+        }
+
+    # ── ALLAQACHON TUGALLANGAN ───────────────────────────────
+    return {
+        'ok':           False,
+        'error':        'already_complete',
+        'student_name': student.full_name,
+        'group_name':   group.name,
+        'check_in':     att.check_in.strftime('%H:%M'),
+        'check_out':    att.check_out.strftime('%H:%M'),
+    }
