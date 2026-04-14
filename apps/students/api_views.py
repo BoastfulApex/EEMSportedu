@@ -338,3 +338,238 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                 "expected_end": expected_end.strftime('%H:%M') if expected_end else None,
             }
             return Response(result_data, status=200)
+
+
+# ============================================================
+# EDU ADMIN — TINGLOVCHI QIDIRISH
+# ============================================================
+
+class EduAdminStudentsAPIView(generics.GenericAPIView):
+    """
+    GET /students/edu-admin/api/students/?q=<query>&admin_id=<telegram_id>
+
+    O'quv admin uchun tinglovchilarni qidirish.
+    Bugungi davomat holati ham qaytariladi.
+    """
+    renderer_classes       = [JSONRenderer]
+    authentication_classes = []
+    permission_classes     = [AllowAny]
+
+    def get(self, request):
+        from apps.superadmin.models import Administrator
+        from apps.students.models import Student, StudentAttendance
+        from django.db.models import Q
+
+        # Admin ID tekshirish
+        try:
+            admin_telegram_id = int(request.GET.get('admin_id', ''))
+        except (ValueError, TypeError):
+            return Response({"error": "admin_id kerak"}, status=400)
+
+        q = request.GET.get('q', '').strip()
+        if not q:
+            return Response({"students": []})
+
+        # Admin mavjudligini va rolini tekshirish
+        try:
+            admin = Administrator.objects.select_related('filial').get(
+                telegram_id=admin_telegram_id,
+                role__in=['edu_admin', 'org_admin', 'filial_admin']
+            )
+        except Administrator.DoesNotExist:
+            return Response({"error": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
+
+        # Tinglovchilarni qidirish
+        qs = Student.objects.all()
+        if admin.filial:
+            qs = qs.filter(filial=admin.filial)
+
+        try:
+            sid = int(q)
+            qs = qs.filter(Q(full_name__icontains=q) | Q(id=sid))
+        except ValueError:
+            qs = qs.filter(full_name__icontains=q)
+
+        qs = qs[:30]
+
+        # Bugungi davomat
+        today = timezone.localdate()
+        att_map = {
+            att.student_id: att
+            for att in StudentAttendance.objects.filter(
+                student__in=qs, date=today
+            )
+        }
+
+        students_data = []
+        for s in qs:
+            att = att_map.get(s.id)
+            students_data.append({
+                'id':         s.id,
+                'full_name':  s.full_name,
+                'phone':      s.phone or '',
+                'check_in':   att.check_in.strftime('%H:%M')  if att and att.check_in  else None,
+                'check_out':  att.check_out.strftime('%H:%M') if att and att.check_out else None,
+            })
+
+        return Response({'students': students_data})
+
+
+# ============================================================
+# EDU ADMIN — TINGLOVCHI DAVOMATINI QAYD QILISH
+# ============================================================
+
+class EduAdminCheckSerializer(serializers.Serializer):
+    admin_telegram_id = serializers.IntegerField()
+    student_id        = serializers.IntegerField()
+    type              = serializers.ChoiceField(choices=['check_in', 'check_out'])
+    latitude          = serializers.FloatField()
+    longitude         = serializers.FloatField()
+
+
+class EduAdminCheckAPIView(generics.CreateAPIView):
+    """
+    POST /students/edu-admin/api/check/
+
+    O'quv admin tomonidan tinglovchi davomatini qayd qilish.
+    Lokatsiya tekshiruvi tinglovchining guruh joylashuvi asosida amalga oshiriladi.
+    """
+    serializer_class       = EduAdminCheckSerializer
+    renderer_classes       = [JSONRenderer]
+    authentication_classes = []
+    permission_classes     = [AllowAny]
+
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        admin_telegram_id = data['admin_telegram_id']
+        student_id        = data['student_id']
+        check_type        = data['type']
+        latitude          = data['latitude']
+        longitude         = data['longitude']
+
+        # ── 1. Admin tekshirish ──────────────────────────────
+        from apps.superadmin.models import Administrator
+        from apps.students.models import Student, StudentAttendance
+
+        try:
+            admin = Administrator.objects.select_related('filial').get(
+                telegram_id=admin_telegram_id,
+                role__in=['edu_admin', 'org_admin', 'filial_admin']
+            )
+        except Administrator.DoesNotExist:
+            return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
+
+        # ── 2. Tinglovchini topish ───────────────────────────
+        try:
+            qs = Student.objects.select_related('filial__organization')
+            if admin.filial:
+                qs = qs.filter(filial=admin.filial)
+            student = qs.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({"status": "FAIL", "reason": "Tinglovchi topilmadi"}, status=404)
+
+        today    = timezone.localdate()
+        now_time = timezone.localtime().time()
+
+        # ── 3. Lokatsiya tekshirish ──────────────────────────
+        loc_name, loc_ok, group, lesson, distance_m = find_student_location(
+            student, latitude, longitude, today
+        )
+
+        if not group:
+            return Response({
+                "status": "FAIL",
+                "reason": "Tinglovchi hech qanday guruhga biriktirilmagan."
+            }, status=403)
+
+        if not loc_ok:
+            if loc_name is None:
+                reason = "Bugun uchun dars lokatsiyasi belgilanmagan. Administrator bilan bog'laning."
+            else:
+                dist_txt = f" (siz {distance_m} m uzoqdasiz)" if distance_m is not None else ""
+                reason = f"Dars lokatsiyasiga yaqin emassiz: «{loc_name}»{dist_txt}."
+            return Response({"status": "FAIL", "reason": reason}, status=403)
+
+        # ── 4. Jadval vaqtlarini aniqlash ────────────────────
+        expected_start, expected_end = get_lesson_schedule_times(group, today, lesson)
+
+        # ── 5. Davomat yozish ────────────────────────────────
+        if check_type == 'check_in':
+            existing = StudentAttendance.objects.filter(
+                student=student, group=group, date=today, check_in__isnull=False
+            ).first()
+            if existing:
+                return Response({
+                    "status": "FAIL",
+                    "reason": f"{student.full_name} bugun allaqachon {existing.check_in.strftime('%H:%M')} da kirganligi qayd etilgan."
+                }, status=400)
+
+            late_minutes = 0
+            status_val   = 'present'
+            if expected_start:
+                now_dt = datetime.combine(today, now_time)
+                exp_dt = datetime.combine(today, expected_start)
+                if now_dt > exp_dt:
+                    late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+                    status_val   = 'late'
+
+            attendance, created = StudentAttendance.objects.get_or_create(
+                student=student, group=group, date=today,
+                defaults={
+                    'check_in':        now_time,
+                    'status':          status_val,
+                    'late_minutes':    late_minutes,
+                    'verified_by_face': False,
+                }
+            )
+            if not created:
+                attendance.check_in     = now_time
+                attendance.status       = status_val
+                attendance.late_minutes = late_minutes
+                attendance.save(update_fields=['check_in', 'status', 'late_minutes'])
+
+            return Response({
+                "status":         "SUCCESS",
+                "type":           "check_in",
+                "student_name":   student.full_name,
+                "time":           now_time.strftime('%H:%M'),
+                "location":       loc_name,
+                "distance_meters": distance_m,
+                "late_minutes":   late_minutes,
+                "expected_start": expected_start.strftime('%H:%M') if expected_start else None,
+            }, status=200)
+
+        else:  # check_out
+            attendance = StudentAttendance.objects.filter(
+                student=student, group=group, date=today, check_in__isnull=False
+            ).first()
+            if not attendance:
+                return Response({
+                    "status": "FAIL",
+                    "reason": f"{student.full_name}ning kirishi hali qayd etilmagan."
+                }, status=400)
+
+            early_leave_minutes = 0
+            if expected_end:
+                now_dt     = datetime.combine(today, now_time)
+                exp_end_dt = datetime.combine(today, expected_end)
+                if now_dt < exp_end_dt:
+                    early_leave_minutes = int((exp_end_dt - now_dt).total_seconds() / 60)
+
+            attendance.check_out           = now_time
+            attendance.early_leave_minutes = early_leave_minutes
+            attendance.save(update_fields=['check_out', 'early_leave_minutes'])
+
+            return Response({
+                "status":               "SUCCESS",
+                "type":                 "check_out",
+                "student_name":         student.full_name,
+                "time":                 now_time.strftime('%H:%M'),
+                "location":             loc_name,
+                "distance_meters":      distance_m,
+                "early_leave_minutes":  early_leave_minutes,
+                "expected_end":         expected_end.strftime('%H:%M') if expected_end else None,
+            }, status=200)

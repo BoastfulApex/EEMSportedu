@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .api_views import StudentCheckAPIView
+from .api_views import StudentCheckAPIView, EduAdminStudentsAPIView, EduAdminCheckAPIView
 
 urlpatterns = [
     # Tinglovchi davomat web app va API
@@ -48,4 +48,9 @@ urlpatterns = [
     # Telegram ID tozalash
     path('telegram-reset/', views.student_telegram_reset, name='student_telegram_reset'),
     path('telegram-reset/<int:pk>/confirm/', views.student_telegram_reset_confirm, name='student_telegram_reset_confirm'),
+
+    # Edu admin WebApp
+    path('edu-admin/web-app/', views.edu_admin_web_app, name='edu_admin_web_app'),
+    path('edu-admin/api/students/', EduAdminStudentsAPIView.as_view(), name='edu_admin_students_api'),
+    path('edu-admin/api/check/', EduAdminCheckAPIView.as_view(), name='edu_admin_check_api'),
 ]

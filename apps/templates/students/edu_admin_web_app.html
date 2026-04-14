@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Davomat</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg:       var(--tg-theme-bg-color,         #ffffff);
+      --text:     var(--tg-theme-text-color,        #1a1a2e);
+      --hint:     var(--tg-theme-hint-color,        #6c757d);
+      --btn:      var(--tg-theme-button-color,      #0d6efd);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff);
+      --sec-bg:   var(--tg-theme-secondary-bg-color,#f0f4ff);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Ikkala screen ── */
+    .screen { display: none; flex-direction: column; min-height: 100vh; padding: 16px; }
+    .screen.active { display: flex; }
+
+    /* ── Header ── */
+    .header { text-align: center; margin-bottom: 16px; }
+    .header h1 { font-size: 1.25rem; font-weight: 700; }
+    .header p  { font-size: 0.8rem; color: var(--hint); margin-top: 3px; }
+
+    /* ── Search box ── */
+    .search-row {
+      display: flex; gap: 8px;
+      margin-bottom: 14px;
+    }
+    .search-row input {
+      flex: 1;
+      padding: 11px 14px;
+      border: 1.5px solid #d0d7e4;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      background: var(--sec-bg);
+      color: var(--text);
+      outline: none;
+    }
+    .search-row input:focus { border-color: var(--btn); }
+    .search-row button {
+      padding: 11px 16px;
+      border: none;
+      border-radius: 12px;
+      background: var(--btn);
+      color: var(--btn-text);
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    /* ── Student list ── */
+    .student-list { flex: 1; overflow-y: auto; }
+    .student-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--sec-bg);
+      margin-bottom: 8px;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .student-item:active { background: #e0e8ff; }
+    .student-item .name  { font-weight: 600; font-size: 0.92rem; }
+    .student-item .phone { font-size: 0.76rem; color: var(--hint); margin-top: 2px; }
+    .att-badge {
+      font-size: 0.72rem; font-weight: 600;
+      padding: 3px 8px; border-radius: 20px;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .att-none    { background: #f3f4f6; color: #6b7280; }
+    .att-in      { background: #d1fae5; color: #065f46; }
+    .att-full    { background: #dbeafe; color: #1e40af; }
+
+    .empty-hint {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--hint);
+      font-size: 0.9rem;
+    }
+
+    /* ── Back button ── */
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: none; border: none;
+      color: var(--btn); font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; padding: 0; margin-bottom: 14px;
+    }
+
+    /* ── Student card (screen 2) ── */
+    .student-card {
+      background: var(--sec-bg);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .student-card .sc-name  { font-size: 1.05rem; font-weight: 700; }
+    .student-card .sc-phone { font-size: 0.82rem; color: var(--hint); margin-top: 3px; }
+    .student-card .sc-att   { margin-top: 8px; font-size: 0.82rem; }
+    .student-card .sc-att span { font-weight: 600; }
+
+    /* ── Status card ── */
+    .status-card {
+      background: var(--sec-bg);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.87rem;
+      min-height: 48px;
+    }
+    .status-card .icon { font-size: 1.3rem; flex-shrink: 0; }
+    .status-card.success { background: #d4edda; }
+    .status-card.error   { background: #f8d7da; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 3px solid #ccc; border-top-color: var(--btn);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Action buttons ── */
+    .btn-row {
+      display: flex; gap: 10px;
+      margin-bottom: 10px;
+    }
+    .btn {
+      flex: 1; padding: 16px 10px;
+      border: none; border-radius: 14px;
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 4px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active   { transform: scale(0.96); opacity: 0.85; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+    .btn .lbl { font-size: 0.7rem; font-weight: 400; opacity: 0.85; }
+    .btn-enter { background: #198754; color: #fff; }
+    .btn-exit  { background: #dc3545; color: #fff; }
+
+    /* ── Info block ── */
+    .info-block {
+      display: none;
+      background: var(--sec-bg);
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-size: 0.83rem;
+      line-height: 1.6;
+    }
+    .info-block.visible { display: block; }
+    .info-block .late  { color: #c0392b; font-weight: 600; }
+    .info-block .early { color: #e67e22; font-weight: 600; }
+    .info-block .ok    { color: #27ae60; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <!-- ════════════ SCREEN 1: Tinglovchi qidirish ════════════ -->
+  <div id="screenSearch" class="screen active">
+    <div class="header">
+      <h1>📋 Davomat qayd qilish</h1>
+      <p id="dateLabel1"></p>
+    </div>
+
+    <div class="search-row">
+      <input type="text" id="searchInput"
+             placeholder="Ism yoki ID raqamini kiriting..."
+             autocomplete="off"
+             inputmode="search" />
+      <button id="searchBtn">🔍</button>
+    </div>
+
+    <div class="student-list" id="studentList">
+      <div class="empty-hint">Tinglovchini topish uchun ism yoki ID kiriting</div>
+    </div>
+  </div>
+
+  <!-- ════════════ SCREEN 2: Davomat qayd qilish ════════════ -->
+  <div id="screenMark" class="screen">
+    <button class="back-btn" id="backBtn">← Orqaga</button>
+
+    <div class="student-card" id="studentCard">
+      <div class="sc-name" id="scName">—</div>
+      <div class="sc-phone" id="scPhone"></div>
+      <div class="sc-att" id="scAtt"></div>
+    </div>
+
+    <div class="status-card" id="statusCard">
+      <span class="icon">📍</span>
+      <span id="statusMsg">Joylashuv aniqlanadi...</span>
+    </div>
+
+    <div class="btn-row" id="btnRow">
+      <button class="btn btn-enter" id="checkInBtn" disabled>
+        🔓<span class="lbl">Kirish</span>
+      </button>
+      <button class="btn btn-exit" id="checkOutBtn" disabled>
+        🔒<span class="lbl">Chiqish</span>
+      </button>
+    </div>
+
+    <div class="info-block" id="infoBlock"></div>
+  </div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    // ── Admin Telegram ID ──────────────────────────────────
+    const adminId = tg.initDataUnsafe?.user?.id || null;
+
+    // ── Sana ──────────────────────────────────────────────
+    const now = new Date();
+    const dateTxt = now.toLocaleDateString("uz-UZ", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+    document.getElementById("dateLabel1").textContent = dateTxt;
+
+    // ── Tanlangan tinglovchi ────────────────────────────────
+    let selectedStudent = null;  // {id, full_name, phone, check_in, check_out}
+
+    // ── Elementlar ─────────────────────────────────────────
+    const screenSearch  = document.getElementById("screenSearch");
+    const screenMark    = document.getElementById("screenMark");
+    const searchInput   = document.getElementById("searchInput");
+    const studentList   = document.getElementById("studentList");
+    const statusCard    = document.getElementById("statusCard");
+    const statusMsg     = document.getElementById("statusMsg");
+    const checkInBtn    = document.getElementById("checkInBtn");
+    const checkOutBtn   = document.getElementById("checkOutBtn");
+    const infoBlock     = document.getElementById("infoBlock");
+
+    // ── Ekran almashtirish ─────────────────────────────────
+    function showScreen(name) {
+      screenSearch.classList.toggle("active", name === "search");
+      screenMark.classList.toggle("active",   name === "mark");
+    }
+
+    // ── Status yordamchilari ────────────────────────────────
+    function setStatus(type, icon, msg) {
+      statusCard.className = "status-card " + type;
+      statusCard.innerHTML = `<span class="icon">${icon}</span><span id="statusMsg">${msg}</span>`;
+    }
+    function setLoading(msg) {
+      statusCard.className = "status-card";
+      statusCard.innerHTML = `<div class="spinner"></div><span id="statusMsg">${msg}</span>`;
+    }
+
+    // ── Tinglovchi qidirish ────────────────────────────────
+    async function searchStudents() {
+      const q = searchInput.value.trim();
+      if (!q) return;
+
+      if (!adminId) {
+        studentList.innerHTML = '<div class="empty-hint">⚠️ Telegram foydalanuvchi aniqlanmadi</div>';
+        return;
+      }
+
+      studentList.innerHTML = '<div class="empty-hint">⏳ Qidirilmoqda...</div>';
+
+      try {
+        const res  = await fetch(`/students/edu-admin/api/students/?q=${encodeURIComponent(q)}&admin_id=${adminId}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          studentList.innerHTML = `<div class="empty-hint">❌ ${data.error || "Xatolik"}</div>`;
+          return;
+        }
+
+        const students = data.students || [];
+        if (!students.length) {
+          studentList.innerHTML = '<div class="empty-hint">Tinglovchi topilmadi</div>';
+          return;
+        }
+
+        studentList.innerHTML = students.map(s => {
+          let badge, badgeClass;
+          if (s.check_in && s.check_out) {
+            badge = `✅ ${s.check_in} — ${s.check_out}`;
+            badgeClass = "att-full";
+          } else if (s.check_in) {
+            badge = `🔓 ${s.check_in} kirdi`;
+            badgeClass = "att-in";
+          } else {
+            badge = "⬜ Kelmagan";
+            badgeClass = "att-none";
+          }
+          return `
+            <div class="student-item" data-id="${s.id}"
+                 data-name="${escHtml(s.full_name)}"
+                 data-phone="${escHtml(s.phone)}"
+                 data-checkin="${s.check_in || ''}"
+                 data-checkout="${s.check_out || ''}">
+              <div>
+                <div class="name">${escHtml(s.full_name)}</div>
+                ${s.phone ? `<div class="phone">${escHtml(s.phone)}</div>` : ''}
+              </div>
+              <span class="att-badge ${badgeClass}">${badge}</span>
+            </div>`;
+        }).join('');
+
+        // Klik hodisalari
+        studentList.querySelectorAll('.student-item').forEach(el => {
+          el.addEventListener('click', () => selectStudent({
+            id:         +el.dataset.id,
+            full_name:  el.dataset.name,
+            phone:      el.dataset.phone,
+            check_in:   el.dataset.checkin  || null,
+            check_out:  el.dataset.checkout || null,
+          }));
+        });
+
+      } catch (err) {
+        studentList.innerHTML = `<div class="empty-hint">⚠️ Tarmoq xatosi: ${err.message}</div>`;
+      }
+    }
+
+    // ── Tinglovchi tanlash ─────────────────────────────────
+    function selectStudent(s) {
+      selectedStudent = s;
+
+      // Tinglovchi kartasi
+      document.getElementById("scName").textContent  = s.full_name;
+      document.getElementById("scPhone").textContent = s.phone || '';
+
+      const attEl = document.getElementById("scAtt");
+      if (s.check_in && s.check_out) {
+        attEl.innerHTML = `Bugun: <span>🔓 ${s.check_in}</span> — <span>🔒 ${s.check_out}</span>`;
+      } else if (s.check_in) {
+        attEl.innerHTML = `Bugun: <span>🔓 ${s.check_in} kirdi</span>`;
+      } else {
+        attEl.innerHTML = `Bugun: <span style="color:var(--hint)">hali qayd etilmagan</span>`;
+      }
+
+      // Tugmalar holati
+      checkInBtn.disabled  = !!s.check_in;   // kirish qayd bo'lsa o'chiriladi
+      checkOutBtn.disabled = !s.check_in || !!s.check_out; // kirish bo'lmasa yoki chiqish qayd bo'lsa o'chiriladi
+
+      infoBlock.className = "info-block";
+      infoBlock.innerHTML = '';
+      setStatus("", "📍", "Joylashuv aniqlanadi...");
+
+      showScreen("mark");
+    }
+
+    // ── Orqaga ─────────────────────────────────────────────
+    document.getElementById("backBtn").addEventListener("click", () => {
+      selectedStudent = null;
+      showScreen("search");
+    });
+
+    // ── Joylashuv olish ────────────────────────────────────
+    function getLocation() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation)
+          return reject(new Error("Geolokatsiya qo'llab-quvvatlanmaydi"));
+        navigator.geolocation.getCurrentPosition(
+          p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+          e => reject(e),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      });
+    }
+
+    // ── Davomat qayd qilish ────────────────────────────────
+    async function performCheck(type) {
+      if (!selectedStudent) return;
+      if (!adminId) {
+        setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi.");
+        return;
+      }
+
+      checkInBtn.disabled  = true;
+      checkOutBtn.disabled = true;
+      setLoading("Joylashuv aniqlanmoqda...");
+
+      let lat, lon;
+      try {
+        const loc = await getLocation();
+        lat = loc.latitude;
+        lon = loc.longitude;
+      } catch (err) {
+        setStatus("error", "⚠️", "Joylashuv aniqlanmadi: " + err.message);
+        checkInBtn.disabled  = !!selectedStudent.check_in;
+        checkOutBtn.disabled = !selectedStudent.check_in || !!selectedStudent.check_out;
+        return;
+      }
+
+      setLoading("Yuborilmoqda...");
+
+      try {
+        const res  = await fetch("/students/edu-admin/api/check/", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            admin_telegram_id: adminId,
+            student_id:        selectedStudent.id,
+            type:              type,
+            latitude:          lat,
+            longitude:         lon,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data?.status === "SUCCESS") {
+          const label  = type === "check_in" ? "Kirish qayd etildi" : "Chiqish qayd etildi";
+          const locStr = data.location ? ` — ${data.location}` : "";
+          const distStr = data.distance_meters != null
+            ? `<br><small style="color:var(--hint)">📍 ${data.distance_meters} m</small>`
+            : "";
+          setStatus("success", "✅", `${label}: ${data.time}${locStr}${distStr}`);
+          showInfoBlock(data, type);
+
+          // Tinglovchi ma'lumotlarini yangilash
+          if (type === "check_in") {
+            selectedStudent.check_in   = data.time;
+            checkInBtn.disabled  = true;
+            checkOutBtn.disabled = false;
+            document.getElementById("scAtt").innerHTML =
+              `Bugun: <span>🔓 ${data.time} kirdi</span>`;
+          } else {
+            selectedStudent.check_out  = data.time;
+            checkOutBtn.disabled = true;
+            document.getElementById("scAtt").innerHTML =
+              `Bugun: <span>🔓 ${selectedStudent.check_in}</span> — <span>🔒 ${data.time}</span>`;
+          }
+
+          // 2.5 sekund kutib search ekraniga qaytish
+          setTimeout(() => {
+            showScreen("search");
+            selectedStudent = null;
+          }, 2500);
+
+        } else {
+          const reason = data?.reason || data?.detail || "Noma'lum xato";
+          setStatus("error", "❌", reason);
+          checkInBtn.disabled  = !!selectedStudent.check_in;
+          checkOutBtn.disabled = !selectedStudent.check_in || !!selectedStudent.check_out;
+        }
+
+      } catch (err) {
+        setStatus("error", "⚠️", "Xatolik: " + err.message);
+        checkInBtn.disabled  = !!selectedStudent.check_in;
+        checkOutBtn.disabled = !selectedStudent.check_in || !!selectedStudent.check_out;
+      }
+    }
+
+    function showInfoBlock(data, type) {
+      infoBlock.innerHTML = '';
+      infoBlock.classList.remove("visible");
+      if (type === "check_in") {
+        const lateMin  = data.late_minutes  || 0;
+        const expStart = data.expected_start;
+        if (lateMin > 0) {
+          infoBlock.innerHTML =
+            `📅 Dars boshlanishi: ${expStart}<br>` +
+            `<span class="late">⏰ Kechikish: ${lateMin} daqiqa</span>`;
+          infoBlock.classList.add("visible");
+        } else if (expStart) {
+          infoBlock.innerHTML =
+            `📅 Dars boshlanishi: ${expStart}<br>` +
+            `<span class="ok">👍 O'z vaqtida!</span>`;
+          infoBlock.classList.add("visible");
+        }
+      } else {
+        const earlyMin = data.early_leave_minutes || 0;
+        const expEnd   = data.expected_end;
+        if (earlyMin > 0) {
+          infoBlock.innerHTML =
+            `📅 Dars tugashi: ${expEnd}<br>` +
+            `<span class="early">⏰ Erta ketish: ${earlyMin} daqiqa</span>`;
+          infoBlock.classList.add("visible");
+        }
+      }
+    }
+
+    // ── HTML escape ────────────────────────────────────────
+    function escHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── Hodisalar ──────────────────────────────────────────
+    document.getElementById("searchBtn").addEventListener("click", searchStudents);
+    searchInput.addEventListener("keydown", e => { if (e.key === "Enter") searchStudents(); });
+
+    checkInBtn.addEventListener("click",  () => performCheck("check_in"));
+    checkOutBtn.addEventListener("click", () => performCheck("check_out"));
+  </script>
+</body>
+</html>

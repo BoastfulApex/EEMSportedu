@@ -19,17 +19,18 @@ async def employee_main_keyboard() -> InlineKeyboardMarkup:
 
 def edu_admin_keyboard() -> InlineKeyboardMarkup:
     """O'quv bo'limi admin uchun asosiy menyu"""
+    edu_web_app_url = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="📸 Tinglovchini qayd qilish",
-                callback_data="edu_mark_attendance"
-            )
+                text="📋 Tinglovchi davomatini qayd qilish",
+                web_app=WebAppInfo(url=edu_web_app_url)
+            ),
         ],
         [
             InlineKeyboardButton(
-                text="🔍 Tinglovchini qidirish",
-                callback_data="edu_search_student"
+                text="📸 Yuz orqali aniqlash",
+                callback_data="edu_mark_attendance"
             )
         ],
     ])

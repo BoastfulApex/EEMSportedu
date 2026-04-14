@@ -696,8 +696,15 @@ def student_telegram_reset_confirm(request, pk):
 
 def student_web_app(request):
     """Tinglovchi davomat web sahifasi (Telegram WebApp orqali ochiladi)"""
-    from django.views.decorators.clickjacking import xframe_options_exempt
     html_template = loader.get_template('students/web_app_page.html')
+    response = HttpResponse(html_template.render({}, request))
+    response['X-Frame-Options'] = 'ALLOWALL'
+    return response
+
+
+def edu_admin_web_app(request):
+    """O'quv admin davomat web sahifasi (Telegram WebApp orqali ochiladi)"""
+    html_template = loader.get_template('students/edu_admin_web_app.html')
     response = HttpResponse(html_template.render({}, request))
     response['X-Frame-Options'] = 'ALLOWALL'
     return response
