@@ -421,18 +421,25 @@ class EduAdminStudentsAPIView(generics.GenericAPIView):
 
 class EduAdminCheckSerializer(serializers.Serializer):
     admin_telegram_id = serializers.IntegerField()
-    student_id        = serializers.IntegerField()
-    type              = serializers.ChoiceField(choices=['check_in', 'check_out'])
     latitude          = serializers.FloatField()
     longitude         = serializers.FloatField()
+    image             = serializers.CharField()   # base64 rasm
 
 
 class EduAdminCheckAPIView(generics.CreateAPIView):
     """
     POST /students/edu-admin/api/check/
 
-    O'quv admin tomonidan tinglovchi davomatini qayd qilish.
-    Lokatsiya tekshiruvi tinglovchining guruh joylashuvi asosida amalga oshiriladi.
+    O'quv admin WebApp orqali tinglovchi davomatini qayd qilish.
+
+    Ish tartibi:
+      1. Admin tekshirish
+      2. Admin filialidagi yuz rasmi bor tinglovchilarni olish
+      3. Rasmni diskka saqlash
+      4. Yuz tanish (face_recognition yoki mediapipe)
+      5. Lokatsiya tekshirish (150 m radius)
+      6. Bugungi davomatga qarab check_in yoki check_out avtomatik aniqlash
+      7. Davomat yozish
     """
     serializer_class       = EduAdminCheckSerializer
     renderer_classes       = [JSONRenderer]
@@ -440,15 +447,18 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
     permission_classes     = [AllowAny]
 
     def create(self, request):
+        import os
+        import tempfile
+        from utils.face_recognition_util import recognize_student
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
         admin_telegram_id = data['admin_telegram_id']
-        student_id        = data['student_id']
-        check_type        = data['type']
         latitude          = data['latitude']
         longitude         = data['longitude']
+        image_base64      = data['image']
 
         # ── 1. Admin tekshirish ──────────────────────────────
         from apps.superadmin.models import Administrator
@@ -462,19 +472,81 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         except Administrator.DoesNotExist:
             return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
 
-        # ── 2. Tinglovchini topish ───────────────────────────
+        # ── 2. Filial tinglovchilarini olish ─────────────────
+        qs = Student.objects.filter(face_image__isnull=False, face_verified=True)
+        if admin.filial:
+            qs = qs.filter(filial=admin.filial)
+
+        students_data = []
+        for s in qs.only('id', 'full_name', 'phone', 'face_image'):
+            try:
+                path = s.face_image.path
+                if os.path.exists(path):
+                    students_data.append({
+                        'id':         s.id,
+                        'full_name':  s.full_name,
+                        'phone':      s.phone or '',
+                        'image_path': path,
+                    })
+            except Exception:
+                pass
+
+        if not students_data:
+            return Response({
+                "status": "FAIL",
+                "reason": "Tizimda yuz rasmi yuklangan tinglovchi topilmadi."
+            }, status=404)
+
+        # ── 3. Rasmni vaqtinchalik faylga saqlash ────────────
+        tmp_path = None
         try:
-            qs = Student.objects.select_related('filial__organization')
+            if "," in image_base64:
+                _, raw = image_base64.split(",", 1)
+            else:
+                raw = image_base64
+            import base64 as _b64
+            img_bytes = _b64.b64decode(raw)
+
+            fd, tmp_path = tempfile.mkstemp(suffix=".jpg", prefix="edu_admin_")
+            with os.fdopen(fd, "wb") as f:
+                f.write(img_bytes)
+        except Exception as ex:
+            return Response({"status": "FAIL", "reason": f"Rasm o'qib bo'lmadi: {ex}"}, status=400)
+
+        # ── 4. Yuz tanish ─────────────────────────────────────
+        try:
+            result = recognize_student(tmp_path, students_data, top_n=1)
+        except Exception as ex:
+            return Response({"status": "FAIL", "reason": f"Yuz tanish xatosi: {ex}"}, status=500)
+        finally:
+            try:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+        if not result.get('found') or not result.get('best_match'):
+            if not result.get('candidates'):
+                reason = "Rasmda yuz aniqlanmadi. Aniqroq rasm olishga harakat qiling."
+            else:
+                reason = "Tinglovchi tanib olunmadi. Yuz aniqroq ko'rinishi kerak."
+            return Response({"status": "FAIL", "reason": reason}, status=404)
+
+        student_id = result['best_match']['id']
+
+        # ── 5. Tinglovchini DB dan topish ─────────────────────
+        try:
+            student_qs = Student.objects.select_related('filial__organization')
             if admin.filial:
-                qs = qs.filter(filial=admin.filial)
-            student = qs.get(id=student_id)
+                student_qs = student_qs.filter(filial=admin.filial)
+            student = student_qs.get(id=student_id)
         except Student.DoesNotExist:
             return Response({"status": "FAIL", "reason": "Tinglovchi topilmadi"}, status=404)
 
         today    = timezone.localdate()
         now_time = timezone.localtime().time()
 
-        # ── 3. Lokatsiya tekshirish ──────────────────────────
+        # ── 6. Lokatsiya tekshirish ───────────────────────────
         loc_name, loc_ok, group, lesson, distance_m = find_student_location(
             student, latitude, longitude, today
         )
@@ -482,31 +554,63 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         if not group:
             return Response({
                 "status": "FAIL",
-                "reason": "Tinglovchi hech qanday guruhga biriktirilmagan."
+                "reason": f"✅ {student.full_name} aniqlandi, lekin hech qanday guruhga biriktirilmagan."
             }, status=403)
 
         if not loc_ok:
             if loc_name is None:
-                reason = "Bugun uchun dars lokatsiyasi belgilanmagan. Administrator bilan bog'laning."
+                reason = f"✅ {student.full_name} aniqlandi.\n⚠️ Bugun uchun dars lokatsiyasi belgilanmagan."
             else:
-                dist_txt = f" (siz {distance_m} m uzoqdasiz)" if distance_m is not None else ""
-                reason = f"Dars lokatsiyasiga yaqin emassiz: «{loc_name}»{dist_txt}."
+                dist_txt = f" ({distance_m} m uzoqda)" if distance_m is not None else ""
+                reason = f"✅ {student.full_name} aniqlandi.\n⚠️ Dars lokatsiyasiga yaqin emassiz: «{loc_name}»{dist_txt}."
             return Response({"status": "FAIL", "reason": reason}, status=403)
 
-        # ── 4. Jadval vaqtlarini aniqlash ────────────────────
+        # ── 7. Jadval vaqtlari ────────────────────────────────
         expected_start, expected_end = get_lesson_schedule_times(group, today, lesson)
 
-        # ── 5. Davomat yozish ────────────────────────────────
-        if check_type == 'check_in':
-            existing = StudentAttendance.objects.filter(
-                student=student, group=group, date=today, check_in__isnull=False
-            ).first()
-            if existing:
-                return Response({
-                    "status": "FAIL",
-                    "reason": f"{student.full_name} bugun allaqachon {existing.check_in.strftime('%H:%M')} da kirganligi qayd etilgan."
-                }, status=400)
+        # ── 8. Davomat holati → check_in yoki check_out ──────
+        existing = StudentAttendance.objects.filter(
+            student=student, group=group, date=today
+        ).first()
 
+        if existing and existing.check_in and existing.check_out:
+            return Response({
+                "status": "FAIL",
+                "reason": (
+                    f"✅ {student.full_name}\n"
+                    f"ℹ️ Bugungi davomat allaqachon to'liq:\n"
+                    f"🔓 Kirdi: {existing.check_in.strftime('%H:%M')}\n"
+                    f"🔒 Chiqdi: {existing.check_out.strftime('%H:%M')}"
+                )
+            }, status=400)
+
+        if existing and existing.check_in:
+            # ── check_out ──────────────────────────────────
+            early_leave_minutes = 0
+            if expected_end:
+                now_dt     = datetime.combine(today, now_time)
+                exp_end_dt = datetime.combine(today, expected_end)
+                if now_dt < exp_end_dt:
+                    early_leave_minutes = int((exp_end_dt - now_dt).total_seconds() / 60)
+
+            existing.check_out           = now_time
+            existing.early_leave_minutes = early_leave_minutes
+            existing.save(update_fields=['check_out', 'early_leave_minutes'])
+
+            return Response({
+                "status":               "SUCCESS",
+                "type":                 "check_out",
+                "student_name":         student.full_name,
+                "time":                 now_time.strftime('%H:%M'),
+                "check_in":             existing.check_in.strftime('%H:%M'),
+                "location":             loc_name,
+                "distance_meters":      distance_m,
+                "early_leave_minutes":  early_leave_minutes,
+                "expected_end":         expected_end.strftime('%H:%M') if expected_end else None,
+            }, status=200)
+
+        else:
+            # ── check_in ───────────────────────────────────
             late_minutes = 0
             status_val   = 'present'
             if expected_start:
@@ -519,17 +623,18 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             attendance, created = StudentAttendance.objects.get_or_create(
                 student=student, group=group, date=today,
                 defaults={
-                    'check_in':        now_time,
-                    'status':          status_val,
-                    'late_minutes':    late_minutes,
-                    'verified_by_face': False,
+                    'check_in':         now_time,
+                    'status':           status_val,
+                    'late_minutes':     late_minutes,
+                    'verified_by_face': True,
                 }
             )
             if not created:
-                attendance.check_in     = now_time
-                attendance.status       = status_val
-                attendance.late_minutes = late_minutes
-                attendance.save(update_fields=['check_in', 'status', 'late_minutes'])
+                attendance.check_in         = now_time
+                attendance.status           = status_val
+                attendance.late_minutes     = late_minutes
+                attendance.verified_by_face = True
+                attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
 
             return Response({
                 "status":         "SUCCESS",
@@ -540,36 +645,4 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 "distance_meters": distance_m,
                 "late_minutes":   late_minutes,
                 "expected_start": expected_start.strftime('%H:%M') if expected_start else None,
-            }, status=200)
-
-        else:  # check_out
-            attendance = StudentAttendance.objects.filter(
-                student=student, group=group, date=today, check_in__isnull=False
-            ).first()
-            if not attendance:
-                return Response({
-                    "status": "FAIL",
-                    "reason": f"{student.full_name}ning kirishi hali qayd etilmagan."
-                }, status=400)
-
-            early_leave_minutes = 0
-            if expected_end:
-                now_dt     = datetime.combine(today, now_time)
-                exp_end_dt = datetime.combine(today, expected_end)
-                if now_dt < exp_end_dt:
-                    early_leave_minutes = int((exp_end_dt - now_dt).total_seconds() / 60)
-
-            attendance.check_out           = now_time
-            attendance.early_leave_minutes = early_leave_minutes
-            attendance.save(update_fields=['check_out', 'early_leave_minutes'])
-
-            return Response({
-                "status":               "SUCCESS",
-                "type":                 "check_out",
-                "student_name":         student.full_name,
-                "time":                 now_time.strftime('%H:%M'),
-                "location":             loc_name,
-                "distance_meters":      distance_m,
-                "early_leave_minutes":  early_leave_minutes,
-                "expected_end":         expected_end.strftime('%H:%M') if expected_end else None,
             }, status=200)
