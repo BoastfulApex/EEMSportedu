@@ -1371,14 +1371,18 @@ def get_student_report_months(telegram_id: int):
 def get_student_monthly_report(telegram_id: int, year: int, month: int):
     """
     Tinglovchining oylik hisoboti — har bir dars kuni uchun para holati.
-    Kechikish: kirish vaqti para boshlanishidan 15 daqiqa oldin bo'lmasa kechikkan.
+
+    Qoidalar (web hisoboti bilan bir xil):
+    - check_in > para_start + 40 daqiqa  → o'sha paraga kelmadi (absent)
+    - check_in <= para_start              → o'z vaqtida (present)
+    - para_start < check_in <= para_start + 40 → kechikdi (late), kechikish daqiqasi ko'rsatiladi
+    - check_out yo'q: faqat birinchi kelgan para hisoblanadi, keyingilariga kelmadi
     """
     from apps.students.models import Student, StudentAttendance, GroupLesson
     from datetime import date, datetime, timedelta
     import calendar as cal_mod
 
-    PARA_MINUTES = 80
-    LATE_THRESHOLD = 15
+    LATE_THRESHOLD = 40  # 40 daqiqadan ko'p kech → kelmadi
 
     try:
         student = Student.objects.get(telegram_id=telegram_id)
@@ -1396,7 +1400,8 @@ def get_student_monthly_report(telegram_id: int, year: int, month: int):
     }
     lessons = {
         l.date: l for l in GroupLesson.objects.filter(
-            group=group, date__year=year, date__month=month
+            group=group, date__year=year, date__month=month,
+            smena__isnull=False,
         ).select_related('smena')
     }
 
@@ -1417,10 +1422,28 @@ def get_student_monthly_report(telegram_id: int, year: int, month: int):
 
         attendance = attendances.get(d)
         smena = lesson.smena
-        check_in = attendance.check_in if attendance else None
+        check_in   = attendance.check_in  if attendance else None
+        check_out  = attendance.check_out if attendance else None
+        att_status = attendance.status    if attendance else None
         paras = []
 
-        if smena:
+        # Davomat yozilmagan yoki "absent"/"excused" → barcha paralar yo'q
+        if not check_in or att_status in ('absent', 'excused'):
+            for para_num, para_start in [
+                (1, smena.para1_start),
+                (2, smena.para2_start),
+                (3, smena.para3_start),
+            ]:
+                if not para_start:
+                    continue
+                total_paras  += 1
+                absent_paras += 1
+                paras.append({'num': para_num, 'status': 'absent', 'late_min': 0})
+        else:
+            check_in_dt       = datetime.combine(d, check_in)
+            has_checkout      = bool(check_out)
+            found_kelgan_para = False
+
             for para_num, para_start in [
                 (1, smena.para1_start),
                 (2, smena.para2_start),
@@ -1429,23 +1452,27 @@ def get_student_monthly_report(telegram_id: int, year: int, month: int):
                 if not para_start:
                     continue
                 total_paras += 1
-                para_end = (datetime.combine(d, para_start) + timedelta(minutes=PARA_MINUTES)).time()
-                threshold = (datetime.combine(d, para_start) - timedelta(minutes=LATE_THRESHOLD)).time()
+                para_dt = datetime.combine(d, para_start)
 
-                if not check_in:
+                if check_in_dt > para_dt + timedelta(minutes=LATE_THRESHOLD):
+                    # 40+ daqiqa kech → paraga kelmadi
                     paras.append({'num': para_num, 'status': 'absent', 'late_min': 0})
                     absent_paras += 1
-                elif check_in <= threshold:
-                    paras.append({'num': para_num, 'status': 'present', 'late_min': 0})
-                elif check_in <= para_end:
-                    late_min = max(0, int(
-                        (datetime.combine(d, check_in) - datetime.combine(d, para_start)).total_seconds() / 60
-                    ))
-                    paras.append({'num': para_num, 'status': 'late', 'late_min': late_min})
-                    late_paras += 1
+                elif not has_checkout and found_kelgan_para:
+                    # Check_out yo'q: birinchi kelgan paradan keyingisi → kelmadi
+                    paras.append({'num': para_num, 'status': 'absent', 'late_min': 0})
+                    absent_paras += 1
                 else:
-                    paras.append({'num': para_num, 'status': 'absent', 'late_min': 0})
-                    absent_paras += 1
+                    # Paraga keldi
+                    late_min = max(0, int(
+                        (check_in_dt - para_dt).total_seconds() / 60
+                    ))
+                    if late_min > 0:
+                        paras.append({'num': para_num, 'status': 'late', 'late_min': late_min})
+                        late_paras += 1
+                    else:
+                        paras.append({'num': para_num, 'status': 'present', 'late_min': 0})
+                    found_kelgan_para = True
 
         results.append({
             'date': d, 'day_uz': uz_days[d.weekday()],
