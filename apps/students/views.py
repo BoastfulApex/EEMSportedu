@@ -655,10 +655,11 @@ def _build_student_report(group, date_from, date_to):
     """
     Guruh tinglovchilari bo'yicha davomat hisobotini qaytaradi.
 
-    Qoidalar:
-    - Faqat smena belgilangan va BUGUNGI KUNGACHA bo'lgan dars kunlari hisobga olinadi.
-    - Tinglovchi kelgan, lekin barcha paralarga 30+ daqiqa kech qolgan → kelmadi.
-    - Jadval bo'lmagan kunda kelmadi hisoblanmaydi.
+    Hisob PARA asosida (kun emas):
+    - check_in <= para_start          → para keldi (o'z vaqtida)
+    - para_start < check_in <= +40min → para keldi (kechikib, kechikdi +1)
+    - check_in > para_start + 40min   → paraga kelmadi
+    - Davomat yozilmagan kun          → barcha paralarga kelmadi
     """
     from .models import StudentAttendance, GroupLesson
     import datetime as _dt
@@ -667,7 +668,6 @@ def _build_student_report(group, date_from, date_to):
     effective_to = min(date_to, today)
     LATE_THRESHOLD = 40  # daqiqa
 
-    # Faqat smena belgilangan dars kunlari
     lessons_qs = GroupLesson.objects.filter(
         group=group,
         date__gte=date_from,
@@ -675,8 +675,13 @@ def _build_student_report(group, date_from, date_to):
         smena__isnull=False,
     ).select_related('smena').order_by('date')
 
-    total_lessons = lessons_qs.count()
     lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+
+    # Jami paralar soni (barcha dars kunlarining paralari yig'indisi)
+    total_paras = sum(
+        1 + (1 if l.smena.para2_start else 0) + (1 if l.smena.para3_start else 0)
+        for l in lesson_map.values()
+    )
 
     students = group.students.order_by('full_name')
     rows = []
@@ -691,67 +696,62 @@ def _build_student_report(group, date_from, date_to):
 
         present_count    = 0
         absent_count     = 0
-        late_days        = 0
+        late_count       = 0
         late_mins_total  = 0
         early_count      = 0
         early_mins_total = 0
 
         for date, lesson in lesson_map.items():
             smena = lesson.smena
-            att   = att_by_date.get(date)
-
-            # Davomat yozilmagan, yoki kelmagan, yoki check_in yo'q
-            if att is None or att.status == 'absent' or not att.check_in:
-                absent_count += 1
-                continue
-
-            # Sababli kelmagan
-            if att.status == 'excused':
-                absent_count += 1
-                continue
-
-            # Para tekshiruvi: kamida bitta paraga yetib kelganmi?
             para_starts = [smena.para1_start]
             if smena.para2_start:
                 para_starts.append(smena.para2_start)
             if smena.para3_start:
                 para_starts.append(smena.para3_start)
+            para_count = len(para_starts)
 
+            att = att_by_date.get(date)
+
+            # Kelmagan yoki davomat yozilmagan — barcha paralar missed
+            if att is None or not att.check_in or att.status in ('absent', 'excused'):
+                absent_count += para_count
+                continue
+
+            # Har bir parani alohida tekshir
             check_in_dt = _dt.datetime.combine(date, att.check_in)
-            attended_any = any(
-                check_in_dt <= _dt.datetime.combine(date, p) + _dt.timedelta(minutes=LATE_THRESHOLD)
-                for p in para_starts
-            )
-
-            if not attended_any:
-                # Keldi, lekin barcha paralarga 30+ daqiqa kech — kelmadi
-                absent_count += 1
-            else:
-                present_count += 1
-                para1_dt = _dt.datetime.combine(date, smena.para1_start)
-                if check_in_dt > para1_dt:
-                    late_days += 1
-                    late_mins_total += att.late_minutes or int((check_in_dt - para1_dt).total_seconds() / 60)
+            for p in para_starts:
+                para_dt = _dt.datetime.combine(date, p)
+                if check_in_dt <= para_dt:
+                    # O'z vaqtida
+                    present_count += 1
+                elif check_in_dt <= para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                    # 1–40 daqiqa kech — keldi, lekin kechikdi
+                    present_count   += 1
+                    late_count      += 1
+                    late_mins_total += int((check_in_dt - para_dt).total_seconds() / 60)
+                else:
+                    # 40+ daqiqa kech — paraga kelmadi
+                    absent_count += 1
 
             if att.early_leave_minutes and att.early_leave_minutes > 0:
                 early_count      += 1
                 early_mins_total += att.early_leave_minutes
 
-        percent = round(present_count / total_lessons * 100) if total_lessons else 0
+        percent = round(present_count / total_paras * 100) if total_paras else 0
 
         rows.append({
             'student':    student,
             'present':    present_count,
             'absent':     absent_count,
-            'late_count': late_days,
+            'late_count': late_count,
             'late_mins':  late_mins_total,
             'early_count': early_count,
             'early_mins': early_mins_total,
             'percent':    percent,
-            'total':      total_lessons,
+            'total':      total_paras,
         })
 
-    return rows, total_lessons
+    return rows, total_paras
 
 
 @monitoring_required
@@ -843,7 +843,7 @@ def _export_student_report_xlsx(group, date_from, date_to):
 
     headers = [
         '#', 'F.I.Sh',
-        f'Jami dars\n({total_lessons})', 'Keldi', 'Kelmadi',
+        f'Jami para\n({total_lessons})', 'Keldi\n(para)', 'Kelmadi\n(para)',
         'Kechikdi (marta)', 'Kechikish (daqiqa)',
         'Erta ketdi (marta)', 'Erta ketish (daqiqa)',
         'Davomat %'
