@@ -190,6 +190,13 @@
             <span>Tinglovchilar hisoboti</span>
           </a>
         </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_groups' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_groups_list' %}">
+            <i data-feather="book-open"></i>
+            <span>Guruhlar</span>
+          </a>
+        </li>
         {% endif %}
       {% endif %}
 

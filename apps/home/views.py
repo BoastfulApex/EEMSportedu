@@ -1579,3 +1579,322 @@ def monitoring_exceeded(request):
         'tashkent_time':  timezone.localtime(timezone.now()),
     })
 
+
+# ============================================================
+# MONITORING — YANGI GURUHLAR BO'LIMI
+# ============================================================
+
+def _get_para_attendance(att, lesson):
+    """
+    Bir kun uchun para-davomat ma'lumotini qaytaradi.
+    Qaytaradi: {'p1': bool, 'p2': bool|None, 'p3': bool|None}
+    p2/p3 = None degani — o'sha kun uchun para mavjud emas.
+    """
+    import datetime as _dt
+    LATE_THRESHOLD = 40
+
+    smena = lesson.smena
+    date  = lesson.date
+
+    para_starts = [smena.para1_start]
+    if smena.para2_start:
+        para_starts.append(smena.para2_start)
+    if smena.para3_start:
+        para_starts.append(smena.para3_start)
+
+    result = {'p1': None, 'p2': None, 'p3': None}
+    labels = ['p1', 'p2', 'p3']
+
+    if att is None or not att.check_in or att.status in ('absent',):
+        for i, _ in enumerate(para_starts):
+            result[labels[i]] = False
+        return result
+
+    check_in_dt       = _dt.datetime.combine(date, att.check_in)
+    has_checkout      = bool(att.check_out)
+    found_kelgan_para = False
+
+    for i, p in enumerate(para_starts):
+        para_dt = _dt.datetime.combine(date, p)
+        lbl = labels[i]
+        if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+            result[lbl] = False
+        elif not has_checkout and found_kelgan_para:
+            result[lbl] = False
+        else:
+            result[lbl] = True
+            found_kelgan_para = True
+
+    return result
+
+
+@monitoring_required
+def monitoring_groups_list(request):
+    """Guruhlar ro'yxati — filtr: yil, oy, yo'nalish."""
+    from apps.students.models import Group, Direction, MONTH_CHOICES
+    import datetime as _dt
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    today = _dt.date.today()
+    base_filter = {'organization': admin_user.organization}
+    if filial_id:
+        base_filter['filial_id'] = filial_id
+
+    # Filtr parametrlari
+    sel_year      = request.GET.get('year',      str(today.year))
+    sel_month     = request.GET.get('month',     str(today.month))
+    sel_direction = request.GET.get('direction', '')
+
+    try:
+        sel_year_int  = int(sel_year)
+        sel_month_int = int(sel_month)
+    except (ValueError, TypeError):
+        sel_year_int  = today.year
+        sel_month_int = today.month
+
+    groups_qs = Group.objects.filter(**base_filter).select_related('direction', 'filial')
+    if sel_year_int:
+        groups_qs = groups_qs.filter(year=sel_year_int)
+    if sel_month_int:
+        groups_qs = groups_qs.filter(month=sel_month_int)
+    if sel_direction:
+        groups_qs = groups_qs.filter(direction_id=sel_direction)
+
+    groups_qs = groups_qs.prefetch_related('students').order_by('name')
+
+    directions = Direction.objects.filter(**base_filter)
+
+    # Yillar ro'yxati (mavjud guruhlardan)
+    years = sorted(
+        Group.objects.filter(**{'organization': admin_user.organization})
+        .values_list('year', flat=True).distinct(),
+        reverse=True
+    )
+
+    return render(request, 'monitoring/groups_list.html', {
+        'segment':        'monitoring_groups',
+        'groups':         groups_qs,
+        'directions':     directions,
+        'month_choices':  MONTH_CHOICES,
+        'years':          years,
+        'sel_year':       str(sel_year_int),
+        'sel_month':      str(sel_month_int),
+        'sel_direction':  sel_direction,
+        'data':           {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':  timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_group_report(request, pk):
+    """
+    Guruh kunlik hisoboti: sana diapazoni bo'yicha
+    har bir tinglovchi / har bir kun: check_in, p1, p2, p3, check_out.
+    """
+    from apps.students.models import Group, GroupLesson, StudentAttendance
+    import datetime as _dt
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    group = get_object_or_404(Group, pk=pk, organization=admin_user.organization)
+
+    today = _dt.date.today()
+
+    # Sana diapazoni
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to',   '')
+    try:
+        date_from = _dt.date.fromisoformat(date_from_str)
+    except ValueError:
+        date_from = today.replace(day=1)
+        date_from_str = date_from.isoformat()
+    try:
+        date_to = _dt.date.fromisoformat(date_to_str)
+    except ValueError:
+        date_to = today
+        date_to_str = date_to.isoformat()
+
+    effective_to = min(date_to, today)
+
+    # Dars kunlari (smena bor)
+    lessons_qs = GroupLesson.objects.filter(
+        group=group,
+        date__gte=date_from,
+        date__lte=effective_to,
+        smena__isnull=False,
+    ).select_related('smena').order_by('date')
+    lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+    sorted_dates = sorted(lesson_map.keys())
+
+    students = list(group.students.all().order_by('full_name'))
+
+    # Para-ustunlar sonini aniqlash (max para soni kunlar orasida)
+    max_paras = 1
+    for lesson in lesson_map.values():
+        cnt = 1 + (1 if lesson.smena.para2_start else 0) + (1 if lesson.smena.para3_start else 0)
+        if cnt > max_paras:
+            max_paras = cnt
+
+    # Davomat yozuvlari
+    att_qs = StudentAttendance.objects.filter(
+        group=group,
+        date__gte=date_from,
+        date__lte=effective_to,
+        student__in=students,
+    ).select_related('student')
+
+    # att_map: {(student_id, date): att}
+    att_map = {}
+    for att in att_qs:
+        att_map[(att.student_id, att.date)] = att
+
+    # Jadval qatorlari
+    rows = []
+    for date in sorted_dates:
+        lesson   = lesson_map[date]
+        has_p2   = bool(lesson.smena.para2_start)
+        has_p3   = bool(lesson.smena.para3_start)
+        day_rows = []
+        for student in students:
+            att    = att_map.get((student.id, date))
+            para   = _get_para_attendance(att, lesson)
+            day_rows.append({
+                'student':   student,
+                'check_in':  att.check_in  if att else None,
+                'check_out': att.check_out if att else None,
+                'p1':        para['p1'],
+                'p2':        para['p2'] if has_p2 else None,
+                'p3':        para['p3'] if has_p3 else None,
+            })
+        rows.append({
+            'date':    date,
+            'has_p2':  has_p2,
+            'has_p3':  has_p3,
+            'students': day_rows,
+        })
+
+    return render(request, 'monitoring/group_report.html', {
+        'segment':      'monitoring_groups',
+        'group':        group,
+        'rows':         rows,
+        'students':     students,
+        'sorted_dates': sorted_dates,
+        'date_from_str': date_from_str,
+        'date_to_str':   date_to_str,
+        'max_paras':    max_paras,
+        'data':         {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_group_students(request, pk):
+    """Guruh tinglovchilari — face ID holati bilan."""
+    from apps.students.models import Group
+
+    admin_user = request.admin_user
+    group      = get_object_or_404(Group, pk=pk, organization=admin_user.organization)
+    students   = group.students.all().order_by('full_name')
+
+    return render(request, 'monitoring/group_students.html', {
+        'segment':   'monitoring_groups',
+        'group':     group,
+        'students':  students,
+        'data':      {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_student_detail_report(request, student_pk):
+    """
+    Individual tinglovchi hisoboti (monitoring uchun).
+    group_id GET parametri orqali guruh tanlanadi.
+    """
+    from apps.students.models import Group, GroupLesson, StudentAttendance, Student
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    student  = get_object_or_404(Student, pk=student_pk, organization=admin_user.organization)
+    group_id = request.GET.get('group_id', '')
+
+    # Tinglovchining guruhlari
+    groups_qs = student.groups.filter(organization=admin_user.organization)
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    selected_group = None
+    if group_id:
+        selected_group = groups_qs.filter(pk=group_id).first()
+    if not selected_group:
+        selected_group = groups_qs.first()
+
+    import datetime as _dt
+    today = _dt.date.today()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to',   '')
+    try:
+        date_from = _dt.date.fromisoformat(date_from_str)
+    except ValueError:
+        date_from = today.replace(day=1)
+        date_from_str = date_from.isoformat()
+    try:
+        date_to = _dt.date.fromisoformat(date_to_str)
+    except ValueError:
+        date_to = today
+        date_to_str = date_to.isoformat()
+
+    effective_to = min(date_to, today)
+
+    rows = []
+    if selected_group:
+        lessons_qs = GroupLesson.objects.filter(
+            group=selected_group,
+            date__gte=date_from,
+            date__lte=effective_to,
+            smena__isnull=False,
+        ).select_related('smena').order_by('date')
+        lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+
+        att_map = {
+            att.date: att
+            for att in StudentAttendance.objects.filter(
+                student=student,
+                group=selected_group,
+                date__gte=date_from,
+                date__lte=effective_to,
+            )
+        }
+
+        for date in sorted(lesson_map.keys()):
+            lesson   = lesson_map[date]
+            has_p2   = bool(lesson.smena.para2_start)
+            has_p3   = bool(lesson.smena.para3_start)
+            att      = att_map.get(date)
+            para     = _get_para_attendance(att, lesson)
+            rows.append({
+                'date':      date,
+                'check_in':  att.check_in  if att else None,
+                'check_out': att.check_out if att else None,
+                'p1':        para['p1'],
+                'p2':        para['p2'] if has_p2 else None,
+                'p3':        para['p3'] if has_p3 else None,
+            })
+
+    return render(request, 'monitoring/student_detail_report.html', {
+        'segment':         'monitoring_groups',
+        'student':         student,
+        'groups':          groups_qs,
+        'selected_group':  selected_group,
+        'rows':            rows,
+        'date_from_str':   date_from_str,
+        'date_to_str':     date_to_str,
+        'data':            {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':   timezone.localtime(timezone.now()),
+    })
+

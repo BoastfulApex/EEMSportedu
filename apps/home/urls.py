@@ -31,6 +31,10 @@ urlpatterns = [
     path('monitoring/reports/', views.monitoring_reports, name='monitoring_reports'),
     path('monitoring/limit/', views.monitoring_limit_settings, name='monitoring_limit_settings'),
     path('monitoring/exceeded/', views.monitoring_exceeded, name='monitoring_exceeded'),
+    path('monitoring/groups/', views.monitoring_groups_list, name='monitoring_groups_list'),
+    path('monitoring/groups/<int:pk>/report/', views.monitoring_group_report, name='monitoring_group_report'),
+    path('monitoring/groups/<int:pk>/students/', views.monitoring_group_students, name='monitoring_group_students'),
+    path('monitoring/students/<int:student_pk>/report/', views.monitoring_student_detail_report, name='monitoring_student_detail_report'),
 
     # path('users/', views.users_view, name='users'),
     # path('categories/', views.categories, name='home_categories'),
