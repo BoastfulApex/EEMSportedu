@@ -1,145 +1,170 @@
 {% extends "layouts/base.html" %}
 {% load static %}
 {% block title %}Guruhlar ro'yxati{% endblock %}
-{% block body_class %}dashboard{% endblock %}
 
 {% block stylesheets %}
 <style>
-.page-header {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
-}
-.page-header h1 { font-size: 20px; font-weight: 800; color: #111827; margin: 0; }
-
-.filter-card {
-  background: #fff; border: 1px solid #e8eaed; border-radius: 14px;
-  padding: 18px 20px; margin-bottom: 20px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05);
-}
-.filter-label { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
-.filter-card select {
-  border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 12px;
-  font-size: 14px; width: 100%; background: #f9fafb; color: #111827;
-}
-.filter-card select:focus { outline: none; border-color: #3b82f6; background: #fff; }
-
-.groups-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
-}
-.group-card {
-  background: #fff; border: 1px solid #e8eaed; border-radius: 14px;
-  padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.05);
-  display: flex; flex-direction: column; gap: 10px;
-}
-.group-card-name { font-size: 16px; font-weight: 700; color: #111827; }
-.group-card-meta { font-size: 12px; color: #6b7280; }
-.group-card-meta span { margin-right: 10px; }
-.group-card-footer {
-  display: flex; gap: 8px; margin-top: 4px;
-}
-.btn-icon {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
-  text-decoration: none; border: none; cursor: pointer;
-}
-.btn-icon.blue { background: #eff6ff; color: #1d4ed8; }
-.btn-icon.blue:hover { background: #dbeafe; }
-.btn-icon.green { background: #f0fdf4; color: #15803d; }
-.btn-icon.green:hover { background: #dcfce7; }
-
-.student-count-badge {
-  background: #f3f4f6; border-radius: 6px; padding: 2px 8px;
-  font-size: 12px; font-weight: 600; color: #374151;
-  display: inline-flex; align-items: center; gap: 4px;
-}
-.empty-state {
-  text-align: center; padding: 60px 20px; color: #9ca3af;
-  background: #fff; border: 1px solid #e8eaed; border-radius: 14px;
-}
-.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  .groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .group-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .group-card-name {
+    font-size: .95rem; font-weight: 700; color: #344563;
+  }
+  .group-card-meta {
+    font-size: .82rem; color: #5a6a85; display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .group-card-meta span {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .student-count {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #f4f6fb; border-radius: 20px;
+    padding: 3px 10px; font-size: .78rem; font-weight: 600; color: #344563;
+  }
+  .card-actions {
+    display: flex; gap: 8px; margin-top: 4px;
+  }
+  .filter-panel {
+    background: #fff; border-radius: 12px;
+    padding: 20px 22px; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    margin-bottom: 22px;
+  }
+  .filter-panel .filter-title {
+    font-weight: 600; font-size: .88rem; color: #344563;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .empty-state {
+    text-align: center; padding: 56px 20px; color: #aab0c0;
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+  }
+  .empty-state svg { width: 52px; height: 52px; opacity: .4; margin-bottom: 12px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid p-0">
+<main class="content">
+  <div class="container-fluid p-0">
 
-  <div class="page-header">
-    <h1>📚 Guruhlar ro'yxati</h1>
-  </div>
-
-  <!-- Filter -->
-  <div class="filter-card">
-    <form method="get" id="filterForm">
-      <div class="row g-3 align-items-end">
-        <div class="col-6 col-md-3">
-          <div class="filter-label">Yil</div>
-          <select name="year" onchange="this.form.submit()">
-            {% for y in years %}
-            <option value="{{ y }}" {% if sel_year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="filter-label">Oy</div>
-          <select name="month" onchange="this.form.submit()">
-            <option value="">— Barcha oylar —</option>
-            {% for val, label in month_choices %}
-            <option value="{{ val }}" {% if sel_month == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-md-4">
-          <div class="filter-label">Yo'nalish</div>
-          <select name="direction" onchange="this.form.submit()">
-            <option value="">— Barcha yo'nalishlar —</option>
-            {% for d in directions %}
-            <option value="{{ d.pk }}" {% if sel_direction == d.pk|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-md-2">
-          <button type="submit" class="btn btn-primary w-100">Ko'rish</button>
-        </div>
-      </div>
-    </form>
-  </div>
-
-  {% if groups %}
-  <div class="groups-grid">
-    {% for group in groups %}
-    <div class="group-card">
+    <div class="d-flex align-items-center justify-content-between mb-4">
       <div>
-        <div class="group-card-name">{{ group.name }}</div>
-        <div class="group-card-meta" style="margin-top:4px;">
-          <span>📅 {{ group.year }}-{{ group.get_month_display }}</span>
-          {% if group.direction %}<span>🎯 {{ group.direction.name }}</span>{% endif %}
-          {% if group.filial %}<span>🏢 {{ group.filial.filial_name }}</span>{% endif %}
-        </div>
+        <h1 class="h3 mb-0 fw-bold">Guruhlar ro'yxati</h1>
+        <small class="text-muted">Guruhlar bo'yicha hisobot va tinglovchilarni ko'rish</small>
       </div>
-      <div>
-        <span class="student-count-badge">
-          👥 {{ group.students.count }} tinglovchi
-        </span>
-      </div>
-      <div class="group-card-footer">
-        <a href="{% url 'monitoring_group_report' group.pk %}" class="btn-icon blue">
-          <i data-feather="bar-chart-2" style="width:14px;height:14px;"></i> Hisobot
-        </a>
-        <a href="{% url 'monitoring_group_students' group.pk %}" class="btn-icon green">
-          <i data-feather="users" style="width:14px;height:14px;"></i> Tinglovchilar
-        </a>
-      </div>
+      <a href="{% url 'monitoring_dashboard' %}" class="btn btn-outline-secondary btn-sm px-4">
+        <i data-feather="arrow-left" style="width:14px;height:14px;margin-right:5px;"></i>
+        Dashboard
+      </a>
     </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty-state">
-    <div class="icon">📭</div>
-    <p>Tanlangan filtr bo'yicha guruh topilmadi.</p>
-  </div>
-  {% endif %}
 
-</div>
+    <!-- Filter -->
+    <div class="filter-panel">
+      <div class="filter-title">
+        <i data-feather="sliders" style="width:17px;height:17px;color:#3a7bd5;"></i>
+        Guruhlarni filtrlash
+      </div>
+      <form method="get" id="filterForm">
+        <div class="row g-3 align-items-end">
+          <div class="col-6 col-md-3">
+            <label class="form-label form-label-sm fw-semibold" style="font-size:.8rem;color:#5a6a85;">Yil</label>
+            <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+              {% for y in years %}
+              <option value="{{ y }}" {% if sel_year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label form-label-sm fw-semibold" style="font-size:.8rem;color:#5a6a85;">Oy</label>
+            <select name="month" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">— Barcha oylar —</option>
+              {% for val, label in month_choices %}
+              <option value="{{ val }}" {% if sel_month == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label form-label-sm fw-semibold" style="font-size:.8rem;color:#5a6a85;">Yo'nalish</label>
+            <select name="direction" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">— Barcha yo'nalishlar —</option>
+              {% for d in directions %}
+              <option value="{{ d.pk }}" {% if sel_direction == d.pk|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-2">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Ko'rish</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    {% if groups %}
+    <div class="groups-grid">
+      {% for group in groups %}
+      <div class="group-card">
+        <div>
+          <div class="group-card-name">{{ group.name }}</div>
+          <div class="group-card-meta" style="margin-top:6px;">
+            <span>
+              <i data-feather="calendar" style="width:13px;height:13px;"></i>
+              {{ group.year }} — {{ group.get_month_display }}
+            </span>
+            {% if group.direction %}
+            <span>
+              <i data-feather="compass" style="width:13px;height:13px;"></i>
+              {{ group.direction.name }}
+            </span>
+            {% endif %}
+            {% if group.filial %}
+            <span>
+              <i data-feather="home" style="width:13px;height:13px;"></i>
+              {{ group.filial.filial_name }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <span class="student-count">
+            <i data-feather="users" style="width:13px;height:13px;"></i>
+            {{ group.students.count }} tinglovchi
+          </span>
+        </div>
+        <div class="card-actions">
+          <a href="{% url 'monitoring_group_report' group.pk %}" class="btn btn-sm btn-outline-primary">
+            <i data-feather="bar-chart-2" style="width:13px;height:13px;margin-right:4px;"></i>Hisobot
+          </a>
+          <a href="{% url 'monitoring_group_students' group.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i data-feather="users" style="width:13px;height:13px;margin-right:4px;"></i>Tinglovchilar
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i data-feather="inbox" style="display:block;margin:0 auto 12px;"></i>
+      <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Guruh topilmadi</div>
+      <small>Tanlangan filtrlarga mos guruh yo'q</small>
+    </div>
+    {% endif %}
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.feather) feather.replace();
+});
+</script>
 {% endblock %}
