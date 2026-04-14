@@ -1279,50 +1279,44 @@ def _compute_student_stats(student, group, para_hours):
 
         att = att_by_date.get(date)
 
-        if att is None:
-            absent       += 1
+        if att is None or not att.check_in or att.status == 'absent':
+            absent       += para_count
             missed_paras += para_count
             continue
 
         if att.status == 'excused':
-            excused      += 1
+            excused      += para_count
             missed_paras += para_count
             continue
 
-        if not att.check_in or att.status == 'absent':
-            absent       += 1
-            missed_paras += para_count
-            continue
-
-        # Har bir parani alohida tekshir
+        # Har bir parani alohida tekshir (para-asosida)
         check_in_dt       = _dt.datetime.combine(date, att.check_in)
         has_checkout      = bool(att.check_out)
         found_kelgan_para = False
-        paras_present_today = 0
-        paras_missed_today  = 0
 
         for p in para_starts:
             para_dt = _dt.datetime.combine(date, p)
             if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
-                paras_missed_today += 1
+                # 40+ daqiqa kech → paraga kelmadi
+                absent       += 1
+                missed_paras += 1
             elif not has_checkout and found_kelgan_para:
-                # Check_out yo'q + kelgan para topilgan → keyingisi absent
-                paras_missed_today += 1
+                # Check_out yo'q, "kelgan para" allaqachon topilgan → keyingisi absent
+                absent       += 1
+                missed_paras += 1
             else:
-                paras_present_today += 1
-                found_kelgan_para    = True
+                # Paraga keldi
+                present += 1
+                found_kelgan_para = True
+                if check_in_dt > para_dt:
+                    # Kechikib keldi (1–40 daqiqa)
+                    late += 1
 
-        if paras_present_today == 0:
-            # Barcha paralarga kech yoki check_out yo'q → kelmadi
-            absent       += 1
-            missed_paras += para_count
-        else:
-            present      += 1
-            missed_paras += paras_missed_today
-            if att.late_minutes and att.late_minutes > 0:
-                late += 1
-
-    total        = len(scheduled_dates)
+    # Total = barcha dars kunlarining paralari yig'indisi
+    total = sum(
+        1 + (1 if lesson_map[d].smena.para2_start else 0) + (1 if lesson_map[d].smena.para3_start else 0)
+        for d in lesson_map
+    )
     missed_hours = round(missed_paras * para_hours, 1)
     pct          = round(present / total * 100) if total > 0 else 0
 
