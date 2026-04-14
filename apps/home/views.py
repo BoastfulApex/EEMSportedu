@@ -1295,14 +1295,25 @@ def _compute_student_stats(student, group, para_hours):
             continue
 
         # Har bir parani alohida tekshir
-        check_in_dt = _dt.datetime.combine(date, att.check_in)
-        paras_missed_today = sum(
-            1 for p in para_starts
-            if check_in_dt > _dt.datetime.combine(date, p) + _dt.timedelta(minutes=LATE_THRESHOLD)
-        )
+        check_in_dt       = _dt.datetime.combine(date, att.check_in)
+        has_checkout      = bool(att.check_out)
+        found_kelgan_para = False
+        paras_present_today = 0
+        paras_missed_today  = 0
 
-        if paras_missed_today == para_count:
-            # Barcha paralarga kech → kelmadi
+        for p in para_starts:
+            para_dt = _dt.datetime.combine(date, p)
+            if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                paras_missed_today += 1
+            elif not has_checkout and found_kelgan_para:
+                # Check_out yo'q + kelgan para topilgan → keyingisi absent
+                paras_missed_today += 1
+            else:
+                paras_present_today += 1
+                found_kelgan_para    = True
+
+        if paras_present_today == 0:
+            # Barcha paralarga kech yoki check_out yo'q → kelmadi
             absent       += 1
             missed_paras += para_count
         else:

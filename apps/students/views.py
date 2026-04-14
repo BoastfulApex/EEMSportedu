@@ -718,20 +718,26 @@ def _build_student_report(group, date_from, date_to):
                 continue
 
             # Har bir parani alohida tekshir
-            check_in_dt = _dt.datetime.combine(date, att.check_in)
+            check_in_dt      = _dt.datetime.combine(date, att.check_in)
+            has_checkout     = bool(att.check_out)
+            found_kelgan_para = False  # Birinchi qatnashilgan para topilganmi
+
             for p in para_starts:
                 para_dt = _dt.datetime.combine(date, p)
-                if check_in_dt <= para_dt:
-                    # O'z vaqtida
-                    present_count += 1
-                elif check_in_dt <= para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
-                    # 1–40 daqiqa kech — keldi, lekin kechikdi
-                    present_count   += 1
-                    late_count      += 1
-                    late_mins_total += int((check_in_dt - para_dt).total_seconds() / 60)
-                else:
+                if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
                     # 40+ daqiqa kech — paraga kelmadi
                     absent_count += 1
+                elif not has_checkout and found_kelgan_para:
+                    # Check_out yo'q + "kelgan para" allaqachon topilgan
+                    # → keyingi paralarda ishtirok etmagan
+                    absent_count += 1
+                else:
+                    # Paraga keldi (o'z vaqtida yoki 1–40 daqiqa kech)
+                    present_count += 1
+                    if check_in_dt > para_dt:
+                        late_count      += 1
+                        late_mins_total += int((check_in_dt - para_dt).total_seconds() / 60)
+                    found_kelgan_para = True
 
             if att.early_leave_minutes and att.early_leave_minutes > 0:
                 early_count      += 1
