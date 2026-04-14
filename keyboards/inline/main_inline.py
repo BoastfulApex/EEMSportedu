@@ -27,12 +27,6 @@ def edu_admin_keyboard() -> InlineKeyboardMarkup:
                 web_app=WebAppInfo(url=edu_web_app_url)
             ),
         ],
-        [
-            InlineKeyboardButton(
-                text="📸 Yuz orqali aniqlash",
-                callback_data="edu_mark_attendance"
-            )
-        ],
     ])
 
 
