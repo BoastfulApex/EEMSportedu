@@ -1237,31 +1237,83 @@ def _get_attendance_limit(admin_user, filial_id):
 def _compute_student_stats(student, group, para_hours):
     """
     Tinglovchining davomat statistikasini hisoblaydi.
-    GroupLesson jadvalida bor, lekin StudentAttendance yozuvi yo'q kunlar — 'absent' hisoblanadi.
+
+    Qoidalar:
+    - Faqat BUGUNGI KUNA QADAR bo'lgan va smena belgilangan dars kunlari hisobga olinadi.
+    - Har bir para alohida tekshiriladi:
+        * check_in > para_start + 40 daq → o'sha paraga kelmagan (missed)
+        * check_in <= para_start + 40 daq → o'sha paraga kelgan
+    - Barcha paralarga 40+ daqiqa kech qolgan kun → kelmadi (absent) hisoblanadi.
+    - Davomat yozilmagan dars kunlari → kelmadi + barcha paralari missed.
     """
     from apps.students.models import StudentAttendance, GroupLesson
-    from django.db.models import Q
+    from django.utils import timezone
+    import datetime as _dt
+
+    today = timezone.localdate()
+    LATE_THRESHOLD = 40  # daqiqa
+
+    lessons_qs = GroupLesson.objects.filter(
+        group=group, smena__isnull=False, date__lte=today
+    ).select_related('smena')
+    lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+    scheduled_dates = set(lesson_map.keys())
 
     att_qs = StudentAttendance.objects.filter(student=student, group=group)
+    att_by_date = {att.date: att for att in att_qs}
 
-    # Faqat smena belgilangan GroupLesson kunlari hisobga olinadi
-    scheduled_dates = set(
-        GroupLesson.objects.filter(group=group, smena__isnull=False).values_list('date', flat=True)
-    )
-    # Yozilgan davomat sanalari
-    recorded_dates = set(att_qs.values_list('date', flat=True))
-    # Yozilmagan (kelmagan) kunlar
-    unrecorded = len(scheduled_dates - recorded_dates)
+    present      = 0
+    late         = 0
+    absent       = 0
+    excused      = 0
+    missed_paras = 0
 
-    total   = max(len(scheduled_dates), att_qs.count()) if scheduled_dates else att_qs.count()
-    present = att_qs.filter(status__in=['present', 'late']).count()
-    late    = att_qs.filter(Q(late_minutes__gt=0) | Q(status='late')).count()
-    absent  = att_qs.filter(status='absent').count() + unrecorded
-    excused = att_qs.filter(status='excused').count()
+    for date, lesson in lesson_map.items():
+        smena = lesson.smena
+        para_starts = [smena.para1_start]
+        if smena.para2_start:
+            para_starts.append(smena.para2_start)
+        if smena.para3_start:
+            para_starts.append(smena.para3_start)
+        para_count = len(para_starts)
 
-    missed_paras = absent + excused
+        att = att_by_date.get(date)
+
+        if att is None:
+            absent       += 1
+            missed_paras += para_count
+            continue
+
+        if att.status == 'excused':
+            excused      += 1
+            missed_paras += para_count
+            continue
+
+        if not att.check_in or att.status == 'absent':
+            absent       += 1
+            missed_paras += para_count
+            continue
+
+        # Har bir parani alohida tekshir
+        check_in_dt = _dt.datetime.combine(date, att.check_in)
+        paras_missed_today = sum(
+            1 for p in para_starts
+            if check_in_dt > _dt.datetime.combine(date, p) + _dt.timedelta(minutes=LATE_THRESHOLD)
+        )
+
+        if paras_missed_today == para_count:
+            # Barcha paralarga kech → kelmadi
+            absent       += 1
+            missed_paras += para_count
+        else:
+            present      += 1
+            missed_paras += paras_missed_today
+            if att.late_minutes and att.late_minutes > 0:
+                late += 1
+
+    total        = len(scheduled_dates)
     missed_hours = round(missed_paras * para_hours, 1)
-    pct = round(present / total * 100) if total > 0 else 0
+    pct          = round(present / total * 100) if total > 0 else 0
 
     return {
         'total':        total,

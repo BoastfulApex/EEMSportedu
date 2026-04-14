@@ -100,7 +100,7 @@
 
       {# ── HISOBOT ── #}
       {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
-      {% if not is_monitoring %}
+      {% if not is_monitoring and not is_edu_admin %}
       <li class="sidebar-header">Tahlil</li>
       <li class="sidebar-item {% if segment == 'report' %}active{% endif %}">
         <a class="sidebar-link" href="{% url 'home_get_dates' %}">

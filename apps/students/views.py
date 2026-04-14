@@ -654,17 +654,29 @@ def student_web_app(request):
 def _build_student_report(group, date_from, date_to):
     """
     Guruh tinglovchilari bo'yicha davomat hisobotini qaytaradi.
-    Har bir tinglovchi uchun: kelgan kun, kelmagan, kechikish, erta ketish.
+
+    Qoidalar:
+    - Faqat smena belgilangan va BUGUNGI KUNGACHA bo'lgan dars kunlari hisobga olinadi.
+    - Tinglovchi kelgan, lekin barcha paralarga 30+ daqiqa kech qolgan → kelmadi.
+    - Jadval bo'lmagan kunda kelmadi hisoblanmaydi.
     """
     from .models import StudentAttendance, GroupLesson
-    from django.db.models import Count, Sum, Q
+    import datetime as _dt
 
-    # Guruh darslari soni (sana oralig'ida)
-    total_lessons = GroupLesson.objects.filter(
+    today = _dt.date.today()
+    effective_to = min(date_to, today)
+    LATE_THRESHOLD = 40  # daqiqa
+
+    # Faqat smena belgilangan dars kunlari
+    lessons_qs = GroupLesson.objects.filter(
         group=group,
         date__gte=date_from,
-        date__lte=date_to,
-    ).count()
+        date__lte=effective_to,
+        smena__isnull=False,
+    ).select_related('smena').order_by('date')
+
+    total_lessons = lessons_qs.count()
+    lesson_map = {lesson.date: lesson for lesson in lessons_qs}
 
     students = group.students.order_by('full_name')
     rows = []
@@ -673,31 +685,70 @@ def _build_student_report(group, date_from, date_to):
             student=student,
             group=group,
             date__gte=date_from,
-            date__lte=date_to,
+            date__lte=effective_to,
         )
-        present_count = atts.filter(status__in=['present', 'late']).count()
-        absent_count  = atts.filter(status='absent').count()
-        late_count    = atts.filter(status='late').count()
-        late_mins     = atts.filter(status='late').aggregate(s=Sum('late_minutes'))['s'] or 0
-        early_count   = atts.filter(early_leave_minutes__gt=0).count()
-        early_mins    = atts.filter(early_leave_minutes__gt=0).aggregate(s=Sum('early_leave_minutes'))['s'] or 0
-        # Belgilanmagan (davomat yozilmagan) kunlar
-        recorded      = atts.count()
-        not_recorded  = max(0, total_lessons - recorded)
-        absent_total  = absent_count + not_recorded
+        att_by_date = {att.date: att for att in atts}
+
+        present_count    = 0
+        absent_count     = 0
+        late_days        = 0
+        late_mins_total  = 0
+        early_count      = 0
+        early_mins_total = 0
+
+        for date, lesson in lesson_map.items():
+            smena = lesson.smena
+            att   = att_by_date.get(date)
+
+            # Davomat yozilmagan, yoki kelmagan, yoki check_in yo'q
+            if att is None or att.status == 'absent' or not att.check_in:
+                absent_count += 1
+                continue
+
+            # Sababli kelmagan
+            if att.status == 'excused':
+                absent_count += 1
+                continue
+
+            # Para tekshiruvi: kamida bitta paraga yetib kelganmi?
+            para_starts = [smena.para1_start]
+            if smena.para2_start:
+                para_starts.append(smena.para2_start)
+            if smena.para3_start:
+                para_starts.append(smena.para3_start)
+
+            check_in_dt = _dt.datetime.combine(date, att.check_in)
+            attended_any = any(
+                check_in_dt <= _dt.datetime.combine(date, p) + _dt.timedelta(minutes=LATE_THRESHOLD)
+                for p in para_starts
+            )
+
+            if not attended_any:
+                # Keldi, lekin barcha paralarga 30+ daqiqa kech — kelmadi
+                absent_count += 1
+            else:
+                present_count += 1
+                para1_dt = _dt.datetime.combine(date, smena.para1_start)
+                if check_in_dt > para1_dt:
+                    late_days += 1
+                    late_mins_total += att.late_minutes or int((check_in_dt - para1_dt).total_seconds() / 60)
+
+            if att.early_leave_minutes and att.early_leave_minutes > 0:
+                early_count      += 1
+                early_mins_total += att.early_leave_minutes
 
         percent = round(present_count / total_lessons * 100) if total_lessons else 0
 
         rows.append({
-            'student':      student,
-            'present':      present_count,
-            'absent':       absent_total,
-            'late_count':   late_count,
-            'late_mins':    late_mins,
-            'early_count':  early_count,
-            'early_mins':   early_mins,
-            'percent':      percent,
-            'total':        total_lessons,
+            'student':    student,
+            'present':    present_count,
+            'absent':     absent_count,
+            'late_count': late_days,
+            'late_mins':  late_mins_total,
+            'early_count': early_count,
+            'early_mins': early_mins_total,
+            'percent':    percent,
+            'total':      total_lessons,
         })
 
     return rows, total_lessons
