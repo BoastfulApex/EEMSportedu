@@ -28,3 +28,7 @@ class ReportDateRange(StatesGroup):
 
 class EduAdminAttendance(StatesGroup):
     waiting_for_photo = State()   # edu_admin tinglovchi rasmini yuborishi kutilmoqda
+
+
+class EmployeeNameInput(StatesGroup):
+    waiting_for_name = State()   # xodim ism-familiyasini kiritishi kutilmoqda
