@@ -22,6 +22,7 @@ urlpatterns = [
     path('my-admins/create/',          views.filial_admin_create,                   name='filial_admin_create'),
     path('my-admins/<int:pk>/',        views.filial_admin_detail,                   name='filial_admin_detail'),
     path('my-admins/<int:pk>/delete/', views.FilialSubAdminDeleteView.as_view(),    name='filial_admin_delete'),
+    path('tg-search/',                 views.filial_telegram_search,                name='filial_telegram_search'),
 
     # Referal havolalar
     path('referral-links/', views.referral_links, name='referral_links'),

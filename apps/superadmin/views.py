@@ -336,6 +336,116 @@ class FilialSubAdminDeleteView(DeleteView):
     template_name = 'home/filial_admin/admin_confirm_delete.html'
 
 
+@filial_admin_required
+def filial_telegram_search(request):
+    """
+    Filial admin filialdagi istalgan foydalanuvchini
+    Telegram ID yoki ism orqali qidiradi.
+    Xodim, tinglovchi va adminlar ichidan qidiradi.
+    """
+    from apps.main.models import Employee, TelegramUser
+    from apps.students.models import Student
+
+    admin_user = request.admin_user
+    filial     = admin_user.filial
+    query      = request.GET.get('q', '').strip()
+    results    = []
+    searched   = bool(query)
+
+    if searched:
+        # Telegram ID bo'yicha aniq qidirish
+        tg_id = None
+        try:
+            tg_id = int(query)
+        except ValueError:
+            pass
+
+        # ── Xodimlar ─────────────────────────────────────
+        emp_qs = Employee.objects.select_related('user').filter(filial=filial)
+        if tg_id is not None:
+            emp_qs = emp_qs.filter(
+                Q(telegram_user_id=tg_id) |
+                Q(name__icontains=query)
+            )
+        else:
+            emp_qs = emp_qs.filter(name__icontains=query)
+
+        for emp in emp_qs[:30]:
+            tg_user = TelegramUser.objects.filter(user_id=emp.telegram_user_id).first()
+            results.append({
+                'type':       'employee',
+                'type_label': 'Xodim',
+                'full_name':  emp.name or '—',
+                'telegram_id': emp.telegram_user_id,
+                'username':   tg_user.username if tg_user else None,
+                'phone':      None,
+                'extra':      emp.employee_type,
+                'pk':         emp.id,
+            })
+
+        # ── Tinglovchilar ─────────────────────────────────
+        stu_qs = Student.objects.filter(filial=filial)
+        if tg_id is not None:
+            stu_qs = stu_qs.filter(
+                Q(telegram_id=tg_id) |
+                Q(full_name__icontains=query)
+            )
+        else:
+            stu_qs = stu_qs.filter(full_name__icontains=query)
+
+        for stu in stu_qs[:30]:
+            results.append({
+                'type':       'student',
+                'type_label': 'Tinglovchi',
+                'full_name':  stu.full_name or '—',
+                'telegram_id': stu.telegram_id,
+                'username':   None,
+                'phone':      stu.phone,
+                'extra':      stu.get_registration_status_display() if hasattr(stu, 'get_registration_status_display') else stu.registration_status,
+                'pk':         stu.id,
+            })
+
+        # ── Administratorlar ──────────────────────────────
+        adm_qs = Administrator.objects.select_related('user').filter(filial=filial)
+        if tg_id is not None:
+            adm_qs = adm_qs.filter(
+                Q(telegram_id=tg_id) |
+                Q(full_name__icontains=query)
+            )
+        else:
+            adm_qs = adm_qs.filter(
+                Q(full_name__icontains=query) |
+                Q(user__username__icontains=query)
+            )
+
+        ROLE_LABELS = {
+            'org_admin':    'Superadmin',
+            'filial_admin': 'Filial admin',
+            'hr_admin':     'HR admin',
+            'edu_admin':    "O'quv admin",
+            'monitoring':   'Monitoring',
+        }
+        for adm in adm_qs[:20]:
+            results.append({
+                'type':       'admin',
+                'type_label': 'Admin',
+                'full_name':  adm.full_name or adm.user.username,
+                'telegram_id': adm.telegram_id,
+                'username':   adm.user.username,
+                'phone':      None,
+                'extra':      ROLE_LABELS.get(adm.role, adm.role),
+                'pk':         adm.id,
+            })
+
+    return render(request, 'home/filial_admin/telegram_search.html', {
+        'segment':  'tg_search',
+        'filial':   filial,
+        'query':    query,
+        'searched': searched,
+        'results':  results,
+    })
+
+
 # ============================================================
 # REFERAL LINKLAR
 # ============================================================

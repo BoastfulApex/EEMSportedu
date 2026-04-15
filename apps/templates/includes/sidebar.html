@@ -211,6 +211,13 @@
       {% if is_filial_admin %}
       <li class="sidebar-header">Boshqaruv</li>
 
+      <li class="sidebar-item {% if segment == 'tg_search' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'filial_telegram_search' %}">
+          <i data-feather="search"></i>
+          <span>Foydalanuvchi qidirish</span>
+        </a>
+      </li>
+
       <li class="sidebar-item {% if segment == 'filial_admins' %}active{% endif %}">
         <a class="sidebar-link {% if segment != 'filial_admins' %}collapsed{% endif %}"
            data-bs-toggle="collapse"
