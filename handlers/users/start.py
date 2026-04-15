@@ -31,6 +31,7 @@ from utils.db_api.database import (
     link_student_telegram,
     has_student_photo,
     is_edu_admin_user,
+    update_telegram_user_name,
 )
 from utils.face_check import detect_face
 
@@ -215,7 +216,11 @@ async def receive_employee_name(message: Message, state: FSMContext):
 
     await state.clear()
 
-    user           = message.from_user
+    user = message.from_user
+
+    # Kiritilgan ismni TelegramUser ga saqlaymiz —
+    # approve_emp_callback shu yozuvdan o'qiydi
+    await update_telegram_user_name(user.id, full_name)
     username_text  = f"@{user.username}" if user.username else "username yo'q"
 
     hr_admins = await get_hr_admins_by_filial(filial_id)

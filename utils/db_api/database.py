@@ -588,6 +588,19 @@ def get_or_create_telegram_user(user_id: int, username: str, first_name: str, la
 
 
 @sync_to_async
+def update_telegram_user_name(user_id: int, full_name: str):
+    """
+    Xodim kiritgan to'liq ism-familiyasini TelegramUser ga saqlaydi.
+    first_name = to'liq ism, last_name = bo'sh.
+    Approve handler shu maydonlarni o'qiydi.
+    """
+    TelegramUser.objects.filter(user_id=user_id).update(
+        first_name=full_name,
+        last_name="",
+    )
+
+
+@sync_to_async
 def create_employee_with_filial(user_id: int, full_name: str, filial_id: int):
     """Xodim yaratish va filialga biriktirish"""
     try:
