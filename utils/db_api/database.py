@@ -435,6 +435,33 @@ def get_schedules_by_filial(filial_id: int):
 
 
 @sync_to_async
+def get_schedules_detail_by_ids(schedule_ids: list) -> list:
+    """
+    Tanlangan jadvallarning to'liq ma'lumotini qaytaradi.
+    Har bir jadval uchun: nomi + har bir kun + kelish/ketish vaqti.
+    """
+    from apps.main.models import Schedule
+    schedules = (
+        Schedule.objects
+        .filter(id__in=schedule_ids)
+        .prefetch_related('days__weekday')
+    )
+    result = []
+    for s in schedules:
+        days = list(s.days.order_by('weekday__id').select_related('weekday'))
+        day_lines = [
+            f"  📆 {d.weekday.name}: {d.start.strftime('%H:%M')} — {d.end.strftime('%H:%M')}"
+            for d in days
+        ]
+        result.append({
+            'name':      s.name,
+            'location':  s.location.name if s.location else None,
+            'day_lines': day_lines,
+        })
+    return result
+
+
+@sync_to_async
 def assign_schedules_to_employee(emp_user_id: int, schedule_ids: list):
     """Xodimga tanlangan jadvallarni biriktirish (M2M)"""
     from apps.main.models import Schedule

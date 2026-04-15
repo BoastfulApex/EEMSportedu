@@ -38,6 +38,7 @@ from utils.db_api.database import (
     save_work_schedule_by_weekday_names,
     get_schedules_by_filial,
     assign_schedules_to_employee,
+    get_schedules_detail_by_ids,
 )
 from states.admin import (
     EmployeeForm,
@@ -278,12 +279,23 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
     # 2. Jadvallarni biriktirish
     await assign_schedules_to_employee(emp_user_id, selected_ids)
 
-    # Tanlangan jadvallar nomlari
-    selected_labels = "\n".join(
+    # 3. To'liq jadval ma'lumotlarini olish
+    schedules_detail = await get_schedules_detail_by_ids(selected_ids)
+
+    def _format_schedule(s: dict) -> str:
+        lines = [f"📌 <b>{s['name']}</b>"]
+        if s.get('location'):
+            lines.append(f"   📍 {s['location']}")
+        lines.extend(s['day_lines'])
+        return "\n".join(lines)
+
+    schedule_text = "\n\n".join(_format_schedule(s) for s in schedules_detail)
+    # Admin xabarida qisqa ko'rinish
+    short_labels = "\n".join(
         f"  • {s['label']}" for s in available if s['id'] in set(selected_ids)
     )
 
-    # 3. Xodimga xabar
+    # 4. Xodimga to'liq jadval bilan xabar
     from states.users import EmployeeRegistration
     from loader import dp as _dp
 
@@ -291,9 +303,12 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
         await bot.send_message(
             chat_id=emp_user_id,
             text=(
-                f"🎉 <b>Tabriklaymiz!</b>\n\n"
+                f"🎉 <b>Tabriklaymiz, {emp_name}!</b>\n\n"
                 f"Siz <b>xodim</b> sifatida tasdiqlandi.\n\n"
-                f"📅 Ish jadvalingiz:\n{selected_labels}\n\n"
+                f"📅 <b>Ish jadvalingiz:</b>\n"
+                f"{'─' * 24}\n"
+                f"{schedule_text}\n"
+                f"{'─' * 24}\n\n"
                 f"📸 Endi <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring.\n"
                 f"Bu rasm davomat tizimi uchun kerak."
             ),
@@ -308,8 +323,8 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
     await callback.message.edit_text(
         f"✅ <b>Xodim tasdiqlandi!</b>\n\n"
         f"👤 {emp_name}\n\n"
-        f"📅 Biriktirilgan jadvallar:\n{selected_labels}\n\n"
-        f"Xodimdan rasm kutilmoqda...",
+        f"📅 Biriktirilgan jadvallar:\n{short_labels}\n\n"
+        f"Xodimga to'liq jadval ma'lumotlari yuborildi.",
         parse_mode="HTML"
     )
     await state.clear()
