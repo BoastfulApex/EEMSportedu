@@ -231,13 +231,18 @@
           maxNumFaces: 1, refineLandmarks: false,
           minDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
         });
-        let eyeWasOpen = false, running = true;
+        let eyeWasOpen = false, eyeBlinking = false, running = true;
         fm.onResults(res => {
           if (!running) return;
           const lm = res.multiFaceLandmarks?.[0];
-          if (!lm) { eyeWasOpen = false; return; }
+          if (!lm) { eyeWasOpen = false; eyeBlinking = false; return; }
           const ear = (_ear(lm, _L_EYE) + _ear(lm, _R_EYE)) / 2;
-          if (eyeWasOpen && ear < _EAR_CLOSE) {
+          // 1-bosqich: ko'z yumildi
+          if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) {
+            eyeBlinking = true;
+          }
+          // 2-bosqich: ko'z yumilgandan keyin qayta ochildi
+          if (eyeBlinking && ear > _EAR_OPEN) {
             running = false;
             try { fm.close(); } catch (_) {}
             resolve(true);
@@ -363,6 +368,8 @@
         return;
       }
 
+      // Ko'z to'liq ochilishi uchun qisqa pauza, keyin rasm ol
+      await _sleep(250);
       const photo = takePhoto();
       if (!photo) {
         setStatus("error", "⚠️", "Kamera tayyor emas. Sahifani yangilang.");
