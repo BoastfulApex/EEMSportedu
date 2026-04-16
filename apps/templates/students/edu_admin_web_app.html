@@ -202,6 +202,49 @@
       return canvas.toDataURL("image/jpeg", 0.88);
     }
 
+    const _sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    /**
+     * Liveness tekshiruvi — statik rasm/ekran spoofingini aniqlash.
+     * Orqa kamera tinglovchiga qaratilgan holda 5 kadr olinadi.
+     * Kadrlar orasidagi o'rtacha piksel farqi:
+     *   < 1.8  → statik foto/ekran → REJECT
+     *   >= 1.8 → jonli inson → ACCEPT
+     */
+    async function checkLiveness() {
+      const THRESHOLD   = 1.8;
+      const FRAME_COUNT = 5;
+      const INTERVAL_MS = 350;
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width  = video.videoWidth;
+      const H = canvas.height = video.videoHeight;
+
+      const rx = Math.floor(W * 0.20), ry = Math.floor(H * 0.10);
+      const rw = Math.floor(W * 0.60), rh = Math.floor(H * 0.80);
+
+      const frames = [];
+      for (let i = 0; i < FRAME_COUNT; i++) {
+        ctx.drawImage(video, 0, 0, W, H);
+        frames.push(ctx.getImageData(rx, ry, rw, rh));
+        if (i < FRAME_COUNT - 1) await _sleep(INTERVAL_MS);
+      }
+
+      let totalDiff = 0;
+      for (let f = 1; f < frames.length; f++) {
+        const d1 = frames[f - 1].data;
+        const d2 = frames[f].data;
+        let pairDiff = 0;
+        const samples = Math.floor(d1.length / 32);
+        for (let i = 0; i < d1.length; i += 32) {
+          pairDiff += Math.abs(d1[i]   - d2[i]);
+          pairDiff += Math.abs(d1[i+1] - d2[i+1]);
+          pairDiff += Math.abs(d1[i+2] - d2[i+2]);
+        }
+        totalDiff += pairDiff / (samples * 3);
+      }
+      return (totalDiff / (frames.length - 1)) >= THRESHOLD;
+    }
+
     // ── GPS olish ──────────────────────────────────────────
     function getLocation() {
       return new Promise((resolve, reject) => {
@@ -256,6 +299,19 @@
 
       actionBtn.disabled = true;
       resultBlock.classList.remove("visible");
+
+      // ── Liveness tekshiruvi ──────────────────────────────
+      setLoading("Tinglovchi yuzi aniqlanmoqda... Harakatsiz turing");
+      const isLive = await checkLiveness();
+      if (!isLive) {
+        setStatus("error", "❌",
+          "Jonli yuz aniqlanmadi.<br>" +
+          "<small>Telefon ekranidagi yoki chop etilgan rasmni emas, " +
+          "tinglovchining haqiqiy yuzini ko'rsating.</small>"
+        );
+        actionBtn.disabled = false;
+        return;
+      }
 
       const photo = takePhoto();
       if (!photo) {
