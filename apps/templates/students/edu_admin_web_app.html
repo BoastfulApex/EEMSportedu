@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin — Davomat</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg:       var(--tg-theme-bg-color,         #ffffff);
@@ -204,45 +205,92 @@
 
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    /**
-     * Liveness tekshiruvi — statik rasm/ekran spoofingini aniqlash.
-     * Orqa kamera tinglovchiga qaratilgan holda 5 kadr olinadi.
-     * Kadrlar orasidagi o'rtacha piksel farqi:
-     *   < 1.8  → statik foto/ekran → REJECT
-     *   >= 1.8 → jonli inson → ACCEPT
-     */
-    async function checkLiveness() {
-      const THRESHOLD   = 1.8;
-      const FRAME_COUNT = 5;
-      const INTERVAL_MS = 350;
+    // ── Ko'z yumilishi aniqlash (EAR) ──────────────────────
+    const _L_EYE = [362, 385, 387, 263, 373, 380];
+    const _R_EYE = [33,  160, 158, 133, 153, 144];
+    const _EAR_CLOSE = 0.20;
+    const _EAR_OPEN  = 0.25;
+
+    function _dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+    function _ear(lm, idx) {
+      return (_dist(lm[idx[1]], lm[idx[5]]) + _dist(lm[idx[2]], lm[idx[4]]))
+           / (2 * _dist(lm[idx[0]], lm[idx[3]]));
+    }
+
+    function waitForBlink(onTick, timeoutMs = 6000) {
+      return new Promise(resolve => {
+        if (typeof FaceMesh === 'undefined') {
+          _blinkFallback(onTick, timeoutMs).then(resolve);
+          return;
+        }
+        const fm = new FaceMesh({
+          locateFile: f =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`
+        });
+        fm.setOptions({
+          maxNumFaces: 1, refineLandmarks: false,
+          minDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
+        });
+        let eyeWasOpen = false, running = true;
+        fm.onResults(res => {
+          if (!running) return;
+          const lm = res.multiFaceLandmarks?.[0];
+          if (!lm) { eyeWasOpen = false; return; }
+          const ear = (_ear(lm, _L_EYE) + _ear(lm, _R_EYE)) / 2;
+          if (eyeWasOpen && ear < _EAR_CLOSE) {
+            running = false;
+            try { fm.close(); } catch (_) {}
+            resolve(true);
+          }
+          eyeWasOpen = ear > _EAR_OPEN;
+        });
+        const loop = async () => {
+          if (!running) return;
+          try { await fm.send({ image: video }); } catch (_) {}
+          if (running) requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
+        const deadline = Date.now() + timeoutMs;
+        const tick = setInterval(() => {
+          const left = Math.ceil((deadline - Date.now()) / 1000);
+          if (onTick) onTick(left);
+          if (left <= 0) clearInterval(tick);
+        }, 500);
+        setTimeout(() => {
+          if (!running) return;
+          running = false;
+          clearInterval(tick);
+          try { fm.close(); } catch (_) {}
+          resolve(false);
+        }, timeoutMs);
+      });
+    }
+
+    async function _blinkFallback(onTick, timeoutMs) {
+      const THRESHOLD = 5.0;
       const ctx = canvas.getContext("2d");
       const W = canvas.width  = video.videoWidth;
       const H = canvas.height = video.videoHeight;
-
-      const rx = Math.floor(W * 0.20), ry = Math.floor(H * 0.10);
-      const rw = Math.floor(W * 0.60), rh = Math.floor(H * 0.80);
-
-      const frames = [];
-      for (let i = 0; i < FRAME_COUNT; i++) {
+      const rx = Math.floor(W*0.20), ry = Math.floor(H*0.10);
+      const rw = Math.floor(W*0.60), rh = Math.floor(H*0.80);
+      const deadline = Date.now() + timeoutMs;
+      let prev = null;
+      while (Date.now() < deadline) {
         ctx.drawImage(video, 0, 0, W, H);
-        frames.push(ctx.getImageData(rx, ry, rw, rh));
-        if (i < FRAME_COUNT - 1) await _sleep(INTERVAL_MS);
-      }
-
-      let totalDiff = 0;
-      for (let f = 1; f < frames.length; f++) {
-        const d1 = frames[f - 1].data;
-        const d2 = frames[f].data;
-        let pairDiff = 0;
-        const samples = Math.floor(d1.length / 32);
-        for (let i = 0; i < d1.length; i += 32) {
-          pairDiff += Math.abs(d1[i]   - d2[i]);
-          pairDiff += Math.abs(d1[i+1] - d2[i+1]);
-          pairDiff += Math.abs(d1[i+2] - d2[i+2]);
+        const cur = ctx.getImageData(rx, ry, rw, rh);
+        if (prev) {
+          const d1 = prev.data, d2 = cur.data;
+          let diff = 0;
+          const n = Math.floor(d1.length / 32);
+          for (let i = 0; i < d1.length; i += 32)
+            diff += Math.abs(d1[i]-d2[i]) + Math.abs(d1[i+1]-d2[i+1]) + Math.abs(d1[i+2]-d2[i+2]);
+          if (diff / (n * 3) >= THRESHOLD) return true;
         }
-        totalDiff += pairDiff / (samples * 3);
+        prev = cur;
+        if (onTick) onTick(Math.ceil((deadline - Date.now()) / 1000));
+        await _sleep(300);
       }
-      return (totalDiff / (frames.length - 1)) >= THRESHOLD;
+      return false;
     }
 
     // ── GPS olish ──────────────────────────────────────────
@@ -300,14 +348,16 @@
       actionBtn.disabled = true;
       resultBlock.classList.remove("visible");
 
-      // ── Liveness tekshiruvi ──────────────────────────────
-      setLoading("Tinglovchi yuzi aniqlanmoqda... Harakatsiz turing");
-      const isLive = await checkLiveness();
+      // ── Liveness tekshiruvi (ko'z yumilishi) ────────────────
+      setLoading("👁 Tinglovchi ko'z yumsın... 6");
+      const isLive = await waitForBlink(
+        sec => setLoading(`👁 Tinglovchi ko'z yumsın... ${sec}`),
+        6000
+      );
       if (!isLive) {
         setStatus("error", "❌",
-          "Jonli yuz aniqlanmadi.<br>" +
-          "<small>Telefon ekranidagi yoki chop etilgan rasmni emas, " +
-          "tinglovchining haqiqiy yuzini ko'rsating.</small>"
+          "Ko'z yumilishi aniqlanmadi.<br>" +
+          "<small>Tinglovchining haqiqiy yuzini ko'rsating va ko'z yumsın.</small>"
         );
         actionBtn.disabled = false;
         return;
