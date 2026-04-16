@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin — Davomat</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/dist/face-api.js" crossorigin="anonymous"></script>
+  <script src="/static/face-api/face-api.js"></script>
   <style>
     :root {
       --bg:       var(--tg-theme-bg-color,         #ffffff);
@@ -212,7 +212,7 @@
     const _EAR_CLOSE = 0.20;
     const _EAR_OPEN  = 0.25;
 
-    const _MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model/';
+    const _MODEL_URL = '/static/face-api/models/';
     let _modelsReady   = false;
     let _modelsPromise = null;
 
