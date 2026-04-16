@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Davomat — Tinglovchi</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/dist/face-api.js" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg:       var(--tg-theme-bg-color,        #ffffff);
@@ -244,103 +244,103 @@
 
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    // ── Ko'z yumilishi aniqlash (EAR — Eye Aspect Ratio) ──────
-    // MediaPipe Face Mesh landmark indekslari
-    const _L_EYE = [362, 385, 387, 263, 373, 380];
-    const _R_EYE = [33,  160, 158, 133, 153, 144];
-    const _EAR_CLOSE = 0.20;   // EAR bu qiymatdan past → ko'z yumildi
-    const _EAR_OPEN  = 0.25;   // EAR bu qiymatdan yuqori → ko'z ochiq
+    // ── face-api.js — ko'z yumilishi aniqlash (EAR) ───────────
+    // 68-point tiny model: chap ko'z [36-41], o'ng ko'z [42-47]
+    const _L68 = [36, 37, 38, 39, 40, 41];
+    const _R68 = [42, 43, 44, 45, 46, 47];
+    const _EAR_CLOSE = 0.20;   // ko'z yumildi
+    const _EAR_OPEN  = 0.25;   // ko'z ochiq
 
-    function _dist(a, b) {
-      return Math.hypot(a.x - b.x, a.y - b.y);
+    const _MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model/';
+    let _modelsReady   = false;
+    let _modelsPromise = null;
+
+    function _loadModels() {
+      if (_modelsReady) return Promise.resolve(true);
+      if (_modelsPromise) return _modelsPromise;
+      if (typeof faceapi === 'undefined') return Promise.resolve(false);
+      _modelsPromise = Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(_MODEL_URL),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(_MODEL_URL),
+      ]).then(() => { _modelsReady = true; return true; })
+        .catch(e => { console.warn('face-api modeli yuklanmadi:', e); return false; });
+      return _modelsPromise;
     }
-    function _ear(lm, idx) {
-      return (_dist(lm[idx[1]], lm[idx[5]]) + _dist(lm[idx[2]], lm[idx[4]]))
-           / (2 * _dist(lm[idx[0]], lm[idx[3]]));
+
+    // Sahifa ochilganda yuklay boshlash
+    _loadModels();
+
+    function _dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+    function _earPos(pos, idx) {
+      return (_dist(pos[idx[1]], pos[idx[5]]) + _dist(pos[idx[2]], pos[idx[4]]))
+           / (2 * _dist(pos[idx[0]], pos[idx[3]]));
     }
 
     /**
-     * MediaPipe Face Mesh orqali ko'z yumilishini aniqlaydi.
-     * Foto yoki ekrandagi rasm ko'z yumolmaydi → liveness isbotlanadi.
-     * Agar MediaPipe yuklanmagan bo'lsa — fallback (pixel diff) ishlaydi.
+     * face-api.js orqali ko'z yumilishini aniqlaydi.
+     * 1-bosqich: EAR < 0.20 (ko'z yumildi)
+     * 2-bosqich: EAR > 0.25 (ko'z qayta ochildi) → resolve(true)
+     * Shundan keyin rasm olinadi — ko'z OCHIQ holda.
      */
-    function waitForBlink(onTick, timeoutMs = 6000) {
+    async function waitForBlink(onTick, timeoutMs = 6000) {
+      const ready = await _loadModels();
+      if (!ready || typeof faceapi === 'undefined') {
+        return _blinkFallback(onTick, timeoutMs);
+      }
+
       return new Promise(resolve => {
+        let eyeWasOpen = false, eyeBlinking = false, running = true;
+        const opts     = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
+        const deadline = Date.now() + timeoutMs;
 
-        // ── MediaPipe yo'q → fallback ─────────────────────
-        if (typeof FaceMesh === 'undefined') {
-          _blinkFallback(onTick, timeoutMs).then(resolve);
-          return;
-        }
-
-        const fm = new FaceMesh({
-          locateFile: f =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`
-        });
-        fm.setOptions({
-          maxNumFaces: 1,
-          refineLandmarks: false,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-        });
-
-        let eyeWasOpen  = false;
-        let eyeBlinking = false;   // ko'z yumildi, qayta ochilishi kutilmoqda
-        let running     = true;
-
-        fm.onResults(res => {
-          if (!running) return;
-          const lm = res.multiFaceLandmarks?.[0];
-          if (!lm) { eyeWasOpen = false; eyeBlinking = false; return; }
-
-          const ear = (_ear(lm, _L_EYE) + _ear(lm, _R_EYE)) / 2;
-
-          // 1-bosqich: ko'z ochiq → ko'z yumildi
-          if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) {
-            eyeBlinking = true;
-          }
-          // 2-bosqich: ko'z yumilgandan keyin qayta ochildi → rasm olishga tayyor
-          if (eyeBlinking && ear > _EAR_OPEN) {
-            running = false;
-            try { fm.close(); } catch (_) {}
-            resolve(true);
-          }
-          eyeWasOpen = ear > _EAR_OPEN;
-        });
+        const tick = setInterval(() => {
+          const left = Math.ceil((deadline - Date.now()) / 1000);
+          if (onTick) onTick(Math.max(0, left));
+          if (!running) clearInterval(tick);
+        }, 500);
 
         const loop = async () => {
           if (!running) return;
-          try { await fm.send({ image: video }); } catch (_) {}
-          if (running) requestAnimationFrame(loop);
+          try {
+            const det = await faceapi.detectSingleFace(video, opts).withFaceLandmarks(true);
+            if (det) {
+              const pos = det.landmarks.positions;
+              const ear = (_earPos(pos, _L68) + _earPos(pos, _R68)) / 2;
+              // 1-bosqich: ko'z ochiq edi, endi yumildi
+              if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) {
+                eyeBlinking = true;
+              }
+              // 2-bosqich: yumilgandan keyin qayta ochildi
+              if (eyeBlinking && ear > _EAR_OPEN) {
+                running = false;
+                clearInterval(tick);
+                resolve(true);
+                return;
+              }
+              eyeWasOpen = ear > _EAR_OPEN;
+            }
+          } catch (_) {}
+
+          if (Date.now() < deadline) {
+            setTimeout(loop, 100);   // ~10 fps — async loop uchun optimal
+          } else {
+            running = false;
+            clearInterval(tick);
+            resolve(false);
+          }
         };
-        requestAnimationFrame(loop);
-
-        // Countdown UI
-        const deadline = Date.now() + timeoutMs;
-        const tick = setInterval(() => {
-          const left = Math.ceil((deadline - Date.now()) / 1000);
-          if (onTick) onTick(left);
-          if (left <= 0) clearInterval(tick);
-        }, 500);
-
-        setTimeout(() => {
-          if (!running) return;
-          running = false;
-          clearInterval(tick);
-          try { fm.close(); } catch (_) {}
-          resolve(false);
-        }, timeoutMs);
+        loop();
       });
     }
 
-    /** Fallback: pixel diff (MediaPipe bo'lmagan holat) */
+    /** Fallback: face-api.js yuklanmagan holat — pixel diff */
     async function _blinkFallback(onTick, timeoutMs) {
       const THRESHOLD = 5.0;
       const ctx = canvas.getContext("2d");
-      const W = canvas.width  = video.videoWidth;
-      const H = canvas.height = video.videoHeight;
-      const rx = Math.floor(W * 0.20), ry = Math.floor(H * 0.10);
-      const rw = Math.floor(W * 0.60), rh = Math.floor(H * 0.80);
+      const W = canvas.width  = video.videoWidth  || 320;
+      const H = canvas.height = video.videoHeight || 240;
+      const rx = Math.floor(W * 0.25), ry = Math.floor(H * 0.15);
+      const rw = Math.floor(W * 0.50), rh = Math.floor(H * 0.60);
       const deadline = Date.now() + timeoutMs;
       let prev = null;
       while (Date.now() < deadline) {
@@ -350,14 +350,12 @@
           const d1 = prev.data, d2 = cur.data;
           let diff = 0;
           const n = Math.floor(d1.length / 32);
-          for (let i = 0; i < d1.length; i += 32) {
+          for (let i = 0; i < d1.length; i += 32)
             diff += Math.abs(d1[i]-d2[i]) + Math.abs(d1[i+1]-d2[i+1]) + Math.abs(d1[i+2]-d2[i+2]);
-          }
           if (diff / (n * 3) >= THRESHOLD) return true;
         }
         prev = cur;
-        const left = Math.ceil((deadline - Date.now()) / 1000);
-        if (onTick) onTick(left);
+        if (onTick) onTick(Math.ceil((deadline - Date.now()) / 1000));
         await _sleep(300);
       }
       return false;
