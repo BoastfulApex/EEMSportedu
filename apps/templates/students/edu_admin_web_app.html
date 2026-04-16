@@ -205,8 +205,12 @@
 
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    // ── face-api.js — ko'z yumilishi aniqlash (EAR) ───────────
-    // 68-point tiny model: chap ko'z [36-41], o'ng ko'z [42-47]
+    // ══════════════════════════════════════════════════════════
+    // JONLILIK TEKSHIRUVI
+    // Usul 1 (asosiy) : face-api.js EAR — ko'z yumilishi
+    // Usul 2 (zaxira) : kamera qoplash — kamerani qo'l bilan yoping
+    // ══════════════════════════════════════════════════════════
+
     const _L68 = [36, 37, 38, 39, 40, 41];
     const _R68 = [42, 43, 44, 45, 46, 47];
     const _EAR_CLOSE = 0.20;
@@ -224,11 +228,9 @@
         faceapi.nets.tinyFaceDetector.loadFromUri(_MODEL_URL),
         faceapi.nets.faceLandmark68TinyNet.loadFromUri(_MODEL_URL),
       ]).then(() => { _modelsReady = true; return true; })
-        .catch(e => { console.warn('face-api modeli yuklanmadi:', e); return false; });
+        .catch(e => { console.warn('face-api model xato:', e); return false; });
       return _modelsPromise;
     }
-
-    // Sahifa ochilganda yuklay boshlash
     _loadModels();
 
     function _dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -237,12 +239,8 @@
            / (2 * _dist(pos[idx[0]], pos[idx[3]]));
     }
 
-    async function waitForBlink(onTick, timeoutMs = 6000) {
-      const ready = await _loadModels();
-      if (!ready || typeof faceapi === 'undefined') {
-        return _blinkFallback(onTick, timeoutMs);
-      }
-
+    /** Usul 1: face-api.js EAR blink */
+    function _earBlink(onTick, timeoutMs) {
       return new Promise(resolve => {
         let eyeWasOpen = false, eyeBlinking = false, running = true;
         const opts     = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
@@ -261,56 +259,53 @@
             if (det) {
               const pos = det.landmarks.positions;
               const ear = (_earPos(pos, _L68) + _earPos(pos, _R68)) / 2;
-              if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) {
-                eyeBlinking = true;
-              }
+              if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) eyeBlinking = true;
               if (eyeBlinking && ear > _EAR_OPEN) {
-                running = false;
-                clearInterval(tick);
-                resolve(true);
-                return;
+                running = false; clearInterval(tick); resolve(true); return;
               }
               eyeWasOpen = ear > _EAR_OPEN;
             }
-          } catch (_) {}
-
-          if (Date.now() < deadline) {
-            setTimeout(loop, 100);
-          } else {
-            running = false;
-            clearInterval(tick);
-            resolve(false);
-          }
+          } catch (e) { console.debug('EAR xato:', e); }
+          if (Date.now() < deadline) setTimeout(loop, 100);
+          else { running = false; clearInterval(tick); resolve(false); }
         };
         loop();
       });
     }
 
-    async function _blinkFallback(onTick, timeoutMs) {
-      const THRESHOLD = 5.0;
-      const ctx = canvas.getContext("2d");
-      const W = canvas.width  = video.videoWidth  || 320;
-      const H = canvas.height = video.videoHeight || 240;
-      const rx = Math.floor(W*0.25), ry = Math.floor(H*0.15);
-      const rw = Math.floor(W*0.50), rh = Math.floor(H*0.60);
+    /** Usul 2: kamera qoplash (ML kerak emas) */
+    async function _coverCamera(onTick, timeoutMs) {
+      const ctx      = canvas.getContext('2d');
       const deadline = Date.now() + timeoutMs;
-      let prev = null;
+      let covered    = false;
       while (Date.now() < deadline) {
-        ctx.drawImage(video, 0, 0, W, H);
-        const cur = ctx.getImageData(rx, ry, rw, rh);
-        if (prev) {
-          const d1 = prev.data, d2 = cur.data;
-          let diff = 0;
-          const n = Math.floor(d1.length / 32);
-          for (let i = 0; i < d1.length; i += 32)
-            diff += Math.abs(d1[i]-d2[i]) + Math.abs(d1[i+1]-d2[i+1]) + Math.abs(d1[i+2]-d2[i+2]);
-          if (diff / (n * 3) >= THRESHOLD) return true;
-        }
-        prev = cur;
+        canvas.width  = video.videoWidth  || 320;
+        canvas.height = video.videoHeight || 240;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let total = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4 * 16) { total += (d[i] + d[i+1] + d[i+2]) / 3; n++; }
+        const brightness = n ? total / n : 128;
+        if (!covered && brightness < 18) covered = true;
+        if (covered  && brightness > 55) return true;
         if (onTick) onTick(Math.ceil((deadline - Date.now()) / 1000));
-        await _sleep(300);
+        await _sleep(80);
       }
       return false;
+    }
+
+    async function waitForBlink(onTick, timeoutMs = 6000, onFallback) {
+      if (typeof faceapi !== 'undefined') {
+        try {
+          const ready = await Promise.race([
+            _loadModels(),
+            _sleep(3000).then(() => false),
+          ]);
+          if (ready) return await _earBlink(onTick, timeoutMs);
+        } catch (e) { console.warn('face-api liveness xato:', e); }
+      }
+      if (onFallback) onFallback();
+      return _coverCamera(onTick, timeoutMs);
     }
 
     // ── GPS olish ──────────────────────────────────────────
@@ -368,22 +363,27 @@
       actionBtn.disabled = true;
       resultBlock.classList.remove("visible");
 
-      // ── Liveness tekshiruvi (ko'z yumilishi) ────────────────
+      // ── Jonlilik tekshiruvi ─────────────────────────────────
       setLoading("👁 Tinglovchi ko'z yumsın... 6");
-      const isLive = await waitForBlink(
-        sec => setLoading(`👁 Tinglovchi ko'z yumsın... ${sec}`),
-        6000
-      );
+      let isLive = false;
+      try {
+        isLive = await waitForBlink(
+          sec => setLoading(`👁 Tinglovchi ko'z yumsın... ${sec}`),
+          6000,
+          () => setLoading("📷 Tinglovchi kamera oldida qo'lini silkitsin...")
+        );
+      } catch (e) {
+        console.error('Liveness xato:', e);
+      }
       if (!isLive) {
         setStatus("error", "❌",
-          "Ko'z yumilishi aniqlanmadi.<br>" +
-          "<small>Tinglovchining haqiqiy yuzini ko'rsating va ko'z yumsın.</small>"
+          "Jonlilik tasdiqlanmadi.<br>" +
+          "<small>Tinglovchi ko'z yumsın yoki kamera oldida qo'lini silkitsin.</small>"
         );
         actionBtn.disabled = false;
         return;
       }
 
-      // Ko'z to'liq ochilishi uchun qisqa pauza, keyin rasm ol
       await _sleep(250);
       const photo = takePhoto();
       if (!photo) {

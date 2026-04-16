@@ -244,12 +244,17 @@
 
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    // ── face-api.js — ko'z yumilishi aniqlash (EAR) ───────────
-    // 68-point tiny model: chap ko'z [36-41], o'ng ko'z [42-47]
-    const _L68 = [36, 37, 38, 39, 40, 41];
-    const _R68 = [42, 43, 44, 45, 46, 47];
-    const _EAR_CLOSE = 0.20;   // ko'z yumildi
-    const _EAR_OPEN  = 0.25;   // ko'z ochiq
+    // ══════════════════════════════════════════════════════════
+    // JONLILIK TEKSHIRUVI
+    // Usul 1 (asosiy) : face-api.js EAR — ko'z yumilishi
+    // Usul 2 (zaxira) : kamera qoplash — kamerani barmoq bilan yoping
+    // ══════════════════════════════════════════════════════════
+
+    // ── face-api.js: 68-point model indekslari ─────────────────
+    const _L68 = [36, 37, 38, 39, 40, 41];   // chap ko'z
+    const _R68 = [42, 43, 44, 45, 46, 47];   // o'ng ko'z
+    const _EAR_CLOSE = 0.20;
+    const _EAR_OPEN  = 0.25;
 
     const _MODEL_URL = '/static/face-api/models/';
     let _modelsReady   = false;
@@ -263,11 +268,10 @@
         faceapi.nets.tinyFaceDetector.loadFromUri(_MODEL_URL),
         faceapi.nets.faceLandmark68TinyNet.loadFromUri(_MODEL_URL),
       ]).then(() => { _modelsReady = true; return true; })
-        .catch(e => { console.warn('face-api modeli yuklanmadi:', e); return false; });
+        .catch(e => { console.warn('face-api model xato:', e); return false; });
       return _modelsPromise;
     }
-
-    // Sahifa ochilganda yuklay boshlash
+    // Sahifa ochilishi bilan modellari yuklay boshlash
     _loadModels();
 
     function _dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -276,18 +280,8 @@
            / (2 * _dist(pos[idx[0]], pos[idx[3]]));
     }
 
-    /**
-     * face-api.js orqali ko'z yumilishini aniqlaydi.
-     * 1-bosqich: EAR < 0.20 (ko'z yumildi)
-     * 2-bosqich: EAR > 0.25 (ko'z qayta ochildi) → resolve(true)
-     * Shundan keyin rasm olinadi — ko'z OCHIQ holda.
-     */
-    async function waitForBlink(onTick, timeoutMs = 6000) {
-      const ready = await _loadModels();
-      if (!ready || typeof faceapi === 'undefined') {
-        return _blinkFallback(onTick, timeoutMs);
-      }
-
+    /** Usul 1: face-api.js EAR blink */
+    function _earBlink(onTick, timeoutMs) {
       return new Promise(resolve => {
         let eyeWasOpen = false, eyeBlinking = false, running = true;
         const opts     = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
@@ -306,11 +300,7 @@
             if (det) {
               const pos = det.landmarks.positions;
               const ear = (_earPos(pos, _L68) + _earPos(pos, _R68)) / 2;
-              // 1-bosqich: ko'z ochiq edi, endi yumildi
-              if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) {
-                eyeBlinking = true;
-              }
-              // 2-bosqich: yumilgandan keyin qayta ochildi
+              if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) eyeBlinking = true;
               if (eyeBlinking && ear > _EAR_OPEN) {
                 running = false;
                 clearInterval(tick);
@@ -319,46 +309,59 @@
               }
               eyeWasOpen = ear > _EAR_OPEN;
             }
-          } catch (_) {}
+          } catch (e) { console.debug('EAR xato:', e); }
 
-          if (Date.now() < deadline) {
-            setTimeout(loop, 100);   // ~10 fps — async loop uchun optimal
-          } else {
-            running = false;
-            clearInterval(tick);
-            resolve(false);
-          }
+          if (Date.now() < deadline) setTimeout(loop, 100);
+          else { running = false; clearInterval(tick); resolve(false); }
         };
         loop();
       });
     }
 
-    /** Fallback: face-api.js yuklanmagan holat — pixel diff */
-    async function _blinkFallback(onTick, timeoutMs) {
-      const THRESHOLD = 5.0;
-      const ctx = canvas.getContext("2d");
-      const W = canvas.width  = video.videoWidth  || 320;
-      const H = canvas.height = video.videoHeight || 240;
-      const rx = Math.floor(W * 0.25), ry = Math.floor(H * 0.15);
-      const rw = Math.floor(W * 0.50), rh = Math.floor(H * 0.60);
+    /** Usul 2: kamerani barmoq bilan qoplash (ML kerak emas) */
+    async function _coverCamera(onTick, timeoutMs) {
+      const ctx      = canvas.getContext('2d');
       const deadline = Date.now() + timeoutMs;
-      let prev = null;
+      let covered    = false;
+
       while (Date.now() < deadline) {
-        ctx.drawImage(video, 0, 0, W, H);
-        const cur = ctx.getImageData(rx, ry, rw, rh);
-        if (prev) {
-          const d1 = prev.data, d2 = cur.data;
-          let diff = 0;
-          const n = Math.floor(d1.length / 32);
-          for (let i = 0; i < d1.length; i += 32)
-            diff += Math.abs(d1[i]-d2[i]) + Math.abs(d1[i+1]-d2[i+1]) + Math.abs(d1[i+2]-d2[i+2]);
-          if (diff / (n * 3) >= THRESHOLD) return true;
-        }
-        prev = cur;
+        canvas.width  = video.videoWidth  || 320;
+        canvas.height = video.videoHeight || 240;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let total = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4 * 16) { total += (d[i] + d[i+1] + d[i+2]) / 3; n++; }
+        const brightness = n ? total / n : 128;
+
+        if (!covered && brightness < 18)  covered = true;      // qoplandi
+        if (covered  && brightness > 55)  return true;         // qayta ochildi
+
         if (onTick) onTick(Math.ceil((deadline - Date.now()) / 1000));
-        await _sleep(300);
+        await _sleep(80);
       }
       return false;
+    }
+
+    /**
+     * Asosiy liveness funksiya.
+     * @param {Function} onTick       (sec) → UI countdown yangilash
+     * @param {number}   timeoutMs    umumiy vaqt chegarasi
+     * @param {Function} onFallback   () → cover usulga o'tilganda UI yangilash
+     */
+    async function waitForBlink(onTick, timeoutMs = 6000, onFallback) {
+      // ── Usul 1: face-api.js ──────────────────────────────────
+      if (typeof faceapi !== 'undefined') {
+        try {
+          const ready = await Promise.race([
+            _loadModels(),
+            _sleep(3000).then(() => false),   // 3 s dan ko'p kutmaymiz
+          ]);
+          if (ready) return await _earBlink(onTick, timeoutMs);
+        } catch (e) { console.warn('face-api liveness xato:', e); }
+      }
+      // ── Usul 2: kamera qoplash ───────────────────────────────
+      if (onFallback) onFallback();
+      return _coverCamera(onTick, timeoutMs);
     }
 
     function getLocation() {
@@ -380,22 +383,28 @@
       }
       actionBtn.disabled = true;
 
-      // ── Ko'z yumilish tekshiruvi (liveness) ────────────────
+      // ── Jonlilik tekshiruvi ─────────────────────────────────
       setLoading("👁 Ko'zingizni bir marta yuming... 6");
-      const isLive = await waitForBlink(
-        sec => setLoading(`👁 Ko'zingizni bir marta yuming... ${sec}`),
-        6000
-      );
+      let isLive = false;
+      try {
+        isLive = await waitForBlink(
+          sec => setLoading(`👁 Ko'zingizni bir marta yuming... ${sec}`),
+          6000,
+          () => setLoading("📷 Kamerani barmoğingiz bilan yoping va oching...")
+        );
+      } catch (e) {
+        console.error('Liveness xato:', e);
+      }
       if (!isLive) {
         setStatus("error", "❌",
-          "Ko'z yumilishi aniqlanmadi.<br>" +
-          "<small>Jonli yuzingizni ko'rsating va ko'zingizni bir marta yuming.</small>"
+          "Jonlilik tasdiqlanmadi.<br>" +
+          "<small>Ko'zingizni yuming yoki kamerani barmoğingiz bilan yoping.</small>"
         );
         actionBtn.disabled = false;
         return;
       }
 
-      // Ko'z to'liq ochilishi uchun qisqa pauza, keyin rasm ol
+      // Ko'z/kamera to'liq ochilishi uchun pauza, keyin rasm ol
       await _sleep(250);
       setLoading("Joylashuv aniqlanmoqda...");
 
