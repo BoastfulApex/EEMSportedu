@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin — Davomat</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="/static/face-api/face-api.js"></script>
   <style>
     :root {
       --bg:       var(--tg-theme-bg-color,         #ffffff);
@@ -206,98 +205,12 @@
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
     // ══════════════════════════════════════════════════════════
-    // JONLILIK TEKSHIRUVI
-    // Usul 1 (asosiy) : face-api.js EAR — ko'z yumilishi
-    // Usul 2 (zaxira) : kamera qoplash — kamerani qo'l bilan yoping
+    // JONLILIK TEKSHIRUVI — kamera qoplash
+    // Admin tinglovchi oldida kamerani qo'li bilan yopadi → ochadi
+    // Rasm buni qila olmaydi → jonlilik isbotlanadi
     // ══════════════════════════════════════════════════════════
 
-    const _L68 = [36, 37, 38, 39, 40, 41];
-    const _R68 = [42, 43, 44, 45, 46, 47];
-    const _EAR_CLOSE = 0.21;
-    const _EAR_OPEN  = 0.26;
-
-    const _MODEL_URL = '/static/face-api/models/';
-    let _modelsReady = false;
-    let _modelsLoading = null;
-
-    function _loadModels() {
-      if (_modelsReady) return Promise.resolve(true);
-      if (_modelsLoading) return _modelsLoading;
-      if (typeof faceapi === 'undefined') return Promise.resolve(false);
-      _modelsLoading = (async () => {
-        try {
-          await faceapi.nets.tinyFaceDetector.loadFromUri(_MODEL_URL);
-          await faceapi.nets.faceLandmark68TinyNet.loadFromUri(_MODEL_URL);
-          _modelsReady = true;
-          console.log('face-api modellar yuklandi ✓');
-          return true;
-        } catch (e) {
-          console.warn('face-api model yuklanmadi:', e);
-          return false;
-        }
-      })();
-      return _modelsLoading;
-    }
-    _loadModels();
-
-    function _dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
-    function _earPos(pts, idx) {
-      const p = i => pts[idx[i]];
-      return (_dist(p(1), p(5)) + _dist(p(2), p(4))) / (2 * _dist(p(0), p(3)));
-    }
-
-    /** Video kadrini canvas ga chizib qaytarish */
-    function _grabCanvas() {
-      const W = video.videoWidth  || 320;
-      const H = video.videoHeight || 240;
-      canvas.width  = W;
-      canvas.height = H;
-      canvas.getContext('2d').drawImage(video, 0, 0, W, H);
-      return canvas;
-    }
-
-    /** Usul 1: face-api.js EAR blink */
-    async function _earBlink(onTick, timeoutMs) {
-      const opts = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 320,
-        scoreThreshold: 0.35,
-      });
-      const deadline = Date.now() + timeoutMs;
-      let eyeWasOpen = false, eyeBlinking = false;
-      let faceFound = false;
-
-      while (Date.now() < deadline) {
-        try {
-          const c   = _grabCanvas();
-          const det = await faceapi
-            .detectSingleFace(c, opts)
-            .withFaceLandmarks(true);
-
-          if (det) {
-            faceFound = true;
-            const pts = det.landmarks.positions;
-            const ear = (_earPos(pts, _L68) + _earPos(pts, _R68)) / 2;
-
-            if (!eyeBlinking && eyeWasOpen && ear < _EAR_CLOSE) {
-              eyeBlinking = true;
-            }
-            if (eyeBlinking && ear > _EAR_OPEN) {
-              return true;
-            }
-            eyeWasOpen = ear > _EAR_OPEN;
-          }
-        } catch (e) { console.debug('EAR frame xato:', e); }
-
-        if (onTick) onTick(Math.ceil((deadline - Date.now()) / 1000));
-        await _sleep(120);
-      }
-
-      if (!faceFound) console.warn('face-api: yuz topilmadi (timeout)');
-      return false;
-    }
-
-    /** Usul 2: kamera qoplash — ML kerak emas, 100% ishlaydi */
-    async function _coverCamera(onTick, timeoutMs) {
+    async function checkLiveness(onTick, timeoutMs = 8000) {
       const ctx      = canvas.getContext('2d');
       const deadline = Date.now() + timeoutMs;
       let covered    = false;
@@ -308,6 +221,7 @@
         canvas.width = W; canvas.height = H;
         ctx.drawImage(video, 0, 0, W, H);
         const d = ctx.getImageData(0, 0, W, H).data;
+
         let total = 0, n = 0;
         for (let i = 0; i < d.length; i += 64) {
           total += (d[i] + d[i+1] + d[i+2]) / 3;
@@ -315,30 +229,14 @@
         }
         const brightness = n ? total / n : 128;
 
-        if (!covered && brightness < 25) covered = true;
-        if (covered  && brightness > 60) return true;
+        if (!covered && brightness < 30) covered = true;
+        if (covered && brightness > 60) return true;
 
-        if (onTick) onTick(Math.ceil((deadline - Date.now()) / 1000));
-        await _sleep(80);
+        const sec = Math.ceil((deadline - Date.now()) / 1000);
+        if (onTick) onTick(sec, covered);
+        await _sleep(60);
       }
       return false;
-    }
-
-    async function waitForBlink(onTick, timeoutMs = 8000, onFallback) {
-      if (typeof faceapi !== 'undefined') {
-        try {
-          const ready = await Promise.race([
-            _loadModels(),
-            _sleep(4000).then(() => false),
-          ]);
-          if (ready) {
-            const result = await _earBlink(onTick, timeoutMs);
-            if (result) return true;
-          }
-        } catch (e) { console.warn('face-api xato:', e); }
-      }
-      if (onFallback) onFallback();
-      return _coverCamera(onTick, timeoutMs);
     }
 
     // ── GPS olish ──────────────────────────────────────────
@@ -397,13 +295,15 @@
       resultBlock.classList.remove("visible");
 
       // ── Jonlilik tekshiruvi ─────────────────────────────────
-      setLoading("👁 Tinglovchi ko'z yumsın... 8");
+      setLoading("✋ Kamerani qo'lingiz bilan yoping...");
       let isLive = false;
       try {
-        isLive = await waitForBlink(
-          sec => setLoading(`👁 Tinglovchi ko'z yumsın... ${sec}`),
-          8000,
-          () => setLoading("📷 Kamerani barmoq bilan 1s yoping va oching...")
+        isLive = await checkLiveness(
+          (sec, covered) => {
+            if (covered) setLoading(`👍 Yaxshi! Endi qo'lingizni oling... ${sec}`);
+            else         setLoading(`✋ Kamerani qo'lingiz bilan yoping... ${sec}`);
+          },
+          8000
         );
       } catch (e) {
         console.error('Liveness xato:', e);
@@ -411,13 +311,13 @@
       if (!isLive) {
         setStatus("error", "❌",
           "Jonlilik tasdiqlanmadi.<br>" +
-          "<small>Tinglovchi ko'z yumsın yoki kamerani barmoq bilan yoping.</small>"
+          "<small>Kamerani qo'lingiz bilan yoping, keyin oling.</small>"
         );
         actionBtn.disabled = false;
         return;
       }
 
-      await _sleep(300);
+      await _sleep(200);
       const photo = takePhoto();
       if (!photo) {
         setStatus("error", "⚠️", "Kamera tayyor emas. Sahifani yangilang.");
