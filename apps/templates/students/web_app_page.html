@@ -417,6 +417,7 @@ console.log("[face-embed] fetch override OK");
 
       // ── Jonlilik tekshiruvi ────────────────────────────────
       setLoading(`👁 Ko'zingizni bir necha marta yuming... 10`);
+      dbg('performCheck: starting liveness...');
       let isLive = false;
       try {
         isLive = await checkLiveness(
@@ -431,8 +432,10 @@ console.log("[face-embed] fetch override OK");
           10000
         );
       } catch (e) {
+        dbg('EXCEPTION: ' + e.message);
         console.error('Liveness xato:', e);
       }
+      dbg('liveness result: ' + isLive);
       if (!isLive) {
         setStatus("error", "❌",
           "Jonlilik tasdiqlanmadi.<br>" +
