@@ -132,6 +132,9 @@ console.log("[face-embed] fetch override OK");
     .info-block .late  { color: #c0392b; font-weight: 600; }
     .info-block .early { color: #e67e22; font-weight: 600; }
     .info-block .ok    { color: #27ae60; font-weight: 600; }
+    #dbg { background:#111; color:#0f0; font-family:monospace; font-size:11px;
+           padding:6px 8px; border-radius:8px; margin-top:8px; max-height:160px;
+           overflow-y:auto; white-space:pre-wrap; word-break:break-all; }
   </style>
 </head>
 <body>
@@ -151,6 +154,8 @@ console.log("[face-embed] fetch override OK");
     <span class="icon">📷</span>
     <span class="msg" id="statusMsg">Kamera yoqilmoqda...</span>
   </div>
+
+  <div id="dbg">DEBUG:\n</div>
 
   <div class="btn-row">
     <button class="btn" id="actionBtn" disabled>
@@ -263,6 +268,16 @@ console.log("[face-embed] fetch override OK");
 
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
+    // ── Debug panel ──────────────────────────────────────────
+    const _dbg = document.getElementById('dbg');
+    function dbg(msg) {
+      const t = new Date().toISOString().substr(11,8);
+      _dbg.textContent += '['+t+'] '+msg+'\n';
+      _dbg.scrollTop = _dbg.scrollHeight;
+      console.log('[DBG]', msg);
+    }
+    dbg('page loaded, faceapi=' + (typeof faceapi));
+
     // ══════════════════════════════════════════════════════════
     // JONLILIK TEKSHIRUVI — face-api.js
     // Algoritm: har 80ms kadr → EAR < 0.22 (2+ kadr) = blink
@@ -279,17 +294,22 @@ console.log("[face-embed] fetch override OK");
     let _modelsLoading = null;
 
     async function _initFaceApi() {
-      if (_modelsReady) return true;
-      if (_modelsLoading) return _modelsLoading;
-      if (typeof faceapi === 'undefined') return false;
+      if (_modelsReady) { dbg('models: already ready'); return true; }
+      if (_modelsLoading) { dbg('models: awaiting existing load'); return _modelsLoading; }
+      if (typeof faceapi === 'undefined') { dbg('ERROR: faceapi undefined!'); return false; }
+      dbg('models: starting load from ' + _MODEL_URL);
       _modelsLoading = (async () => {
         try {
+          dbg('models: loading tinyFaceDetector...');
           await faceapi.nets.tinyFaceDetector.loadFromUri(_MODEL_URL);
+          dbg('models: tinyFaceDetector OK');
           await faceapi.nets.faceLandmark68TinyNet.loadFromUri(_MODEL_URL);
+          dbg('models: faceLandmark68Tiny OK');
           _modelsReady = true;
           return true;
         } catch (e) {
-          console.error('Model xato:', e);
+          dbg('ERROR model load: ' + e.message);
+          _modelsLoading = null;  // retry mumkin bo'lsin
           return false;
         }
       })();
@@ -311,7 +331,9 @@ console.log("[face-embed] fetch override OK");
      * Qaytaradi: true — jonli inson, false — rad etildi / timeout
      */
     async function checkLiveness(onStatus, timeoutMs = 10000) {
+      dbg('checkLiveness: start');
       const ready = await _initFaceApi();
+      dbg('checkLiveness: models ready=' + ready);
       if (!ready) return false;
 
       const opts = new faceapi.TinyFaceDetectorOptions({
@@ -339,25 +361,24 @@ console.log("[face-embed] fetch override OK");
             faceFrames++;
             const pts = det.landmarks.positions;
             const ear = (_ear(pts, _L_EYE) + _ear(pts, _R_EYE)) / 2;
+            if (faceFrames <= 3 || faceFrames % 10 === 0)
+              dbg('face#'+faceFrames+' EAR='+ear.toFixed(3)+' blinks='+blinks+' closed='+closedFrames);
 
             if (ear < _EAR_CLOSE) {
               closedFrames++;
               if (closedFrames >= 2 && eyeOpen) {
-                // Ko'z yumildi (kamida 2 kadr davom etdi)
                 eyeOpen = false;
               }
             } else if (ear > _EAR_OPEN) {
               if (!eyeOpen && closedFrames >= 2) {
-                // Ko'z ochildi — blink tugadi
                 blinks++;
+                dbg('BLINK #'+blinks+' detected!');
               }
               closedFrames = 0;
               eyeOpen = true;
-            } else {
-              // Oraliq zona — closedFrames ni reset qilmaymiz
             }
           } else {
-            // Yuz ko'rinmaydi — reset
+            if (faceFrames === 0 && Math.random() < 0.1) dbg('no face detected...');
             closedFrames = 0;
             eyeOpen      = false;
           }
