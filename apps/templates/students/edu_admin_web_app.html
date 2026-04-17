@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin — Davomat</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/static/face-api/models-embedded.js"></script>
   <script src="/static/face-api/face-api.js"></script>
   <style>
     :root {
@@ -206,17 +207,18 @@
     const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
     // ══════════════════════════════════════════════════════════
-    // JONLILIK TEKSHIRUVI — face-api.js: 3 marta ko'z yumish
+    // JONLILIK TEKSHIRUVI — face-api.js
+    // Algoritm: har 80ms kadr → EAR < 0.22 (2+ kadr) = blink
+    //           1 blink + 8+ yuzli kadr → liveness tasdiqlandi
     // ══════════════════════════════════════════════════════════
 
-    const _L_EYE = [36, 37, 38, 39, 40, 41];
-    const _R_EYE = [42, 43, 44, 45, 46, 47];
-    const _EAR_CLOSE = 0.22;
-    const _EAR_OPEN  = 0.28;
-    const _BLINKS_REQUIRED = 3;
+    const _L_EYE     = [36, 37, 38, 39, 40, 41];
+    const _R_EYE     = [42, 43, 44, 45, 46, 47];
+    const _EAR_CLOSE = 0.22;   // EAR shu dan kichik → ko'z yumilgan
+    const _EAR_OPEN  = 0.28;   // EAR shu dan katta  → ko'z ochiq
 
-    const _MODEL_URL = '/static/face-api/models/';
-    let _modelsReady = false;
+    const _MODEL_URL   = '/static/face-api/models/';
+    let _modelsReady   = false;
     let _modelsLoading = null;
 
     async function _initFaceApi() {
@@ -241,7 +243,7 @@
       })();
       return _modelsLoading;
     }
-    _initFaceApi();
+    _initFaceApi();   // fon yuklanish
 
     function _dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
     function _ear(pts, idx) {
@@ -249,7 +251,12 @@
            / (2 * _dist(pts[idx[0]], pts[idx[3]]));
     }
 
-    async function checkLiveness(onUpdate, timeoutMs = 12000) {
+    /**
+     * Jonlilik tekshiruvi (tinglovchi tomoni — admin kamerasi).
+     * onStatus(sec, blinks, faceFrames) — UI yangilash uchun callback
+     * timeoutMs — maksimal kutish (ms), default 10 sekund
+     */
+    async function checkLiveness(onStatus, timeoutMs = 10000) {
       const ready = await _initFaceApi();
       if (!ready) {
         console.error('face-api modellar yuklanmadi');
@@ -257,18 +264,17 @@
       }
 
       const opts = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 320,
-        scoreThreshold: 0.3,
+        inputSize: 320, scoreThreshold: 0.3,
       });
 
-      const deadline = Date.now() + timeoutMs;
-      let blinks     = 0;
-      let eyeOpen    = false;
-      let eyeClosed  = false;
+      const deadline     = Date.now() + timeoutMs;
+      let   blinks       = 0;
+      let   faceFrames   = 0;
+      let   closedFrames = 0;   // ketma-ket EAR < _EAR_CLOSE bo'lgan kadrlar
+      let   eyeOpen      = false;
 
-      while (Date.now() < deadline && blinks < _BLINKS_REQUIRED) {
-        const sec = Math.ceil((deadline - Date.now()) / 1000);
-
+      while (Date.now() < deadline) {
+        const sec = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
         try {
           const W = video.videoWidth  || 320;
           const H = video.videoHeight || 240;
@@ -281,32 +287,37 @@
             .withFaceLandmarks(true);
 
           if (det) {
+            faceFrames++;
             const pts = det.landmarks.positions;
             const ear = (_ear(pts, _L_EYE) + _ear(pts, _R_EYE)) / 2;
 
-            if (ear > _EAR_OPEN) {
-              if (eyeClosed) {
-                blinks++;
-                eyeClosed = false;
-                if (onUpdate) onUpdate(_BLINKS_REQUIRED - blinks, sec, 'blink');
+            if (ear < _EAR_CLOSE) {
+              closedFrames++;
+              if (closedFrames >= 2 && eyeOpen) {
+                eyeOpen = false;
               }
+            } else if (ear > _EAR_OPEN) {
+              if (!eyeOpen && closedFrames >= 2) {
+                blinks++;
+              }
+              closedFrames = 0;
               eyeOpen = true;
-            } else if (ear < _EAR_CLOSE && eyeOpen) {
-              eyeClosed = true;
-              eyeOpen   = false;
             }
-
-            if (onUpdate && !eyeClosed)
-              onUpdate(_BLINKS_REQUIRED - blinks, sec, 'waiting');
           } else {
-            if (onUpdate) onUpdate(_BLINKS_REQUIRED - blinks, sec, 'no_face');
+            closedFrames = 0;
+            eyeOpen      = false;
           }
         } catch (e) { console.debug('frame xato:', e); }
 
-        await _sleep(100);
+        if (onStatus) onStatus(sec, blinks, faceFrames);
+
+        // Liveness sharti: 1 ta blink + 8+ yuzli kadr
+        if (blinks >= 1 && faceFrames >= 8) return true;
+
+        await _sleep(80);
       }
 
-      return blinks >= _BLINKS_REQUIRED;
+      return blinks >= 1 && faceFrames >= 8;
     }
 
     // ── GPS olish ──────────────────────────────────────────
@@ -364,20 +375,20 @@
       actionBtn.disabled = true;
       resultBlock.classList.remove("visible");
 
-      // ── Jonlilik tekshiruvi (3 marta ko'z yuming) ──────────
-      setLoading(`👁 Tinglovchi ko'zini 3 marta yumsın... 12`);
+      // ── Jonlilik tekshiruvi ────────────────────────────────
+      setLoading(`👁 Tinglovchi ko'zini bir necha marta yumsin... 10`);
       let isLive = false;
       try {
         isLive = await checkLiveness(
-          (left, sec, status) => {
-            if (status === 'no_face')
+          (sec, blinks, faceFrames) => {
+            if (faceFrames === 0)
               setLoading(`😶 Tinglovchi yuzini kameraga ko'rsatsin... ${sec}`);
-            else if (status === 'blink')
-              setLoading(`✅ ${_BLINKS_REQUIRED - left}/${_BLINKS_REQUIRED} — davom etsin! ${sec}`);
+            else if (blinks === 0)
+              setLoading(`👁 Tinglovchi ko'zini yumib ochsin... ${sec}`);
             else
-              setLoading(`👁 Ko'z yumsın (${_BLINKS_REQUIRED - left}/${_BLINKS_REQUIRED})... ${sec}`);
+              setLoading(`✅ Ko'z yumdi! Yana bir marta... ${sec}`);
           },
-          12000
+          10000
         );
       } catch (e) {
         console.error('Liveness xato:', e);
@@ -385,7 +396,7 @@
       if (!isLive) {
         setStatus("error", "❌",
           "Jonlilik tasdiqlanmadi.<br>" +
-          "<small>Tinglovchi yuzini ko'rsatsin va 3 marta ko'z yumsın.</small>"
+          "<small>Tinglovchi yuzini to'g'rilang va ko'zini bir necha marta yumib ochsin.</small>"
         );
         actionBtn.disabled = false;
         return;
