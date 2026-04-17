@@ -232,7 +232,7 @@ console.log("[face-embed] fetch override OK");
 
 
     const _L_EYE=[36,37,38,39,40,41], _R_EYE=[42,43,44,45,46,47];
-    const _EAR_CLOSE=0.21;
+    const _EAR_CLOSE=0.24;
     const _MODEL_URL='/static/face-api/models/';
     let _modelsReady=false, _modelsLoading=null;
 
@@ -276,7 +276,7 @@ console.log("[face-embed] fetch override OK");
             faceFrames++;
             const pts=det.landmarks.positions;
             const ear=(_ear(pts,_L_EYE)+_ear(pts,_R_EYE))/2;
-            if(faceFrames<=3||faceFrames%15===0) dbg('f#'+faceFrames+' ear='+ear.toFixed(3)+' blinks='+blinks+' open='+eyeOpen);
+            if(faceFrames<=2||faceFrames%20===0) dbg('f#'+faceFrames+' ear='+ear.toFixed(3)+' blinks='+blinks);
             if (ear < _EAR_CLOSE) {
               closedFrames++;
               if (closedFrames>=2 && eyeOpen) eyeOpen=false;
