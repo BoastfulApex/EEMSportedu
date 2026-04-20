@@ -347,12 +347,12 @@ console.log("[face-embed] fetch override OK");
         isLive = await checkLiveness(
           (sec, faceFrames, earValues) => {
             if (faceFrames === 0)
-              setLoading('😶 Yuzingizni kameraga ko'rsating... ' + sec);
+              setLoading(`😶 Yuzingizni kameraga ko'rsating... ${sec}`);
             else {
               const minE = earValues.length ? Math.min(...earValues) : 0;
               const maxE = earValues.length ? Math.max(...earValues) : 0;
               const diff = (maxE - minE).toFixed(3);
-              setLoading('👁 Ko'zingizni yumib oching... ' + sec + ' (' + diff + ')');
+              setLoading(`👁 Ko'zingizni yumib oching... ${sec} (${diff})`);
             }
           },
           8000
