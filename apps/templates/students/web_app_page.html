@@ -309,14 +309,12 @@ console.log("[face-embed] fetch override OK");
     function _dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
     function _ear(pts,idx){return(_dist(pts[idx[1]],pts[idx[5]])+_dist(pts[idx[2]],pts[idx[4]]))/(2*_dist(pts[idx[0]],pts[idx[3]]));}
 
-    async function checkLiveness(onStatus, timeoutMs=10000) {
-      dbg('checkLiveness start');
+    async function checkLiveness(onStatus, timeoutMs=8000) {
       const ready = await _initFaceApi();
-      dbg('models ready='+ready);
       if (!ready) return false;
       const opts=new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:0.3});
       const deadline=Date.now()+timeoutMs;
-      let blinks=0, faceFrames=0, closedFrames=0, eyeOpen=false;
+      let faceFrames=0, earValues=[];
       while (Date.now()<deadline) {
         const sec=Math.max(0,Math.ceil((deadline-Date.now())/1000));
         try {
@@ -328,22 +326,15 @@ console.log("[face-embed] fetch override OK");
             faceFrames++;
             const pts=det.landmarks.positions;
             const ear=(_ear(pts,_L_EYE)+_ear(pts,_R_EYE))/2;
-            if(faceFrames<=2||faceFrames%20===0) dbg('f#'+faceFrames+' ear='+ear.toFixed(3)+' blinks='+blinks);
-            if (ear < _EAR_CLOSE) {
-              closedFrames++;
-              if (closedFrames>=2 && eyeOpen) eyeOpen=false;
-            } else {
-              if (!eyeOpen && closedFrames>=2) { blinks++; dbg('BLINK #'+blinks+'!'); }
-              closedFrames=0;
-              eyeOpen=true;
-            }
-          } else { closedFrames=0; eyeOpen=false; }
-        } catch(e) { dbg('err:'+e.message); }
-        if (onStatus) onStatus(sec,blinks,faceFrames);
-        if (blinks>=1 && faceFrames>=8) return true;
+            earValues.push(ear);
+          }
+        } catch(e) {}
+        if (onStatus) onStatus(sec,faceFrames,earValues);
         await _sleep(80);
       }
-      return blinks>=1 && faceFrames>=8;
+      if (faceFrames < 8) return false;
+      const minE=Math.min(...earValues), maxE=Math.max(...earValues);
+      return (maxE - minE) >= 0.06;
     }
 
     function getLocation() {
@@ -371,15 +362,17 @@ console.log("[face-embed] fetch override OK");
       let isLive = false;
       try {
         isLive = await checkLiveness(
-          (sec, blinks, faceFrames) => {
+          (sec, faceFrames, earValues) => {
             if (faceFrames === 0)
-              setLoading(`😶 Yuzingizni kameraga ko'rsating... ${sec}`);
-            else if (blinks === 0)
-              setLoading(`👁 Ko'zingizni yumib oching... ${sec}`);
-            else
-              setLoading(`✅ Ko'z yumdingiz! Yana bir marta... ${sec}`);
+              setLoading('😶 Yuzingizni kameraga ko'rsating... ' + sec);
+            else {
+              const minE = earValues.length ? Math.min(...earValues) : 0;
+              const maxE = earValues.length ? Math.max(...earValues) : 0;
+              const diff = (maxE - minE).toFixed(3);
+              setLoading('👁 Ko'zingizni yumib oching... ' + sec + ' (' + diff + ')');
+            }
           },
-          10000
+          8000
         );
       } catch (e) {
         dbg('EXCEPTION: ' + e.message);
