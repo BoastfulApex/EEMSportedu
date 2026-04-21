@@ -35,11 +35,28 @@ def _parse_dates(start_date, end_date):
     return start_date, end_date
 
 
-def _total_minutes(check_in, check_out, date):
+def _lunch_overlap_minutes(check_in, check_out, lunch_start, lunch_end, date):
+    """Ish vaqti bilan tushlik oraliq kesishmasini daqiqada qaytaradi."""
+    if not (check_in and check_out and lunch_start and lunch_end):
+        return 0
+    ws = datetime.combine(date, check_in)
+    we = datetime.combine(date, check_out)
+    ls = datetime.combine(date, lunch_start)
+    le = datetime.combine(date, lunch_end)
+    overlap_start = max(ws, ls)
+    overlap_end   = min(we, le)
+    if overlap_end > overlap_start:
+        return int((overlap_end - overlap_start).total_seconds() / 60)
+    return 0
+
+
+def _total_minutes(check_in, check_out, date, lunch_start=None, lunch_end=None):
     if not check_in or not check_out:
         return 0
     delta = datetime.combine(date, check_out) - datetime.combine(date, check_in)
-    return max(0, int(delta.total_seconds() / 60))
+    total = max(0, int(delta.total_seconds() / 60))
+    total -= _lunch_overlap_minutes(check_in, check_out, lunch_start, lunch_end, date)
+    return max(0, total)
 
 
 GRACE_MINUTES = 15  # 15 daqiqagacha kechikish/erta ketish kechirilaди
@@ -128,7 +145,10 @@ def _build_daily_report(employees_qs, start_date, end_date):
                 check_out = att.check_out if att else None
                 location  = sd.schedule.location.name if sd.schedule.location else '—'
 
-                worked_min = _total_minutes(check_in, check_out, current)
+                worked_min = _total_minutes(
+                    check_in, check_out, current,
+                    sd.schedule.lunch_start, sd.schedule.lunch_end
+                )
 
                 late = _late_minutes(check_in, sd.start, current)
                 late_min = late if late != '-' else 0
@@ -196,12 +216,17 @@ def _build_emp_stats_for_period(employees_qs, start_date, end_date):
             day_overtime = 0
 
             for sd in schedule_days:
-                # Jadval vaqtiga ko'ra kerakli daqiqalar
+                # Jadval vaqtiga ko'ra kerakli daqiqalar (tushlik chiqarilgan)
                 req = int((
                     datetime.combine(current, sd.end) -
                     datetime.combine(current, sd.start)
                 ).total_seconds() / 60)
-                required_minutes += max(0, req)
+                lunch_min = _lunch_overlap_minutes(
+                    sd.start, sd.end,
+                    sd.schedule.lunch_start, sd.schedule.lunch_end,
+                    current
+                )
+                required_minutes += max(0, req - lunch_min)
 
                 att = Attendance.objects.filter(
                     employee=emp, date=current, location=sd.schedule.location
@@ -213,7 +238,10 @@ def _build_emp_stats_for_period(employees_qs, start_date, end_date):
 
                 if att and att.id not in counted_att_ids:
                     counted_att_ids.add(att.id)
-                    worked_minutes += _total_minutes(att.check_in, att.check_out, current)
+                    worked_minutes += _total_minutes(
+                        att.check_in, att.check_out, current,
+                        sd.schedule.lunch_start, sd.schedule.lunch_end
+                    )
 
                 if att:
                     late = _late_minutes(att.check_in, sd.start, current)

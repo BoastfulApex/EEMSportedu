@@ -100,6 +100,8 @@ class Schedule(models.Model):
         related_name='schedules',
         verbose_name="Lokatsiya"
     )
+    lunch_start = models.TimeField(null=True, blank=True, verbose_name="Tushlik boshlanishi")
+    lunch_end   = models.TimeField(null=True, blank=True, verbose_name="Tushlik tugashi")
 
     def __str__(self):
         return self.name

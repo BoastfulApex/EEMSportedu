@@ -202,16 +202,41 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
         elif check_type == 'check_out':
             attendance.check_out = now_time
             if attendance.check_in:
-                worked = datetime.combine(today, attendance.check_out) - \
-                         datetime.combine(today, attendance.check_in)
-                hours, rem = divmod(int(worked.total_seconds()), 3600)
-                minutes, _ = divmod(rem, 60)
+                # Xodimning jadvalidagi tushlik vaqtini aniqlaymiz
+                lunch_start = lunch_end = None
+                active_schedule = employee.schedules.first()
+                if active_schedule:
+                    lunch_start = active_schedule.lunch_start
+                    lunch_end   = active_schedule.lunch_end
+
+                worked_total = datetime.combine(today, attendance.check_out) - \
+                               datetime.combine(today, attendance.check_in)
+                worked_min = int(worked_total.total_seconds() / 60)
+
+                # Tushlik vaqtini ayirish
+                if lunch_start and lunch_end:
+                    ws = datetime.combine(today, attendance.check_in)
+                    we = datetime.combine(today, attendance.check_out)
+                    ls = datetime.combine(today, lunch_start)
+                    le = datetime.combine(today, lunch_end)
+                    ov_start = max(ws, ls)
+                    ov_end   = min(we, le)
+                    if ov_end > ov_start:
+                        worked_min -= int((ov_end - ov_start).total_seconds() / 60)
+                worked_min = max(0, worked_min)
+
+                hours, rem = divmod(worked_min, 60)
+                minutes = rem
+                lunch_note = ""
+                if lunch_start and lunch_end:
+                    lunch_note = f"\n🍽 Tushlik: {lunch_start.strftime('%H:%M')}–{lunch_end.strftime('%H:%M')} (chiqarilgan)"
                 msg = (
                     f"👤 Xodim: {employee.name}\n"
                     f"📅 Sana: {today}\n"
                     f"📍 Lokatsiya: {location.name or '-'}\n"
                     f"⏰ Kirish: {attendance.check_in.strftime('%H:%M')}\n"
-                    f"🚪 Chiqish: {attendance.check_out.strftime('%H:%M')}\n"
+                    f"🚪 Chiqish: {attendance.check_out.strftime('%H:%M')}"
+                    f"{lunch_note}\n"
                     f"⌛ Ish vaqti: {hours:02d}:{minutes:02d}"
                 )
                 send_telegram_message(employee.telegram_user_id, msg)
