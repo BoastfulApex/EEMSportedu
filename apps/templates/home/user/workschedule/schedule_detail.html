@@ -44,6 +44,29 @@
           </div>
         </div>
 
+        {# Tushlik vaqti #}
+        <div class="card mt-3">
+          <div class="card-header">
+            <i data-feather="coffee"></i>
+            Tushlik vaqti
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">
+              Tushlik vaqti ish soatidan chiqarib tashlanadi.
+            </p>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label small">Boshlanishi</label>
+                {{ form.lunch_start }}
+              </div>
+              <div class="col-6">
+                <label class="form-label small">Tugashi</label>
+                {{ form.lunch_end }}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {# Employees list #}
         <div class="card mt-3">
           <div class="card-header">

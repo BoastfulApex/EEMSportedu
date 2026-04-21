@@ -4,7 +4,7 @@ from apps.superadmin.models import Weekday, Filial
 
 
 class ScheduleForm(forms.ModelForm):
-    """Tayyor jadval shabloni yaratish/tahrirlash formi (faqat name + location)"""
+    """Tayyor jadval shabloni yaratish/tahrirlash formi"""
     name = forms.CharField(
         label="Jadval nomi",
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Masalan: Asosiy jadval"})
@@ -16,10 +16,20 @@ class ScheduleForm(forms.ModelForm):
         required=False,
         empty_label="— Tanlang —"
     )
+    lunch_start = forms.TimeField(
+        label="Tushlik boshlanishi",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"})
+    )
+    lunch_end = forms.TimeField(
+        label="Tushlik tugashi",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"})
+    )
 
     class Meta:
         model = Schedule
-        fields = ['name', 'location']
+        fields = ['name', 'location', 'lunch_start', 'lunch_end']
 
     def __init__(self, *args, **kwargs):
         filial = kwargs.pop('filial', None)
