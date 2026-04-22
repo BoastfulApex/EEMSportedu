@@ -310,13 +310,39 @@ console.log("[face-embed] fetch override OK");
 
     function getLocation() {
       return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) return reject(new Error("Geolokatsiya qo'llab-quvvatlanmaydi"));
+        if (!navigator.geolocation)
+          return reject(new Error("GEO_NOT_SUPPORTED"));
+        // Birinchi urinish — aniq (GPS)
         navigator.geolocation.getCurrentPosition(
           p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
-          e => reject(e),
+          err => {
+            if (err.code === 1) return reject(new Error("GEO_DENIED"));
+            // Aniq GPS muvaffaqiyatsiz — past aniqlikda qayta urinish
+            navigator.geolocation.getCurrentPosition(
+              p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+              err2 => {
+                if (err2.code === 1) reject(new Error("GEO_DENIED"));
+                else if (err2.code === 2) reject(new Error("GEO_UNAVAILABLE"));
+                else reject(new Error("GEO_TIMEOUT"));
+              },
+              { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
+            );
+          },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
       });
+    }
+
+    function geoErrorMsg(msg) {
+      if (msg === "GEO_DENIED")
+        return "📍 Joylashuv ruxsati rad etildi.<br><small>Telefon sozlamalarida Telegram ilovasiga Joylashuv ruxsatini bering:<br><b>Sozlamalar → Ilovalar → Telegram → Ruxsatlar → Joylashuv → Har doim yoki Foydalanish chog'ida</b></small>";
+      if (msg === "GEO_UNAVAILABLE")
+        return "📍 Joylashuv aniqlanmadi.<br><small>GPS yoqilganligini tekshiring yoki ochiq joyga chiqing.</small>";
+      if (msg === "GEO_TIMEOUT")
+        return "📍 Joylashuv vaqti tugadi.<br><small>Qaytadan urinib ko'ring yoki Wi-Fi/mobil internetni yoqing.</small>";
+      if (msg === "GEO_NOT_SUPPORTED")
+        return "📍 Qurilmangiz joylashuvni qo'llab-quvvatlamaydi.";
+      return "📍 Joylashuv xatosi: " + msg;
     }
 
     async function performCheck() {
@@ -390,7 +416,11 @@ console.log("[face-embed] fetch override OK");
           actionBtn.disabled = false;
         }
       } catch (err) {
-        setStatus("error", "⚠️", "Xatolik: " + err.message);
+        const geoKeys = ["GEO_DENIED","GEO_UNAVAILABLE","GEO_TIMEOUT","GEO_NOT_SUPPORTED"];
+        if (geoKeys.includes(err.message))
+          setStatus("error", "⚠️", geoErrorMsg(err.message));
+        else
+          setStatus("error", "⚠️", "Xatolik: " + err.message);
         actionBtn.disabled = false;
       }
     }
