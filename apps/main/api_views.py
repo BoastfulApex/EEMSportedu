@@ -243,8 +243,11 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
 
         attendance.save()
 
-        # Adminlarga xabar
-        admins = Administrator.objects.filter(filial=employee.filial)
+        # Adminlarga xabar — faqat kadr (hr_admin) va org_admin ga
+        admins = Administrator.objects.filter(
+            filial=employee.filial,
+            role__in=('hr_admin', 'org_admin', 'filial_admin')
+        )
         for admin in admins:
             if not admin.telegram_id:
                 continue
