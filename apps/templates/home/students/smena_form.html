@@ -14,6 +14,11 @@
       {% csrf_token %}
       {{ formset.management_form }}
 
+      {# Hidden fields — id va DELETE ni yashirib qo'yamiz #}
+      {% for slot_form in formset %}
+        {{ slot_form.id }}
+      {% endfor %}
+
       <div class="mb-4">
         <label class="form-label small fw-semibold">Smena nomi <span class="text-danger">*</span></label>
         {{ form.name }}
@@ -31,7 +36,7 @@
         <table class="table table-sm table-bordered align-middle" id="paraTable">
           <thead class="table-light">
             <tr>
-              <th style="width:60px" class="text-center">#</th>
+              <th style="width:54px" class="text-center">#</th>
               <th>Boshlanish <span class="text-danger">*</span></th>
               <th>Tugash <span class="text-muted small fw-normal">(ixtiyoriy)</span></th>
               <th style="width:44px"></th>
@@ -39,14 +44,14 @@
           </thead>
           <tbody id="paraBody">
             {% for slot_form in formset %}
-            <tr class="para-row" {% if slot_form.instance.pk %}data-existing="1"{% endif %}>
+            <tr class="para-row" data-idx="{{ forloop.counter0 }}">
+              {# DELETE input — yashirin, JS orqali boshqariladi #}
+              <input type="hidden" name="{{ slot_form.DELETE.html_name }}" value="" class="delete-flag">
               <td class="text-center">
-                {{ slot_form.id }}
-                {{ slot_form.DELETE }}
-                <input type="number" name="{{ slot_form.order.html_name }}"
+                <span class="badge bg-secondary-subtle text-secondary order-label fw-semibold">{{ forloop.counter }}</span>
+                <input type="hidden" name="{{ slot_form.order.html_name }}"
                        value="{{ slot_form.order.value|default:forloop.counter }}"
-                       class="form-control form-control-sm text-center order-field"
-                       min="1" style="width:55px;margin:auto" readonly>
+                       class="order-field">
               </td>
               <td>
                 <input type="time" name="{{ slot_form.start.html_name }}"
@@ -62,11 +67,9 @@
                        class="form-control form-control-sm">
               </td>
               <td class="text-center">
-                {% if formset|length > 1 or slot_form.instance.pk %}
                 <button type="button" class="btn btn-sm btn-outline-danger remove-para-btn" title="O'chirish">
                   <i data-feather="trash-2" style="width:13px;height:13px"></i>
                 </button>
-                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -88,12 +91,16 @@
   const body       = document.getElementById('paraBody');
   const totalInput = document.getElementById('id_slots-TOTAL_FORMS');
   const addBtn     = document.getElementById('addParaBtn');
+  const prefix     = '{{ formset.prefix }}';
 
   function reorder() {
     let n = 1;
     body.querySelectorAll('.para-row:not(.deleted-row)').forEach(row => {
-      const ord = row.querySelector('.order-field');
-      if (ord) ord.value = n++;
+      const lbl = row.querySelector('.order-label');
+      const fld = row.querySelector('.order-field');
+      if (lbl) lbl.textContent = n;
+      if (fld) fld.value = n;
+      n++;
     });
   }
 
@@ -101,10 +108,10 @@
     const btn = row.querySelector('.remove-para-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
-      const delInput = row.querySelector('input[name$="-DELETE"]');
-      if (delInput) {
+      const delFlag = row.querySelector('.delete-flag');
+      if (delFlag && delFlag.name.includes('-')) {
         // Mavjud DB yozuv — DELETE flag qo'yamiz
-        delInput.checked = true;
+        delFlag.value = 'on';
         row.style.display = 'none';
         row.classList.add('deleted-row');
       } else {
@@ -123,15 +130,14 @@
   addBtn.addEventListener('click', () => {
     const idx   = parseInt(totalInput.value);
     const order = body.querySelectorAll('.para-row:not(.deleted-row)').length + 1;
-    const prefix = '{{ formset.prefix }}';
 
     const tr = document.createElement('tr');
     tr.className = 'para-row';
+    tr.dataset.idx = idx;
     tr.innerHTML = `
       <td class="text-center">
-        <input type="number" name="${prefix}-${idx}-order" value="${order}"
-               class="form-control form-control-sm text-center order-field"
-               min="1" style="width:55px;margin:auto" readonly>
+        <span class="badge bg-secondary-subtle text-secondary order-label fw-semibold">${order}</span>
+        <input type="hidden" name="${prefix}-${idx}-order" value="${order}" class="order-field">
       </td>
       <td>
         <input type="time" name="${prefix}-${idx}-start"
