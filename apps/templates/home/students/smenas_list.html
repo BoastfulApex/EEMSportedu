@@ -19,20 +19,29 @@
           <tr>
             <th>#</th>
             <th>Nomi</th>
-            <th>1-para</th>
-            <th>2-para</th>
-            <th>3-para</th>
+            <th>Paralar</th>
             <th class="text-end">Amallar</th>
           </tr>
         </thead>
         <tbody>
           {% for s in smenas %}
+          {% with slots=s.slots.all %}
           <tr>
             <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
             <td class="fw-semibold">{{ s.name }}</td>
-            <td><span class="badge bg-primary-subtle text-primary">{{ s.para1_start|time:"H:i" }}</span></td>
-            <td>{% if s.para2_start %}<span class="badge bg-secondary-subtle text-secondary">{{ s.para2_start|time:"H:i" }}</span>{% else %}—{% endif %}</td>
-            <td>{% if s.para3_start %}<span class="badge bg-secondary-subtle text-secondary">{{ s.para3_start|time:"H:i" }}</span>{% else %}—{% endif %}</td>
+            <td>
+              {% if slots %}
+                {% for slot in slots %}
+                  <span class="badge bg-primary-subtle text-primary me-1">
+                    {{ slot.order }}-para {{ slot.start|time:"H:i" }}{% if slot.end %}–{{ slot.end|time:"H:i" }}{% endif %}
+                  </span>
+                {% endfor %}
+              {% else %}
+                {% if s.para1_start %}<span class="badge bg-secondary-subtle text-secondary me-1">1-para {{ s.para1_start|time:"H:i" }}</span>{% endif %}
+                {% if s.para2_start %}<span class="badge bg-secondary-subtle text-secondary me-1">2-para {{ s.para2_start|time:"H:i" }}</span>{% endif %}
+                {% if s.para3_start %}<span class="badge bg-secondary-subtle text-secondary me-1">3-para {{ s.para3_start|time:"H:i" }}</span>{% endif %}
+              {% endif %}
+            </td>
             <td class="text-end">
               <a href="{% url 'smena_detail' s.pk %}" class="btn btn-sm btn-outline-secondary">
                 <i data-feather="edit-2" style="width:13px;height:13px"></i>
@@ -46,9 +55,10 @@
               </form>
             </td>
           </tr>
+          {% endwith %}
           {% empty %}
           <tr>
-            <td colspan="6" class="text-center py-5 text-muted">
+            <td colspan="4" class="text-center py-5 text-muted">
               <i data-feather="clock" style="width:36px;height:36px;opacity:.3;display:block;margin:0 auto 8px"></i>
               Smenalar yo'q
             </td>

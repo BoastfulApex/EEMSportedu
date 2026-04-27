@@ -176,7 +176,7 @@ class Group(models.Model):
 
 
 class Smena(models.Model):
-    """Dars smenasi — para boshlanish vaqtlari"""
+    """Dars smenasi — para vaqtlari"""
     name = models.CharField(max_length=100, verbose_name="Smena nomi")
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name='smenas'
@@ -184,9 +184,22 @@ class Smena(models.Model):
     filial = models.ForeignKey(
         Filial, on_delete=models.SET_NULL, null=True, blank=True, related_name='smenas'
     )
-    para1_start = models.TimeField(verbose_name="1-para boshlanishi")
-    para2_start = models.TimeField(null=True, blank=True, verbose_name="2-para boshlanishi")
-    para3_start = models.TimeField(null=True, blank=True, verbose_name="3-para boshlanishi")
+    # Eski maydonlar — migratsiya uchun saqlanadi, yangi yozuvlarda ishlatilmaydi
+    para1_start = models.TimeField(null=True, blank=True, verbose_name="1-para boshlanishi (eski)")
+    para2_start = models.TimeField(null=True, blank=True, verbose_name="2-para boshlanishi (eski)")
+    para3_start = models.TimeField(null=True, blank=True, verbose_name="3-para boshlanishi (eski)")
+
+    def get_slots(self):
+        """SmenaSlot larni qaytaradi; yo'q bo'lsa eski para maydonlardan yaratadi."""
+        slots = list(self.slots.order_by('order'))
+        if slots:
+            return slots
+        # Eski ma'lumotlardan virtual slot list
+        result = []
+        for i, t in enumerate([self.para1_start, self.para2_start, self.para3_start], 1):
+            if t:
+                result.append(type('S', (), {'order': i, 'start': t, 'end': None})())
+        return result
 
     def __str__(self):
         return self.name
@@ -194,6 +207,23 @@ class Smena(models.Model):
     class Meta:
         verbose_name = "Smena"
         verbose_name_plural = "Smenalar"
+
+
+class SmenaSlot(models.Model):
+    """Smena ichidagi har bir para vaqti"""
+    smena = models.ForeignKey(Smena, on_delete=models.CASCADE, related_name='slots')
+    order = models.PositiveSmallIntegerField(default=1, verbose_name="Tartib raqami")
+    start = models.TimeField(verbose_name="Boshlanish vaqti")
+    end   = models.TimeField(null=True, blank=True, verbose_name="Tugash vaqti")
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = "Para vaqti"
+        verbose_name_plural = "Para vaqtlari"
+
+    def __str__(self):
+        end_str = f"–{self.end.strftime('%H:%M')}" if self.end else ""
+        return f"{self.order}-para {self.start.strftime('%H:%M')}{end_str}"
 
 
 class GroupLesson(models.Model):

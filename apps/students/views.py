@@ -18,8 +18,8 @@ from django.contrib.auth.models import User
 from apps.superadmin.decorators import edu_admin_required, monitoring_required
 from apps.superadmin.models import Administrator
 from apps.main.models import Location
-from .models import Group, Direction, Student, Smena, GroupLesson, MONTH_CHOICES
-from .forms import GroupForm, DirectionForm, SmenaForm
+from .models import Group, Direction, Student, Smena, SmenaSlot, GroupLesson, MONTH_CHOICES
+from .forms import GroupForm, DirectionForm, SmenaForm, SmenaSlotFormSet
 
 
 def _generate_password():
@@ -496,15 +496,21 @@ def smena_create(request):
     admin_user, filial_id = _get_admin_filial(request)
     if request.method == 'POST':
         form = SmenaForm(request.POST)
-        if form.is_valid():
+        formset = SmenaSlotFormSet(request.POST)
+        if form.is_valid() and formset.is_valid():
             smena = form.save(commit=False)
             smena.organization = admin_user.organization
             smena.filial_id = filial_id
             smena.save()
+            formset.instance = smena
+            formset.save()
             return redirect('smenas_list')
     else:
         form = SmenaForm()
-    return render(request, 'home/students/smena_form.html', {'form': form, 'segment': 'smenas'})
+        formset = SmenaSlotFormSet()
+    return render(request, 'home/students/smena_form.html', {
+        'form': form, 'formset': formset, 'segment': 'smenas'
+    })
 
 
 @edu_admin_required
@@ -515,13 +521,16 @@ def smena_detail(request, pk):
         return HttpResponse("Ruxsatnoma yo'q", status=403)
     if request.method == 'POST':
         form = SmenaForm(request.POST, instance=smena)
-        if form.is_valid():
+        formset = SmenaSlotFormSet(request.POST, instance=smena)
+        if form.is_valid() and formset.is_valid():
             form.save()
+            formset.save()
             return redirect('smenas_list')
     else:
         form = SmenaForm(instance=smena)
+        formset = SmenaSlotFormSet(instance=smena)
     return render(request, 'home/students/smena_form.html', {
-        'form': form, 'smena': smena, 'segment': 'smenas'
+        'form': form, 'formset': formset, 'smena': smena, 'segment': 'smenas'
     })
 
 
@@ -742,8 +751,7 @@ def _build_student_report(group, date_from, date_to):
 
     # Jami paralar soni (barcha dars kunlarining paralari yig'indisi)
     total_paras = sum(
-        1 + (1 if l.smena.para2_start else 0) + (1 if l.smena.para3_start else 0)
-        for l in lesson_map.values()
+        len(l.smena.get_slots()) for l in lesson_map.values()
     )
 
     students = group.students.order_by('full_name')
@@ -766,11 +774,8 @@ def _build_student_report(group, date_from, date_to):
 
         for date, lesson in lesson_map.items():
             smena = lesson.smena
-            para_starts = [smena.para1_start]
-            if smena.para2_start:
-                para_starts.append(smena.para2_start)
-            if smena.para3_start:
-                para_starts.append(smena.para3_start)
+            slots = smena.get_slots()
+            para_starts = [s.start for s in slots]
             para_count = len(para_starts)
 
             att = att_by_date.get(date)

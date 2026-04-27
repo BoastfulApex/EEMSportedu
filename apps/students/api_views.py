@@ -173,9 +173,16 @@ def get_lesson_schedule_times(group, today, lesson=None):
     # Faqat GroupLesson + Smena belgilangan bo'lsa vaqtlarni qaytaradi
     if lesson and lesson.smena:
         smena = lesson.smena
-        start = smena.para1_start
-        last_para = smena.para3_start or smena.para2_start or smena.para1_start
-        end = (datetime.combine(today, last_para) + timedelta(minutes=PARA_DURATION_MINUTES)).time()
+        slots = smena.get_slots()
+        if not slots:
+            return None, None
+        start = slots[0].start
+        last_slot = slots[-1]
+        # Tugash vaqti: slot.end bo'lsa ishlatamiz, bo'lmasa start + PARA_DURATION
+        if last_slot.end:
+            end = last_slot.end
+        else:
+            end = (datetime.combine(today, last_slot.start) + timedelta(minutes=PARA_DURATION_MINUTES)).time()
         return start, end
 
     return None, None

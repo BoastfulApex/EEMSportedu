@@ -1,7 +1,8 @@
 from django import forms
+from django.forms import inlineformset_factory
 from datetime import datetime
 
-from .models import Group, Direction, Smena
+from .models import Group, Direction, Smena, SmenaSlot
 from apps.superadmin.models import Building
 
 
@@ -56,13 +57,25 @@ class GroupForm(forms.ModelForm):
 class SmenaForm(forms.ModelForm):
     class Meta:
         model = Smena
-        fields = ['name', 'para1_start', 'para2_start', 'para3_start']
+        fields = ['name']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Smena nomi'}),
-            'para1_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
-            'para2_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
-            'para3_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
         }
+
+
+SmenaSlotFormSet = inlineformset_factory(
+    Smena, SmenaSlot,
+    fields=['order', 'start', 'end'],
+    extra=1,
+    can_delete=True,
+    widgets={
+        'order': forms.NumberInput(attrs={
+            'class': 'form-control form-control-sm text-center', 'min': 1, 'style': 'width:60px'
+        }),
+        'start': forms.TimeInput(attrs={'class': 'form-control form-control-sm', 'type': 'time'}),
+        'end':   forms.TimeInput(attrs={'class': 'form-control form-control-sm', 'type': 'time'}),
+    }
+)
 
 
 class BuildingForm(forms.ModelForm):
