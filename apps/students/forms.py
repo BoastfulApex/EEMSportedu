@@ -66,7 +66,7 @@ class SmenaForm(forms.ModelForm):
 SmenaSlotFormSet = inlineformset_factory(
     Smena, SmenaSlot,
     fields=['order', 'start', 'end'],
-    extra=1,
+    extra=0,
     can_delete=True,
     widgets={
         'order': forms.NumberInput(attrs={

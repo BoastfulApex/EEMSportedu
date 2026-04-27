@@ -14,7 +14,7 @@
       {% csrf_token %}
       {{ formset.management_form }}
 
-      {# Hidden fields — id va DELETE ni yashirib qo'yamiz #}
+      {# Mavjud slotlarning id larini yashirin field sifatida render qilamiz #}
       {% for slot_form in formset %}
         {{ slot_form.id }}
       {% endfor %}
@@ -45,8 +45,6 @@
           <tbody id="paraBody">
             {% for slot_form in formset %}
             <tr class="para-row" data-idx="{{ forloop.counter0 }}">
-              {# DELETE input — yashirin, JS orqali boshqariladi #}
-              <input type="hidden" name="{{ slot_form.DELETE.html_name }}" value="" class="delete-flag">
               <td class="text-center">
                 <span class="badge bg-secondary-subtle text-secondary order-label fw-semibold">{{ forloop.counter }}</span>
                 <input type="hidden" name="{{ slot_form.order.html_name }}"
@@ -55,18 +53,19 @@
               </td>
               <td>
                 <input type="time" name="{{ slot_form.start.html_name }}"
-                       value="{{ slot_form.start.value|default:'' }}"
-                       class="form-control form-control-sm" required>
+                       value="{{ slot_form.start.value|time:'H:i' }}"
+                       class="form-control form-control-sm">
                 {% if slot_form.start.errors %}
                   <div class="text-danger" style="font-size:.75rem">{{ slot_form.start.errors.0 }}</div>
                 {% endif %}
               </td>
               <td>
                 <input type="time" name="{{ slot_form.end.html_name }}"
-                       value="{{ slot_form.end.value|default:'' }}"
+                       value="{{ slot_form.end.value|time:'H:i' }}"
                        class="form-control form-control-sm">
               </td>
               <td class="text-center">
+                <input type="hidden" name="{{ slot_form.DELETE.html_name }}" value="" class="delete-flag">
                 <button type="button" class="btn btn-sm btn-outline-danger remove-para-btn" title="O'chirish">
                   <i data-feather="trash-2" style="width:13px;height:13px"></i>
                 </button>
@@ -109,8 +108,8 @@
     if (!btn) return;
     btn.addEventListener('click', () => {
       const delFlag = row.querySelector('.delete-flag');
-      if (delFlag && delFlag.name.includes('-')) {
-        // Mavjud DB yozuv — DELETE flag qo'yamiz
+      if (delFlag) {
+        // Mavjud DB yozuv — DELETE flag qo'yamiz, yashiramiz
         delFlag.value = 'on';
         row.style.display = 'none';
         row.classList.add('deleted-row');
@@ -123,7 +122,7 @@
     });
   }
 
-  // Mavjud qatorlarga bind
+  // Mavjud (Django render qilgan) qatorlarga bind
   body.querySelectorAll('.para-row').forEach(bindRemove);
 
   // Yangi para qo'shish
@@ -141,7 +140,7 @@
       </td>
       <td>
         <input type="time" name="${prefix}-${idx}-start"
-               class="form-control form-control-sm" required>
+               class="form-control form-control-sm">
       </td>
       <td>
         <input type="time" name="${prefix}-${idx}-end"
@@ -159,12 +158,28 @@
     reorder();
   });
 
+  // Yangi smena bo'lsa va hech qanday para yo'q bo'lsa — avtomatik 1 qator qo'shamiz
+  if (body.querySelectorAll('.para-row').length === 0) {
+    addBtn.click();
+  }
+
   // Saqlashdan oldin tekshirish
   document.getElementById('smenaForm').addEventListener('submit', function(e) {
     const visible = body.querySelectorAll('.para-row:not(.deleted-row)');
     if (visible.length === 0) {
       e.preventDefault();
       alert('Kamida 1 ta para qo\'shish kerak!');
+      return;
+    }
+    // Har bir ko'rinadigan qatorning start vaqti to'ldirilganligini tekshiramiz
+    let hasEmpty = false;
+    visible.forEach(row => {
+      const startInput = row.querySelector('input[type="time"][name$="-start"]');
+      if (startInput && !startInput.value) hasEmpty = true;
+    });
+    if (hasEmpty) {
+      e.preventDefault();
+      alert('Barcha paralarning boshlanish vaqtini kiriting!');
     }
   });
 })();
