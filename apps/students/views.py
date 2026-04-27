@@ -738,7 +738,8 @@ def _build_student_report(group, date_from, date_to):
 
     today = _dt.date.today()
     effective_to = min(date_to, today)
-    LATE_THRESHOLD = 40  # daqiqa
+    LATE_THRESHOLD    = 40   # daqiqa: shu vaqtdan kech kelsa paraga kelmadi hisoblanadi
+    PARA_DURATION_MIN = 80   # slot.end yo'q bo'lsa default para davomiyligi (daqiqa)
 
     lessons_qs = GroupLesson.objects.filter(
         group=group,
@@ -773,10 +774,9 @@ def _build_student_report(group, date_from, date_to):
         early_mins_total = 0
 
         for date, lesson in lesson_map.items():
-            smena = lesson.smena
-            slots = smena.get_slots()
-            para_starts = [s.start for s in slots]
-            para_count = len(para_starts)
+            smena  = lesson.smena
+            slots  = smena.get_slots()
+            para_count = len(slots)
 
             att = att_by_date.get(date)
 
@@ -785,31 +785,38 @@ def _build_student_report(group, date_from, date_to):
                 absent_count += para_count
                 continue
 
-            # Har bir parani alohida tekshir
-            check_in_dt      = _dt.datetime.combine(date, att.check_in)
-            has_checkout     = bool(att.check_out)
-            found_kelgan_para = False  # Birinchi qatnashilgan para topilganmi
+            check_in_dt  = _dt.datetime.combine(date, att.check_in)
+            checkout_dt  = _dt.datetime.combine(date, att.check_out) if att.check_out else None
 
-            for p in para_starts:
-                para_dt = _dt.datetime.combine(date, p)
-                if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
-                    # 40+ daqiqa kech — paraga kelmadi
-                    absent_count += 1
-                elif not has_checkout and found_kelgan_para:
-                    # Check_out yo'q + "kelgan para" allaqachon topilgan
-                    # → keyingi paralarda ishtirok etmagan
-                    absent_count += 1
-                else:
-                    # Paraga keldi (o'z vaqtida yoki 1–40 daqiqa kech)
-                    present_count += 1
-                    if check_in_dt > para_dt:
-                        late_count      += 1
-                        late_mins_total += int((check_in_dt - para_dt).total_seconds() / 60)
-                    found_kelgan_para = True
+            for slot in slots:
+                para_start_dt = _dt.datetime.combine(date, slot.start)
+                para_end_dt   = (
+                    _dt.datetime.combine(date, slot.end) if slot.end
+                    else para_start_dt + _dt.timedelta(minutes=PARA_DURATION_MIN)
+                )
 
-            if att.early_leave_minutes and att.early_leave_minutes > 0:
-                early_count      += 1
-                early_mins_total += att.early_leave_minutes
+                # Check_out bu paradan oldin bo'lsa → paraga kelmadi
+                if checkout_dt and checkout_dt <= para_start_dt:
+                    absent_count += 1
+                    continue
+
+                # Para tugagandan keyin keldi yoki 40+ daqiqa kech → yo'q
+                if check_in_dt >= para_end_dt or check_in_dt > para_start_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                    absent_count += 1
+                    continue
+
+                # Paraga keldi
+                present_count += 1
+
+                # Kechikish
+                if check_in_dt > para_start_dt:
+                    late_count      += 1
+                    late_mins_total += int((check_in_dt - para_start_dt).total_seconds() / 60)
+
+                # Erta ketish: check_out para tugashidan oldin
+                if checkout_dt and checkout_dt < para_end_dt:
+                    early_count      += 1
+                    early_mins_total += int((para_end_dt - checkout_dt).total_seconds() / 60)
 
         percent = round(present_count / total_paras * 100) if total_paras else 0
 

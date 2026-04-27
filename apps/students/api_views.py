@@ -276,10 +276,33 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                     "reason": f"Siz bugun allaqachon {existing.check_in.strftime('%H:%M')} da kirgansiz."
                 }, status=400)
 
-            # Kechikishni hisoblash
+            # Kechikishni hisoblash — hozirgi vaqtga mos keladigan paraga nisbatan
             late_minutes = 0
             status_val = 'present'
-            if expected_start:
+            if lesson and lesson.smena:
+                slots = lesson.smena.get_slots()
+                now_dt = datetime.combine(today, now_time)
+                # Hozirgi vaqtda qaysi para bo'lishi kerak ekanligini topamiz
+                target_slot = None
+                for slot in slots:
+                    slot_start = datetime.combine(today, slot.start)
+                    slot_end = (
+                        datetime.combine(today, slot.end) if slot.end
+                        else slot_start + timedelta(minutes=PARA_DURATION_MINUTES)
+                    )
+                    if now_dt <= slot_end:
+                        target_slot = slot
+                        break
+                # Agar barcha paralar o'tib ketgan bo'lsa — oxirgisini olamiz
+                if target_slot is None and slots:
+                    target_slot = slots[-1]
+
+                if target_slot:
+                    exp_dt = datetime.combine(today, target_slot.start)
+                    if now_dt > exp_dt:
+                        late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+                        status_val = 'late'
+            elif expected_start:
                 now_dt = datetime.combine(today, now_time)
                 exp_dt = datetime.combine(today, expected_start)
                 if now_dt > exp_dt:
@@ -323,9 +346,20 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                     "reason": "Avval kirish belgisini qo'ying."
                 }, status=400)
 
-            # Erta ketishni hisoblash (oxirgi chiqish vaqti saqlanadi)
+            # Erta ketishni hisoblash — oxirgi para tugash vaqtiga nisbatan
             early_leave_minutes = 0
-            if expected_end:
+            if lesson and lesson.smena:
+                slots = lesson.smena.get_slots()
+                now_dt = datetime.combine(today, now_time)
+                if slots:
+                    last = slots[-1]
+                    last_end = (
+                        datetime.combine(today, last.end) if last.end
+                        else datetime.combine(today, last.start) + timedelta(minutes=PARA_DURATION_MINUTES)
+                    )
+                    if now_dt < last_end:
+                        early_leave_minutes = int((last_end - now_dt).total_seconds() / 60)
+            elif expected_end:
                 now_dt = datetime.combine(today, now_time)
                 exp_end_dt = datetime.combine(today, expected_end)
                 if now_dt < exp_end_dt:
