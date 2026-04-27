@@ -3,15 +3,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
 
-load_dotenv()
+# BASE_DIR ni load_dotenv dan OLDIN aniqlaymiz — absolute path kafolatlanadi
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env')
 
 # TensorFlow/oneDNN warning larni o'chirish
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-CORE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CORE_DIR = str(BASE_DIR)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-_qo-xrslgusc1ixtvh477nbnpso7r(((xrs03&t0kewg6fx52d')
@@ -165,4 +164,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CSRF_TRUSTED_ORIGINS = [
     'https://sportedu.boastful.uz',
+    'https://kpi.sportedu.uz',
 ]
