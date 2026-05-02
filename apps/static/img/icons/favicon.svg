@@ -5,13 +5,18 @@
       <stop offset="100%" style="stop-color:#1a6fa8"/>
     </linearGradient>
   </defs>
+  <!-- Rounded square background -->
   <rect width="32" height="32" rx="7" fill="url(#bg)"/>
-  <polyline
-    points="29 16 24 16 20 27 12 5 8 16 3 16"
-    fill="none"
-    stroke="white"
-    stroke-width="2.8"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
+  <!-- Outer arc -->
+  <path d="M4,21 C4,10 8.5,5 16,5 C23.5,5 28,10 28,21"
+        fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- Middle arc -->
+  <path d="M7.5,21 C7.5,12 11,8 16,8 C21,8 24.5,12 24.5,21"
+        fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- Inner arc -->
+  <path d="M11,21 C11,14.5 12.8,12 16,12 C19.2,12 21,14.5 21,21"
+        fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- Center vertical drop line -->
+  <line x1="16" y1="16" x2="16" y2="27"
+        stroke="white" stroke-width="2.4" stroke-linecap="round"/>
 </svg>
