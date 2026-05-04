@@ -25,8 +25,28 @@ class ScheduleAdmin(admin.ModelAdmin):
     inlines = [ScheduleDayInline]
 
 
+@admin.register(Employee)
+class EmployeeAdmin(admin.ModelAdmin):
+    list_display  = ('name', 'telegram_user_id', 'employee_type', 'filial')
+    search_fields = ('name', 'telegram_user_id')
+    list_filter   = ('employee_type', 'filial')
+
+    fieldsets = (
+        ('Asosiy', {
+            'fields': ('name', 'employee_type', 'filial')
+        }),
+        ('Telegram', {
+            'fields': ('telegram_user_id',),
+            'description': "Xodimning Telegram bot orqali bog'langan ID si"
+        }),
+        ('Jadval va lokatsiya', {
+            'fields': ('schedules',),
+            'classes': ('collapse',)
+        }),
+    )
+
+
 admin.site.register(Weekday)
-admin.site.register(Employee)
 admin.site.register(WorkSchedule)
 admin.site.register(ScheduleDay)
 admin.site.register(InviteToken)
