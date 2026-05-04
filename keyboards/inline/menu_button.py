@@ -1,8 +1,8 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from utils.db_api.database import get_all_addresses
 
-
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from data.config import URL
 
 async def start_webapp_menu():
     keyboard = ReplyKeyboardMarkup(
@@ -10,7 +10,7 @@ async def start_webapp_menu():
             [
                 KeyboardButton(
                     text="🖥 Saytga kirish",
-                    web_app=WebAppInfo(url="https://0842590a03a9.ngrok-free.app/web_app/")  # bu yerga saytingiz manzilini yozing
+                    web_app=WebAppInfo(url=URL)
                 )
             ]
         ],
