@@ -45,10 +45,13 @@ logger = logging.getLogger(__name__)
 # /start — asosiy kirish nuqtasi
 # ============================================================
 
-@router.message(CommandStart(), StateFilter(None))
+@router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject):
     user = message.from_user
     args = command.args
+
+    # Har qanday holatdan /start ishlashi uchun — eski holatni tozalaymiz
+    await state.clear()
 
     await get_or_create_telegram_user(
         user_id=user.id,
