@@ -304,9 +304,9 @@ console.log("[face-embed] fetch override OK");
         if (onStatus) onStatus(sec,faceFrames,earValues);
         await _sleep(80);
       }
-      if (faceFrames < 8) return false;
+      if (faceFrames < 5) return false;
       const minE=Math.min(...earValues), maxE=Math.max(...earValues);
-      return (maxE - minE) >= 0.06;
+      return (maxE - minE) >= 0.03;
     }
 
     function getLocation() {
