@@ -129,6 +129,118 @@ def get_admins_by_filial(filial_id: int):
     return list(Administrator.objects.filter(filial_id=filial_id))
 
 
+# ============================================================
+# EDU ADMIN — TINGLOVCHI RO'YXATDAN O'TKAZISH
+# ============================================================
+
+@sync_to_async
+def get_active_groups_for_edu_admin(telegram_id: int) -> list:
+    """Hozirgi oydagi admin filialiga tegishli guruhlar"""
+    from apps.students.models import Group
+    from datetime import date
+    today = date.today()
+    admin = Administrator.objects.filter(telegram_id=int(telegram_id)).first()
+    if not admin or not admin.filial:
+        return []
+    groups = Group.objects.filter(
+        filial=admin.filial,
+        year=today.year,
+        month=today.month,
+    ).order_by('name')
+    return [
+        {'id': g.id, 'name': g.name, 'student_count': g.students.count()}
+        for g in groups
+    ]
+
+
+@sync_to_async
+def get_students_in_group_for_reg(group_id: int) -> list:
+    """Guruhdagi tinglovchilar (id, ism, rasm bor-yo'qligi)"""
+    from apps.students.models import Group
+    try:
+        group = Group.objects.get(id=group_id)
+        return [
+            {
+                'id':       s.id,
+                'full_name': s.full_name,
+                'has_face': bool(s.face_image),
+                'has_tg':   bool(s.telegram_id),
+            }
+            for s in group.students.all().order_by('full_name')
+        ]
+    except Exception:
+        return []
+
+
+@sync_to_async
+def save_student_face_by_id(student_id: int, photo_path: str) -> dict | None:
+    """
+    Tinglovchi rasmi saqlash (telegram_id o'zgarmaydi).
+    Qaytaradi: {'full_name', 'login', 'password'} yoki None.
+    """
+    from apps.students.models import Student
+    try:
+        student = Student.objects.get(id=student_id)
+        # Eski rasmni o'chirish
+        if student.face_image:
+            try:
+                import os
+                if os.path.exists(student.face_image.path):
+                    os.remove(student.face_image.path)
+            except Exception:
+                pass
+        student.face_image = photo_path
+        student.save(update_fields=['face_image'])
+        return {
+            'full_name': student.full_name,
+            'login':     student.user.username if student.user else '',
+            'password':  student.plain_password or '',
+        }
+    except Exception as e:
+        print(f"save_student_face_by_id xatosi: {e}")
+        return None
+
+
+# ============================================================
+# TINGLOVCHI LOGIN / PAROL ORQALI AUTENTIFIKATSIYA
+# ============================================================
+
+@sync_to_async
+def find_student_by_credentials(login: str, password: str) -> dict | None:
+    """
+    Login (username) va plain_password bo'yicha tinglovchini topadi.
+    Qaytaradi: {'id', 'full_name', 'has_face', 'has_telegram'} yoki None.
+    """
+    from apps.students.models import Student
+    from django.contrib.auth.models import User
+    try:
+        user = User.objects.get(username=login.strip())
+        student = Student.objects.get(user=user, plain_password=password.strip())
+        return {
+            'id':          student.id,
+            'full_name':   student.full_name,
+            'has_face':    bool(student.face_image),
+            'has_telegram': bool(student.telegram_id),
+        }
+    except (User.DoesNotExist, Student.DoesNotExist):
+        return None
+    except Exception as e:
+        print(f"find_student_by_credentials xatosi: {e}")
+        return None
+
+
+@sync_to_async
+def attach_telegram_to_student(student_id: int, telegram_id: int) -> bool:
+    """Tinglovchiga telegram_id biriktirish"""
+    from apps.students.models import Student
+    try:
+        Student.objects.filter(id=student_id).update(telegram_id=int(telegram_id))
+        return True
+    except Exception as e:
+        print(f"attach_telegram_to_student xatosi: {e}")
+        return False
+
+
 @sync_to_async
 def get_all_admin_ids() -> list[int]:
     user_ids = list(Administrator.objects.values_list('telegram_id', flat=True))

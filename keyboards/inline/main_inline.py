@@ -20,7 +20,6 @@ async def employee_main_keyboard() -> InlineKeyboardMarkup:
 def edu_admin_keyboard() -> InlineKeyboardMarkup:
     """O'quv bo'limi admin uchun asosiy menyu"""
     edu_web_app_url = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
-    groups_url = BASE_URL.rstrip('/') + '/students/groups/'
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -31,7 +30,7 @@ def edu_admin_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="👤 Tinglovchilarni ro'yxatdan o'tkazish",
-                url=groups_url
+                callback_data="edu_reg_start"
             ),
         ],
     ])
@@ -40,7 +39,6 @@ def edu_admin_keyboard() -> InlineKeyboardMarkup:
 def edu_admin_employee_keyboard() -> InlineKeyboardMarkup:
     """Edu admin + xodim uchun birlashgan menyu"""
     edu_web_app_url = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
-    groups_url = BASE_URL.rstrip('/') + '/students/groups/'
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -51,7 +49,7 @@ def edu_admin_employee_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="👤 Tinglovchilarni ro'yxatdan o'tkazish",
-                url=groups_url
+                callback_data="edu_reg_start"
             ),
         ],
         [

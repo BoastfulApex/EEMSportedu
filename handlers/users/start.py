@@ -231,13 +231,15 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
     # ── 5. Noma'lum foydalanuvchi ────────────────────────────
     await message.answer(
-        "⚠️ Siz hali ro'yxatdan o'tmagansiz.\n\n"
-        "Botdan foydalanish uchun tashkilot administratoridan "
-        "<b>maxsus havola</b> oling.\n\n"
-        "<i>Agar siz allaqachon xodim yoki tinglovchi sifatida "
-        "ro'yxatdan o'tgan bo'lsangiz, admin bilan bog'laning — "
-        "Telegram ID ingiz tizimga biriktirilmagan bo'lishi mumkin.</i>",
-        parse_mode="HTML"
+        "⚠️ <b>Botdan foydalanish uchun</b> tashkilot administratoridan "
+        "maxsus havola oling, yoki login parol orqali ro'yxatdan o'ting.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="🔐 Login orqali kirish",
+                callback_data="student_login_start"
+            )]
+        ])
     )
 
 

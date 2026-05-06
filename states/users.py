@@ -32,3 +32,12 @@ class EduAdminAttendance(StatesGroup):
 
 class EmployeeNameInput(StatesGroup):
     waiting_for_name = State()   # xodim ism-familiyasini kiritishi kutilmoqda
+
+
+class EduStudentReg(StatesGroup):
+    waiting_for_photo = State()   # edu admin tinglovchi rasmi kutilmoqda
+
+
+class StudentLoginAuth(StatesGroup):
+    waiting_for_login    = State()   # tinglovchi loginini kiritmoqda
+    waiting_for_password = State()   # tinglovchi parolini kiritmoqda
