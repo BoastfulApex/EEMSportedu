@@ -342,12 +342,59 @@ console.log("[face-embed] fetch override OK");
       return new Promise((resolve, reject) => {
         if (!navigator.geolocation)
           return reject(new Error("GEO_NOT_SUPPORTED"));
+
+        // 2 ta o'qish olamiz — fake GPS da koordinatalar aynan bir xil bo'ladi
+        let reading1 = null;
+
+        const doSecondReading = () => {
+          navigator.geolocation.getCurrentPosition(
+            p2 => {
+              const lat1 = reading1.latitude,  lon1 = reading1.longitude;
+              const lat2 = p2.coords.latitude, lon2 = p2.coords.longitude;
+              const acc  = p2.coords.accuracy;
+
+              // Fake GPS belgisi 1: accuracy juda kichik (0-3m) — shubhali
+              const suspiciousAccuracy = acc !== null && acc < 4;
+
+              // Fake GPS belgisi 2: 2 ta o'qishda koordinatalar aynan bir xil
+              const identical = (lat1 === lat2 && lon1 === lon2);
+
+              const isFakeGps = suspiciousAccuracy && identical;
+
+              resolve({
+                latitude:  lat2,
+                longitude: lon2,
+                accuracy:  acc,
+                is_fake_gps: isFakeGps,
+              });
+            },
+            err2 => {
+              // Ikkinchi o'qish xato — birinchisini ishlatamiz
+              resolve({
+                latitude:    reading1.latitude,
+                longitude:   reading1.longitude,
+                accuracy:    reading1.accuracy,
+                is_fake_gps: false,
+              });
+            },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          );
+        };
+
         navigator.geolocation.getCurrentPosition(
-          p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+          p => {
+            reading1 = {
+              latitude:  p.coords.latitude,
+              longitude: p.coords.longitude,
+              accuracy:  p.coords.accuracy,
+            };
+            // 1.5 soniya kutib ikkinchi o'qish
+            setTimeout(doSecondReading, 1500);
+          },
           err => {
             if (err.code === 1) return reject(new Error("GEO_DENIED"));
             navigator.geolocation.getCurrentPosition(
-              p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+              p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy, is_fake_gps: false }),
               err2 => {
                 if (err2.code === 1) reject(new Error("GEO_DENIED"));
                 else if (err2.code === 2) reject(new Error("GEO_UNAVAILABLE"));
