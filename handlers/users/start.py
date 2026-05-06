@@ -62,22 +62,57 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
     # ── 1. Admin ─────────────────────────────────────────────
     if await is_user_admin(user.id):
+        also_employee = await is_user_employee(user.id)
+
         # Edu admin → alohida menyu
         if await is_edu_admin_user(user.id):
-            from keyboards.inline.main_inline import edu_admin_keyboard
-            await message.answer(
-                "👋 Assalomu alaykum, <b>O'quv bo'limi</b> administratori!\n\n"
-                "Quyidagi bo'limlardan birini tanlang:",
-                parse_mode="HTML",
-                reply_markup=edu_admin_keyboard()
-            )
+            from keyboards.inline.main_inline import edu_admin_keyboard, edu_admin_employee_keyboard
+            if also_employee:
+                if await has_employee_photo(user.id):
+                    await message.answer(
+                        "👋 Assalomu alaykum, <b>O'quv bo'limi</b> administratori!\n\n"
+                        "Quyidagi bo'limlardan birini tanlang:",
+                        parse_mode="HTML",
+                        reply_markup=edu_admin_employee_keyboard()
+                    )
+                else:
+                    await state.set_state(EmployeeRegistration.waiting_for_photo)
+                    await state.update_data(is_admin=True)
+                    await message.answer(
+                        "📸 Yuz rasmingiz saqlanmagan.\n\n"
+                        "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                        parse_mode="HTML"
+                    )
+            else:
+                await message.answer(
+                    "👋 Assalomu alaykum, <b>O'quv bo'limi</b> administratori!\n\n"
+                    "Quyidagi bo'limlardan birini tanlang:",
+                    parse_mode="HTML",
+                    reply_markup=edu_admin_keyboard()
+                )
             return
+
+        # Oddiy admin
         from keyboards.inline.menu_button import admin_menu_keyboard
         await message.answer(
             "👋 Assalomu alaykum, Hurmatli Administrator!\n\n"
             "Quyidagi bo'limlardan birini tanlang:",
             reply_markup=await admin_menu_keyboard()
         )
+        if also_employee:
+            if await has_employee_photo(user.id):
+                await message.answer(
+                    "👇 Xodim sifatida davomat:",
+                    reply_markup=await employee_main_keyboard()
+                )
+            else:
+                await state.set_state(EmployeeRegistration.waiting_for_photo)
+                await state.update_data(is_admin=True)
+                await message.answer(
+                    "📸 Yuz rasmingiz saqlanmagan.\n\n"
+                    "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                    parse_mode="HTML"
+                )
         return
 
     # ── 2. Allaqachon xodim ───────────────────────────────────
@@ -326,12 +361,22 @@ async def receive_employee_photo(message: Message, state: FSMContext):
     saved = await save_employee_photo(user_id=user_id, photo_path=relative_path)
 
     if saved:
+        data = await state.get_data()
+        is_admin_flag = data.get('is_admin', False)
         await state.clear()
+
+        # Admin ham xodim bo'lsa — rol ga mos keyboard ko'rsatamiz
+        if is_admin_flag and await is_edu_admin_user(user_id):
+            from keyboards.inline.main_inline import edu_admin_employee_keyboard
+            reply_markup = edu_admin_employee_keyboard()
+        else:
+            reply_markup = await employee_main_keyboard()
+
         await message.answer(
             "✅ <b>Rasm qabul qilindi!</b>\n\n"
             "Ro'yxatdan o'tish yakunlandi. Kirish uchun quyidagi tugmani bosing:",
             parse_mode="HTML",
-            reply_markup=await employee_main_keyboard()
+            reply_markup=reply_markup
         )
     else:
         await message.answer(

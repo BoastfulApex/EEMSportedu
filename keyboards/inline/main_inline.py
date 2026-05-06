@@ -20,6 +20,7 @@ async def employee_main_keyboard() -> InlineKeyboardMarkup:
 def edu_admin_keyboard() -> InlineKeyboardMarkup:
     """O'quv bo'limi admin uchun asosiy menyu"""
     edu_web_app_url = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
+    groups_url = BASE_URL.rstrip('/') + '/students/groups/'
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -27,6 +28,37 @@ def edu_admin_keyboard() -> InlineKeyboardMarkup:
                 web_app=WebAppInfo(url=edu_web_app_url)
             ),
         ],
+        [
+            InlineKeyboardButton(
+                text="👤 Tinglovchilarni ro'yxatdan o'tkazish",
+                url=groups_url
+            ),
+        ],
+    ])
+
+
+def edu_admin_employee_keyboard() -> InlineKeyboardMarkup:
+    """Edu admin + xodim uchun birlashgan menyu"""
+    edu_web_app_url = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
+    groups_url = BASE_URL.rstrip('/') + '/students/groups/'
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="📋 Tinglovchi davomatini qayd qilish",
+                web_app=WebAppInfo(url=edu_web_app_url)
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="👤 Tinglovchilarni ro'yxatdan o'tkazish",
+                url=groups_url
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="🔓 Kirish", web_app=WebAppInfo(url=f"{URL}?action=check_in")),
+            InlineKeyboardButton(text="🔒 Chiqish", web_app=WebAppInfo(url=f"{URL}?action=check_out")),
+        ],
+        [InlineKeyboardButton(text="📊 Hisobotlar", callback_data="my_reports")],
     ])
 
 
