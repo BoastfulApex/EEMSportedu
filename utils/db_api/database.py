@@ -71,18 +71,57 @@ def get_employees() -> List[Employee]:
 
 @sync_to_async
 def is_user_employee(user_id: int) -> bool:
-    return Employee.objects.filter(telegram_user_id=user_id).exists()
+    return Employee.objects.filter(telegram_user_id=int(user_id)).exists()
 
 
 @sync_to_async
 def is_user_admin(user_id: int) -> bool:
-    return Administrator.objects.filter(telegram_id=user_id).exists()
+    return Administrator.objects.filter(telegram_id=int(user_id)).exists()
 
 
 @sync_to_async
 def is_user_student(user_id: int) -> bool:
     from apps.students.models import Student
-    return Student.objects.filter(telegram_id=user_id).exists()
+    return Student.objects.filter(telegram_id=int(user_id)).exists()
+
+
+@sync_to_async
+def get_user_roles_info(telegram_id: int) -> dict:
+    """
+    Foydalanuvchining barcha rollari va ro'yxatdan o'tgan ismi.
+    Returns: {
+      'is_admin': bool, 'is_edu_admin': bool,
+      'is_employee': bool, 'is_student': bool,
+      'admin_name': str, 'admin_role_label': str,
+      'employee_name': str, 'student_name': str,
+    }
+    """
+    from apps.students.models import Student
+
+    tid = int(telegram_id)
+
+    admin = Administrator.objects.filter(telegram_id=tid).first()
+    employee = Employee.objects.filter(telegram_user_id=tid).first()
+    student = Student.objects.filter(telegram_id=tid).first()
+
+    role_labels = {
+        'org_admin':    "Tashkilot superadmini",
+        'filial_admin': "Filial admini",
+        'hr_admin':     "HR admin",
+        'edu_admin':    "O'quv bo'limi admini",
+        'monitoring':   "Monitoring admini",
+    }
+
+    return {
+        'is_admin':        bool(admin),
+        'is_edu_admin':    bool(admin and admin.role in ('edu_admin', 'org_admin')),
+        'is_employee':     bool(employee),
+        'is_student':      bool(student),
+        'admin_name':      admin.full_name if admin else "",
+        'admin_role_label': role_labels.get(admin.role, "Admin") if admin else "",
+        'employee_name':   employee.name or "" if employee else "",
+        'student_name':    student.full_name if student else "",
+    }
 
 
 @sync_to_async

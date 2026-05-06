@@ -32,6 +32,7 @@ from utils.db_api.database import (
     has_student_photo,
     is_edu_admin_user,
     update_telegram_user_name,
+    get_user_roles_info,
 )
 from utils.face_check import detect_face
 
@@ -60,89 +61,96 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         last_name=user.last_name or "",
     )
 
-    # ── 1. Admin ─────────────────────────────────────────────
-    if await is_user_admin(user.id):
-        also_employee = await is_user_employee(user.id)
+    # ── Foydalanuvchi rollarini bir marta olamiz ───────────────
+    info = await get_user_roles_info(user.id)
 
-        # Edu admin → alohida menyu
-        if await is_edu_admin_user(user.id):
+    # ── Salomlashish matni (ism + rollar) ─────────────────────
+    def _build_greeting(info: dict) -> str:
+        lines = ["👋 <b>Assalomu alaykum!</b>\n"]
+        if info['is_admin']:
+            name = info['admin_name'] or user.first_name or ""
+            lines.append(f"👤 <b>{name}</b>")
+            lines.append(f"🔑 Rol: <b>{info['admin_role_label']}</b>")
+        if info['is_employee']:
+            emp_name = info['employee_name'] or (info['admin_name'] if info['is_admin'] else user.first_name) or ""
+            if not info['is_admin']:
+                lines.append(f"👤 <b>{emp_name}</b>")
+            lines.append(f"🏢 Rol: <b>Xodim</b>")
+        if info['is_student']:
+            stu_name = info['student_name'] or user.first_name or ""
+            lines.append(f"👤 <b>{stu_name}</b>")
+            lines.append(f"🎓 Rol: <b>Tinglovchi</b>")
+        lines.append("\nQuyidagi bo'limlardan birini tanlang:")
+        return "\n".join(lines)
+
+    # ── 1. Admin ─────────────────────────────────────────────
+    if info['is_admin']:
+        greeting = _build_greeting(info)
+
+        # Edu admin
+        if info['is_edu_admin']:
             from keyboards.inline.main_inline import edu_admin_keyboard, edu_admin_employee_keyboard
-            if also_employee:
+            if info['is_employee']:
                 if await has_employee_photo(user.id):
-                    await message.answer(
-                        "👋 Assalomu alaykum, <b>O'quv bo'limi</b> administratori!\n\n"
-                        "Quyidagi bo'limlardan birini tanlang:",
-                        parse_mode="HTML",
-                        reply_markup=edu_admin_employee_keyboard()
-                    )
+                    await message.answer(greeting, parse_mode="HTML",
+                                         reply_markup=edu_admin_employee_keyboard())
                 else:
                     await state.set_state(EmployeeRegistration.waiting_for_photo)
                     await state.update_data(is_admin=True)
                     await message.answer(
-                        "📸 Yuz rasmingiz saqlanmagan.\n\n"
-                        "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                        greeting + "\n\n📸 <b>Yuz rasmingiz saqlanmagan.</b>\n"
+                        "Iltimos, yuzingiz aniq ko'rinib turgan rasmingizni yuboring:",
                         parse_mode="HTML"
                     )
             else:
-                await message.answer(
-                    "👋 Assalomu alaykum, <b>O'quv bo'limi</b> administratori!\n\n"
-                    "Quyidagi bo'limlardan birini tanlang:",
-                    parse_mode="HTML",
-                    reply_markup=edu_admin_keyboard()
-                )
+                await message.answer(greeting, parse_mode="HTML",
+                                     reply_markup=edu_admin_keyboard())
             return
 
         # Oddiy admin
         from keyboards.inline.menu_button import admin_menu_keyboard
-        await message.answer(
-            "👋 Assalomu alaykum, Hurmatli Administrator!\n\n"
-            "Quyidagi bo'limlardan birini tanlang:",
-            reply_markup=await admin_menu_keyboard()
-        )
-        if also_employee:
+        await message.answer(greeting, parse_mode="HTML",
+                             reply_markup=await admin_menu_keyboard())
+        if info['is_employee']:
             if await has_employee_photo(user.id):
-                await message.answer(
-                    "👇 Xodim sifatida davomat:",
-                    reply_markup=await employee_main_keyboard()
-                )
+                await message.answer("👇 Xodim sifatida davomat:",
+                                     reply_markup=await employee_main_keyboard())
             else:
                 await state.set_state(EmployeeRegistration.waiting_for_photo)
                 await state.update_data(is_admin=True)
                 await message.answer(
-                    "📸 Yuz rasmingiz saqlanmagan.\n\n"
-                    "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                    "📸 <b>Yuz rasmingiz saqlanmagan.</b>\n"
+                    "Iltimos, yuzingiz aniq ko'rinib turgan rasmingizni yuboring:",
                     parse_mode="HTML"
                 )
         return
 
-    # ── 2. Allaqachon xodim ───────────────────────────────────
-    if await is_user_employee(user.id):
+    # ── 2. Xodim ─────────────────────────────────────────────
+    if info['is_employee']:
+        greeting = _build_greeting(info)
         if await has_employee_photo(user.id):
-            await message.answer(
-                "✅ Xush kelibsiz!",
-                reply_markup=await employee_main_keyboard()
-            )
+            await message.answer(greeting, parse_mode="HTML",
+                                 reply_markup=await employee_main_keyboard())
         else:
             await state.set_state(EmployeeRegistration.waiting_for_photo)
             await message.answer(
-                "📸 Yuz rasmingiz saqlanmagan.\n\n"
-                "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                greeting + "\n\n📸 <b>Yuz rasmingiz saqlanmagan.</b>\n"
+                "Iltimos, yuzingiz aniq ko'rinib turgan rasmingizni yuboring:",
                 parse_mode="HTML"
             )
         return
 
-    # ── 3. Allaqachon tinglovchi ──────────────────────────────
-    if await is_user_student(user.id):
+    # ── 3. Tinglovchi ────────────────────────────────────────
+    if info['is_student']:
+        greeting = _build_greeting(info)
         if await has_student_photo(user.id):
-            await message.answer(
-                "✅ Xush kelibsiz!",
-                reply_markup=student_main_keyboard()
-            )
+            await message.answer(greeting, parse_mode="HTML",
+                                 reply_markup=student_main_keyboard())
         else:
             await state.set_state(StudentPhotoUpload.waiting_for_photo)
             await message.answer(
-                "📸 Yuz rasmingiz saqlanmagan.\n\n"
-                "Iltimos, <b>yuzingiz aniq ko'rinib turgan</b> rasmingizni yuboring:",
+                greeting + "\n\n📸 <b>Yuz rasmingiz saqlanmagan.</b>\n"
+                "Iltimos, yuzingiz aniq ko'rinib turgan rasmingizni yuboring:",
                 parse_mode="HTML"
             )
         return
@@ -221,10 +229,14 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         )
         return
 
-    # ── 5. Oddiy /start (hech qanday havola yo'q) ────────────
+    # ── 5. Noma'lum foydalanuvchi ────────────────────────────
     await message.answer(
-        "⚠️ Botdan foydalanish uchun tashkilot administratoridan "
-        "<b>maxsus havola</b> oling.",
+        "⚠️ Siz hali ro'yxatdan o'tmagansiz.\n\n"
+        "Botdan foydalanish uchun tashkilot administratoridan "
+        "<b>maxsus havola</b> oling.\n\n"
+        "<i>Agar siz allaqachon xodim yoki tinglovchi sifatida "
+        "ro'yxatdan o'tgan bo'lsangiz, admin bilan bog'laning — "
+        "Telegram ID ingiz tizimga biriktirilmagan bo'lishi mumkin.</i>",
         parse_mode="HTML"
     )
 
