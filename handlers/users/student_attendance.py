@@ -99,12 +99,4 @@ async def student_photo_wrong_input(message: Message):
     )
 
 
-# ============================================================
-# ASOSIY MENYUGA QAYTISH
-# ============================================================
-
-@router.callback_query(F.data == "back_to_main")
-async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.answer("📋 Asosiy menyu:", reply_markup=student_main_keyboard())
-    await callback.answer()
+# back_to_main callback — stats.py da yagona joyda boshqariladi

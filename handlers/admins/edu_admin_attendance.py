@@ -49,10 +49,18 @@ _BACK_KB = InlineKeyboardMarkup(inline_keyboard=[
 @router.callback_query(F.data == "edu_back_main")
 async def edu_back_to_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    from utils.db_api.database import is_user_employee
+    from keyboards.inline.main_inline import edu_admin_employee_keyboard
+
+    if await is_user_employee(callback.from_user.id):
+        keyboard = edu_admin_employee_keyboard()
+    else:
+        keyboard = edu_admin_keyboard()
+
     await callback.message.edit_text(
         "📋 <b>O'quv bo'limi — Asosiy menyu</b>",
         parse_mode="HTML",
-        reply_markup=edu_admin_keyboard()
+        reply_markup=keyboard
     )
     await callback.answer()
 
