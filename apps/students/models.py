@@ -92,6 +92,11 @@ class Student(models.Model):
         max_length=20, null=True, blank=True,
         help_text="Tizimga kirish paroli (ochiq ko'rinishda)"
     )
+    is_registered = models.BooleanField(
+        default=False,
+        verbose_name="Ro'yxatdan o'tganmi",
+        help_text="Tinglovchi foto yuklagan va tizimga ulanganmi"
+    )
 
     organization = models.ForeignKey(
         Organization,

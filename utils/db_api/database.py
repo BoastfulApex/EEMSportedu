@@ -155,7 +155,7 @@ def get_active_groups_for_edu_admin(telegram_id: int) -> list:
 
 @sync_to_async
 def get_students_in_group_for_reg(group_id: int) -> list:
-    """Guruhdagi tinglovchilar (id, ism, rasm bor-yo'qligi)"""
+    """Guruhdagi tinglovchilar (id, ism, rasm bor-yo'qligi). Ro'yxatdan o'tganlar chiqarilmaydi."""
     from apps.students.models import Group
     try:
         group = Group.objects.get(id=group_id)
@@ -166,7 +166,7 @@ def get_students_in_group_for_reg(group_id: int) -> list:
                 'has_face': bool(s.face_image),
                 'has_tg':   bool(s.telegram_id),
             }
-            for s in group.students.all().order_by('full_name')
+            for s in group.students.filter(is_registered=False).order_by('full_name')
         ]
     except Exception:
         return []
@@ -190,7 +190,8 @@ def save_student_face_by_id(student_id: int, photo_path: str) -> dict | None:
             except Exception:
                 pass
         student.face_image = photo_path
-        student.save(update_fields=['face_image'])
+        student.is_registered = True
+        student.save(update_fields=['face_image', 'is_registered'])
         return {
             'full_name': student.full_name,
             'login':     student.user.username if student.user else '',
@@ -231,10 +232,16 @@ def find_student_by_credentials(login: str, password: str) -> dict | None:
 
 @sync_to_async
 def attach_telegram_to_student(student_id: int, telegram_id: int) -> bool:
-    """Tinglovchiga telegram_id biriktirish"""
+    """Tinglovchiga telegram_id biriktirish. Agar rasmi bo'lsa, is_registered=True qo'yiladi."""
     from apps.students.models import Student
     try:
-        Student.objects.filter(id=student_id).update(telegram_id=int(telegram_id))
+        student = Student.objects.get(id=student_id)
+        student.telegram_id = int(telegram_id)
+        update_fields = ['telegram_id']
+        if student.face_image:
+            student.is_registered = True
+            update_fields.append('is_registered')
+        student.save(update_fields=update_fields)
         return True
     except Exception as e:
         print(f"attach_telegram_to_student xatosi: {e}")
@@ -666,13 +673,13 @@ def get_group_by_invite_token(token: str):
 
 @sync_to_async
 def get_students_by_group(group_id: int):
-    """Guruhdagi barcha tinglovchilar ro'yxatini qaytaradi"""
+    """Guruhdagi tinglovchilar ro'yxatini qaytaradi. Ro'yxatdan o'tganlar chiqarilmaydi."""
     from apps.students.models import Group
     try:
         group = Group.objects.get(id=group_id)
         return [
             {'id': s.id, 'full_name': s.full_name}
-            for s in group.students.all().order_by('full_name')
+            for s in group.students.filter(is_registered=False).order_by('full_name')
         ]
     except Exception:
         return []
@@ -1520,7 +1527,8 @@ def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
                 pass
         student.face_image = photo_path
         student.face_verified = True
-        student.save(update_fields=['face_image', 'face_verified'])
+        student.is_registered = True
+        student.save(update_fields=['face_image', 'face_verified', 'is_registered'])
         return True
     except Exception as e:
         print(f"save_student_face_photo xatosi: {e}")
@@ -1686,7 +1694,8 @@ def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
         student = Student.objects.get(telegram_id=telegram_id)
         student.face_image = photo_path
         student.face_verified = True
-        student.save(update_fields=['face_image', 'face_verified'])
+        student.is_registered = True
+        student.save(update_fields=['face_image', 'face_verified', 'is_registered'])
         return True
     except Exception:
         return False
