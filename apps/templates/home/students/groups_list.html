@@ -98,13 +98,42 @@
             <td>{{ group.filial.filial_name|default:"—" }}</td>
             <td>{{ group.direction.name|default:"—" }}</td>
             <td><span class="badge bg-info">{{ group.year }}-{{ group.get_month_display }}</span></td>
-            <td><span class="badge bg-secondary">{{ group.students.count }} ta</span></td>
+            <td><span class="badge bg-secondary">{{ group.total_students }} ta</span></td>
             <td>
-              {% if group.is_confirmed %}
-                <span class="badge bg-success">✓ Tasdiqlangan</span>
-              {% else %}
-                <span class="badge bg-warning text-dark">⏳ Kutilmoqda</span>
-              {% endif %}
+              <div class="d-flex flex-column gap-1">
+                {# ── Lokatsiya holati ── #}
+                {% if group.has_schedule %}
+                  <span class="badge bg-success" title="Faol dars jadvali mavjud">
+                    <i data-feather="map-pin" style="width:10px;height:10px"></i> Lokatsiya biriktirilgan
+                  </span>
+                {% else %}
+                  <span class="badge bg-danger" title="Dars jadvali yo'q">
+                    <i data-feather="map-pin" style="width:10px;height:10px"></i> Lokatsiya yo'q
+                  </span>
+                {% endif %}
+                {# ── Tinglovchilar to'liqligi ── #}
+                {% if group.total_students == 0 %}
+                  <span class="badge bg-secondary" title="Tinglovchi yo'q">
+                    👥 0 ta
+                  </span>
+                {% else %}
+                  {% with pct=group.registered_students|floatformat:0 %}
+                    {% if group.registered_students == group.total_students %}
+                      <span class="badge bg-success" title="Barcha tinglovchilar ro'yxatdan o'tgan">
+                        👥 {{ group.registered_students }}/{{ group.total_students }} To'liq
+                      </span>
+                    {% elif group.registered_students == 0 %}
+                      <span class="badge bg-danger" title="Hech kim ro'yxatdan o'tmagan">
+                        👥 0/{{ group.total_students }} Ro'yxatsiz
+                      </span>
+                    {% else %}
+                      <span class="badge bg-warning text-dark" title="{{ group.registered_students }} ta ro'yxatdan o'tgan">
+                        👥 {{ group.registered_students }}/{{ group.total_students }} Jarayonda
+                      </span>
+                    {% endif %}
+                  {% endwith %}
+                {% endif %}
+              </div>
             </td>
             <td>
               <div class="d-flex gap-1 justify-content-end">

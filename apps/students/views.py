@@ -7,7 +7,7 @@ from django.http import HttpResponse, JsonResponse
 from django.template import loader
 from django.urls import reverse_lazy
 from django.views.generic.edit import DeleteView
-from django.db.models import Q
+from django.db.models import Q, Count, OuterRef, Exists
 from datetime import datetime
 
 import random
@@ -18,7 +18,7 @@ from django.contrib.auth.models import User
 from apps.superadmin.decorators import edu_admin_required, monitoring_required
 from apps.superadmin.models import Administrator
 from apps.main.models import Location
-from .models import Group, Direction, Student, Smena, SmenaSlot, GroupLesson, MONTH_CHOICES
+from .models import Group, Direction, Student, Smena, SmenaSlot, GroupLesson, GroupSchedule, MONTH_CHOICES
 from .forms import GroupForm, DirectionForm, SmenaForm, SmenaSlotFormSet
 
 
@@ -72,11 +72,25 @@ def groups_list(request):
         filter_year  = now.year
         filter_month = now.month
 
+    # Lokatsiya (faol jadval) bor-yo'qligini aniqlash uchun subquery
+    has_schedule_sq = GroupSchedule.objects.filter(
+        group=OuterRef('pk'),
+        is_active=True,
+    )
+
     groups = Group.objects.filter(
         organization=admin_user.organization,
         year=filter_year,
         month=filter_month,
-    ).select_related('filial', 'direction').order_by('name')
+    ).select_related('filial', 'direction').annotate(
+        total_students=Count('students', distinct=True),
+        registered_students=Count(
+            'students',
+            filter=Q(students__is_registered=True),
+            distinct=True,
+        ),
+        has_schedule=Exists(has_schedule_sq),
+    ).order_by('name')
 
     if filial_id:
         groups = groups.filter(filial_id=filial_id)
