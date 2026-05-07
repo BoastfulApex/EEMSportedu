@@ -1902,11 +1902,14 @@ def admin_mark_student_attendance(student_id: int, admin_telegram_id: int) -> di
         late_minutes = 0
         status = 'present'
         if lesson and lesson.smena:
-            exp_dt = datetime.combine(today, lesson.smena.para1_start)
-            now_dt = datetime.combine(today, now_time)
-            if now_dt > exp_dt:
-                late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
-                status = 'late'
+            slots = lesson.smena.get_slots()
+            first_start = slots[0].start if slots else None
+            if first_start:
+                exp_dt = datetime.combine(today, first_start)
+                now_dt = datetime.combine(today, now_time)
+                if now_dt > exp_dt:
+                    late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+                    status = 'late'
 
         if att is None:
             StudentAttendance.objects.create(
