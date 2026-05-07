@@ -197,6 +197,9 @@ console.log("[face-embed] fetch override OK");
       checkoutBtn.disabled = val;
     }
 
+    // Debug logger (console ga chiqaradi)
+    function dbg(msg) { console.log('[EDU-DBG]', msg); }
+
     // Sana
     document.getElementById("dateLabel").textContent = new Date().toLocaleDateString("uz-UZ", {
       weekday: "long", year: "numeric", month: "long", day: "numeric"
