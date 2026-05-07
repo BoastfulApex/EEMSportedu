@@ -53,8 +53,10 @@ def verify_face(employee, base64_image):
         if not unknown_encodings:
             return False, "Rasmda yuz aniqlanmadi"
 
+        # tolerance=0.65 — 1:1 tasdiq uchun yumshoqroq
+        # (yoritish, burchak, kamera sifati farqi uchun)
         match = face_recognition.compare_faces(
-            [known_encodings[0]], unknown_encodings[0], tolerance=0.5
+            [known_encodings[0]], unknown_encodings[0], tolerance=0.65
         )
         if match[0]:
             return True

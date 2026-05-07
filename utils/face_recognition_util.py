@@ -19,9 +19,13 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Minimal o'xshashlik chegaralari
+# Minimal o'xshashlik chegaralari — 1:N qidirish (ko'p tinglovchi orasidan)
 FACE_REC_THRESHOLD  = 0.55   # distance <= bu → topildi  (kichikroq = aniqroq)
 MEDIAPIPE_THRESHOLD = 0.985  # cosine similarity >= bu → topildi (kattaroq = aniqroq)
+
+# 1:1 tekshiruv — student_id allaqachon ma'lum, faqat tasdiqlaymiz
+FACE_REC_THRESHOLD_1V1  = 0.68   # yumshoqroq: lighting, burchak farqi uchun
+MEDIAPIPE_THRESHOLD_1V1 = 0.965  # yumshoqroq
 
 
 # ─────────────────────────────────────────────────────────────
@@ -144,14 +148,17 @@ def recognize_student(
     query_path: str,
     students: list[dict],
     top_n: int = 3,
+    one_to_one: bool = False,
 ) -> dict:
     """
-    Admin yuborgan rasm bo'yicha tinglovchini taniydi.
+    Rasm bo'yicha tinglovchini taniydi.
 
     Parametrlar:
-        query_path  — admin yuborgan rasmning absolyut yo'li
+        query_path  — so'rov rasmining absolyut yo'li
         students    — [{'id', 'full_name', 'image_path', ...}, ...]
         top_n       — qaytariladigan nomzodlar soni
+        one_to_one  — True bo'lsa student_id allaqachon ma'lum (1:1 tasdiq),
+                      yumshoqroq threshold ishlatiladi
 
     Qaytaradi:
         {
@@ -208,11 +215,12 @@ def recognize_student(
 
     # Topildi hisoblanish sharti
     best = candidates[0] if candidates else None
-    threshold = (
-        (1 - FACE_REC_THRESHOLD) * 100   # ~45%
-        if method == 'face_recognition'
-        else MEDIAPIPE_THRESHOLD * 100   # ~98.5%
-    )
+    if method == 'face_recognition':
+        thr = FACE_REC_THRESHOLD_1V1 if one_to_one else FACE_REC_THRESHOLD
+        threshold = (1 - thr) * 100   # ~32% (1:1) yoki ~45% (1:N)
+    else:
+        thr = MEDIAPIPE_THRESHOLD_1V1 if one_to_one else MEDIAPIPE_THRESHOLD
+        threshold = thr * 100         # ~96.5% (1:1) yoki ~98.5% (1:N)
     found = bool(best and best['score'] >= threshold)
 
     return {

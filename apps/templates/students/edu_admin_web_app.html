@@ -142,6 +142,7 @@ console.log("[face-embed] fetch override OK");
   <div class="header">
     <h1>📷 Tinglovchi davomati</h1>
     <p id="dateLabel"></p>
+    <p id="studentLabel" style="font-size:0.85rem;font-weight:600;color:var(--hint);margin-top:2px;display:none;"></p>
   </div>
 
   <div class="camera-wrap">
@@ -169,6 +170,16 @@ console.log("[face-embed] fetch override OK");
     tg.expand();
 
     const adminId = tg.initDataUnsafe?.user?.id || null;
+
+    // URL dan student_id o'qish
+    const _urlParams = new URLSearchParams(window.location.search);
+    const studentId  = _urlParams.get('student_id') || null;
+
+    if (studentId) {
+      const lbl = document.getElementById("studentLabel");
+      lbl.textContent = "👤 Tanlangan tinglovchi ID: " + studentId;
+      lbl.style.display = "block";
+    }
 
     const video       = document.getElementById("camera");
     const canvas      = document.getElementById("snapshot");
@@ -418,15 +429,18 @@ console.log("[face-embed] fetch override OK");
       setLoading("Tinglovchi aniqlanmoqda...");
 
       try {
+        const payload = {
+          admin_telegram_id: adminId,
+          latitude:          lat,
+          longitude:         lon,
+          image:             photo,
+        };
+        if (studentId) payload.student_id = parseInt(studentId);
+
         const res  = await fetch("/students/edu-admin/api/check/", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({
-            admin_telegram_id: adminId,
-            latitude:          lat,
-            longitude:         lon,
-            image:             photo,
-          }),
+          body:    JSON.stringify(payload),
         });
 
         const data = await res.json().catch(() => ({}));

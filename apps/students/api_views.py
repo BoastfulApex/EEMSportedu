@@ -82,8 +82,10 @@ def verify_student_face(student, base64_image):
         if not unknown_encodings:
             return False, "Rasmda yuz aniqlanmadi"
 
+        # tolerance=0.65 — 1:1 tasdiq uchun yumshoqroq
+        # (tinglovchi o'z rasmini turli yoritish/burchakda olishi mumkin)
         match = face_recognition.compare_faces(
-            [known_encodings[0]], unknown_encodings[0], tolerance=0.5
+            [known_encodings[0]], unknown_encodings[0], tolerance=0.65
         )
         if match[0]:
             return True
@@ -464,7 +466,8 @@ class EduAdminCheckSerializer(serializers.Serializer):
     admin_telegram_id = serializers.IntegerField()
     latitude          = serializers.FloatField()
     longitude         = serializers.FloatField()
-    image             = serializers.CharField()   # base64 rasm
+    image             = serializers.CharField()          # base64 rasm
+    student_id        = serializers.IntegerField(required=False, allow_null=True)  # tanlangan tinglovchi
 
 
 class EduAdminCheckAPIView(generics.CreateAPIView):
@@ -496,10 +499,11 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        admin_telegram_id = data['admin_telegram_id']
-        latitude          = data['latitude']
-        longitude         = data['longitude']
-        image_base64      = data['image']
+        admin_telegram_id  = data['admin_telegram_id']
+        latitude           = data['latitude']
+        longitude          = data['longitude']
+        image_base64       = data['image']
+        selected_student_id = data.get('student_id')   # bot orqali tanlangan tinglovchi
 
         # ── 1. Admin tekshirish ──────────────────────────────
         from apps.superadmin.models import Administrator
@@ -513,10 +517,18 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         except Administrator.DoesNotExist:
             return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
 
-        # ── 2. Filial tinglovchilarini olish ─────────────────
-        qs = Student.objects.filter(face_image__isnull=False, face_verified=True)
-        if admin.filial:
-            qs = qs.filter(filial=admin.filial)
+        # ── 2. Tinglovchi(lar)ni olish ───────────────────────
+        # Bot dan student_id kelsa — faqat o'sha tinglovchi yuzi bilan solishtirish
+        if selected_student_id:
+            qs = Student.objects.filter(
+                id=selected_student_id,
+                face_image__isnull=False,
+                face_verified=True,
+            )
+        else:
+            qs = Student.objects.filter(face_image__isnull=False, face_verified=True)
+            if admin.filial:
+                qs = qs.filter(filial=admin.filial)
 
         students_data = []
         for s in qs.only('id', 'full_name', 'phone', 'face_image'):
@@ -533,10 +545,12 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 pass
 
         if not students_data:
-            return Response({
-                "status": "FAIL",
-                "reason": "Tizimda yuz rasmi yuklangan tinglovchi topilmadi."
-            }, status=404)
+            reason = (
+                "Bu tinglovchining yuz rasmi tizimda topilmadi."
+                if selected_student_id else
+                "Tizimda yuz rasmi yuklangan tinglovchi topilmadi."
+            )
+            return Response({"status": "FAIL", "reason": reason}, status=404)
 
         # ── 3. Rasmni vaqtinchalik faylga saqlash ────────────
         tmp_path = None
@@ -555,8 +569,14 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             return Response({"status": "FAIL", "reason": f"Rasm o'qib bo'lmadi: {ex}"}, status=400)
 
         # ── 4. Yuz tanish ─────────────────────────────────────
+        # student_id berilsa — 1:1 tasdiq (yumshoqroq threshold)
         try:
-            result = recognize_student(tmp_path, students_data, top_n=1)
+            result = recognize_student(
+                tmp_path,
+                students_data,
+                top_n=1,
+                one_to_one=bool(selected_student_id),
+            )
         except Exception as ex:
             return Response({"status": "FAIL", "reason": f"Yuz tanish xatosi: {ex}"}, status=500)
         finally:
@@ -569,6 +589,8 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         if not result.get('found') or not result.get('best_match'):
             if not result.get('candidates'):
                 reason = "Rasmda yuz aniqlanmadi. Aniqroq rasm olishga harakat qiling."
+            elif selected_student_id:
+                reason = "Yuz mos kelmadi. Bu tanlangan tinglovchi emas yoki rasm sifati past."
             else:
                 reason = "Tinglovchi tanib olunmadi. Yuz aniqroq ko'rinishi kerak."
             return Response({"status": "FAIL", "reason": reason}, status=404)

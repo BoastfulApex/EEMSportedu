@@ -2,32 +2,33 @@
 Edu Admin — Tinglovchi davomati qayd qilish.
 
 Flow:
-  1. "📸 Tinglovchi davomatini qayd qilish" → hozirgi oydagi guruhlar
+  1. "📋 Tinglovchi davomatini qayd qilish" → hozirgi oydagi guruhlar
   2. Guruh tanlandi → guruhdagi tinglovchilar ro'yxati
-  3. Tinglovchi tanlandi → check_in / check_out qayd qilinadi
+  3. Tinglovchi tanlandi → WebApp ochiladi (yuz tanish + lokatsiya)
 """
 import logging
 
 from aiogram import F, Router
-from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
-    InlineKeyboardMarkup, InlineKeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
 )
 
 from loader import dp
+from data.config import BASE_URL
 from keyboards.inline.main_inline import edu_admin_keyboard
 from utils.db_api.database import (
     get_active_groups_for_edu_admin,
     get_all_students_in_group,
-    admin_mark_student_attendance,
 )
 
 router = Router()
 dp.include_router(router)
 
 logger = logging.getLogger(__name__)
+
+_EDU_WEB_APP_URL = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
 
 _BACK_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")]
@@ -117,10 +118,11 @@ async def edu_show_students(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
+    # Har bir tinglovchi uchun WebApp tugmasi — student_id URL parametr sifatida
     buttons = [
         [InlineKeyboardButton(
             text=f"👤 {s['full_name']}",
-            callback_data=f"edu_confirm:{s['id']}"
+            web_app=WebAppInfo(url=f"{_EDU_WEB_APP_URL}?student_id={s['id']}")
         )]
         for s in students
     ]
@@ -129,85 +131,9 @@ async def edu_show_students(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         f"👥 <b>Tinglovchini tanlang</b>\n\n"
-        f"Jami: {len(students)} ta tinglovchi",
+        f"Jami: {len(students)} ta tinglovchi\n"
+        f"<i>Tanlangandan keyin yuz va lokatsiya tekshiruvi o'tkaziladi</i>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await callback.answer()
-
-
-# ─────────────────────────────────────────────────────────────
-# 3. DAVOMAT QAYD QILISH
-# ─────────────────────────────────────────────────────────────
-
-@router.callback_query(F.data.startswith("edu_confirm:"))
-async def edu_confirm_mark(callback: CallbackQuery):
-    student_id = int(callback.data.split(":")[1])
-    admin_id   = callback.from_user.id
-
-    result = await admin_mark_student_attendance(student_id, admin_id)
-
-    if not result['ok']:
-        error = result.get('error', '')
-
-        if error == 'already_complete':
-            text = (
-                f"ℹ️ <b>{result['student_name']}</b> uchun bugungi davomat allaqachon to'liq.\n\n"
-                f"🔓 Kirdi: <b>{result['check_in']}</b>\n"
-                f"🔒 Chiqdi: <b>{result['check_out']}</b>"
-            )
-        elif error == 'no_group':
-            text = (
-                f"⚠️ <b>{result.get('student_name', 'Tinglovchi')}</b> "
-                f"hech qanday guruhga biriktirilmagan."
-            )
-        elif error == 'student_not_found':
-            text = "❌ Tinglovchi topilmadi."
-        else:
-            text = f"❌ Xatolik: {error}"
-
-        await callback.message.edit_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Guruhlar",     callback_data="edu_mark_attendance")],
-                [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
-            ])
-        )
-        await callback.answer()
-        return
-
-    # ── Muvaffaqiyatli qayd ───────────────────────────────────
-    action = result['action']
-
-    if action == 'check_in':
-        late_txt = ""
-        if result.get('late_minutes', 0) > 0:
-            late_txt = f"\n⏰ Kechikish: <b>{result['late_minutes']} daqiqa</b>"
-        text = (
-            f"✅ <b>Kirish qayd qilindi!</b>\n"
-            f"{'─' * 24}\n"
-            f"👤 {result['student_name']}\n"
-            f"📚 {result['group_name']}\n"
-            f"🕐 Kirdi: <b>{result['time']}</b>"
-            f"{late_txt}"
-        )
-    else:
-        text = (
-            f"✅ <b>Chiqish qayd qilindi!</b>\n"
-            f"{'─' * 24}\n"
-            f"👤 {result['student_name']}\n"
-            f"📚 {result['group_name']}\n"
-            f"🔓 Kirdi:  <b>{result['check_in']}</b>\n"
-            f"🔒 Chiqdi: <b>{result['time']}</b>"
-        )
-
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Guruhlar",     callback_data="edu_mark_attendance")],
-            [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
-        ])
-    )
-    await callback.answer("✅ Qayd qilindi!")
