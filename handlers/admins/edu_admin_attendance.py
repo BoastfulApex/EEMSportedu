@@ -3,13 +3,14 @@ Edu Admin — Tinglovchi davomati qayd qilish (yuz tanish orqali).
 
 Flow:
   1. /start → edu_admin keyboard
-  2. "📸 Tinglovchini qayd qilish" → fotosurat so'raladi (orqa kamera bilan)
-  3. Admin rasm yuboradi → yuz tanish ishlaydi:
+  2. "📸 Tinglovchini qayd qilish" → hozirgi oydagi guruhlar ro'yxati
+  3. Guruh tanlandi → fotosurat so'raladi
+  4. Admin rasm yuboradi → yuz tanish faqat O'SHA GURUH tinglovchilari orasidan:
        a) Topildi (yuqori ishonch) → tasdiqlash tugmasi
        b) Bir nechta nomzod   → 3 ta tugma ko'rsatiladi
        c) Topilmadi           → qo'lda qidirish taklif qilinadi
-  4. "🔍 Tinglovchini qidirish" → ism bo'yicha qidirish (FSM)
-  5. Tasdiqlash → check_in yoki check_out qayd qilinadi
+  5. "🔍 Tinglovchini qidirish" → ism bo'yicha qidirish (guruh ichida)
+  6. Tasdiqlash → check_in yoki check_out qayd qilinadi
 """
 import logging
 import os
@@ -27,7 +28,9 @@ from loader import dp, bot
 from states.users import EduAdminAttendance
 from keyboards.inline.main_inline import edu_admin_keyboard
 from utils.db_api.database import (
+    get_active_groups_for_edu_admin,
     get_students_with_face_images,
+    get_students_with_face_images_by_group,
     get_all_students_for_admin,
     admin_mark_student_attendance,
 )
@@ -66,48 +69,111 @@ async def edu_back_to_main(callback: CallbackQuery, state: FSMContext):
 
 
 # ─────────────────────────────────────────────────────────────
-# 📸 RASM ORQALI QAYD QILISH
+# 1. GURUH TANLASH
 # ─────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "edu_mark_attendance", StateFilter(None))
 async def edu_start_attendance(callback: CallbackQuery, state: FSMContext):
+    """Guruhlar ro'yxatini ko'rsatish"""
+    await state.clear()
+    admin_id = callback.from_user.id
+
+    groups = await get_active_groups_for_edu_admin(admin_id)
+
+    if not groups:
+        await callback.message.edit_text(
+            "📭 <b>Hozirgi oyda faol guruhlar topilmadi.</b>\n\n"
+            "Avval admin panelda guruh yarating.",
+            parse_mode="HTML",
+            reply_markup=_BACK_KB
+        )
+        await callback.answer()
+        return
+
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"📚 {g['name']}  ({g['student_count']} ta)",
+            callback_data=f"edu_attend_group:{g['id']}"
+        )]
+        for g in groups
+    ]
+    buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")])
+
+    await callback.message.edit_text(
+        "📚 <b>Guruhni tanlang</b>\n\n"
+        "Davomat qilmoqchi bo'lgan guruhni tanlang:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await callback.answer()
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. GURUH TANLANDI → FOTO SO'RASH
+# ─────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("edu_attend_group:"), StateFilter(None))
+async def edu_attend_select_group(callback: CallbackQuery, state: FSMContext):
+    """Guruh tanlandi — foto kutish holatiga o'tish"""
+    group_id = int(callback.data.split(":")[1])
     await state.set_state(EduAdminAttendance.waiting_for_photo)
+    await state.update_data(group_id=group_id)
+
     await callback.message.edit_text(
         "📸 <b>Tinglovchini qayd qilish</b>\n\n"
         "Tinglovchining <b>yuzini</b> surating:\n\n"
         "📱 <i>Telefon orqa kamerasini ishlating — rasm aniq bo'lishi kerak</i>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="edu_back_main")]
+            [InlineKeyboardButton(text="🔙 Guruhlar", callback_data="edu_mark_attendance")],
+            [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
         ])
     )
     await callback.answer()
 
 
+# ─────────────────────────────────────────────────────────────
+# 3. FOTO QABUL → YUZ TANISH (GURUH ICHIDA)
+# ─────────────────────────────────────────────────────────────
+
 @router.message(EduAdminAttendance.waiting_for_photo, F.photo)
 async def edu_receive_photo(message: Message, state: FSMContext):
-    """Admin yuborgan rasm → yuz tanish → natija"""
+    """Admin yuborgan rasm → yuz tanish faqat tanlangan guruh tinglovchilari orasidan"""
     admin_id = message.from_user.id
+    data     = await state.get_data()
+    group_id = data.get('group_id')
 
     # ── Rasmni vaqtinchalik saqlash ───────────────────────────
-    photo    = message.photo[-1]   # eng katta o'lcham
+    photo    = message.photo[-1]
     file     = await bot.get_file(photo.file_id)
     tmp_path = os.path.join(tempfile.gettempdir(), f"edu_admin_{admin_id}_query.jpg")
     await bot.download_file(file.file_path, destination=tmp_path)
 
     processing_msg = await message.answer("⏳ <b>Rasm tahlil qilinmoqda...</b>", parse_mode="HTML")
 
-    # ── Bazadan tinglovchilarni olish ─────────────────────────
-    students = await get_students_with_face_images(admin_id)
+    # ── Guruh tinglovchilarini olish ──────────────────────────
+    if group_id:
+        students = await get_students_with_face_images_by_group(admin_id, group_id)
+    else:
+        students = await get_students_with_face_images(admin_id)
+
+    _back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Guruhlar", callback_data="edu_mark_attendance")],
+        [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
+    ])
 
     if not students:
         await processing_msg.edit_text(
-            "⚠️ <b>Tizimda yuz rasmi yuklangan tinglovchi topilmadi.</b>\n\n"
+            "⚠️ <b>Bu guruhda yuz rasmi yuklangan tinglovchi topilmadi.</b>\n\n"
             "Tinglovchilarni qo'lda qidirish uchun:",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔍 Qo'lda qidirish", callback_data="edu_search_student")],
-                [InlineKeyboardButton(text="🔙 Asosiy menyu",    callback_data="edu_back_main")],
+                [InlineKeyboardButton(
+                    text="🔍 Qo'lda qidirish",
+                    callback_data=f"edu_search_student:{group_id or 0}"
+                )],
+                [InlineKeyboardButton(text="🔙 Guruhlar", callback_data="edu_mark_attendance")],
+                [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
             ])
         )
         await state.clear()
@@ -115,8 +181,6 @@ async def edu_receive_photo(message: Message, state: FSMContext):
         return
 
     # ── Yuz tanish ────────────────────────────────────────────
-    from utils.face_recognition_util import recognize_student
-
     result = await _run_recognition(tmp_path, students)
     _cleanup(tmp_path)
 
@@ -134,6 +198,8 @@ async def edu_receive_photo(message: Message, state: FSMContext):
     await processing_msg.delete()
     await state.clear()
 
+    search_cb = f"edu_search_student:{group_id or 0}"
+
     # ── Natija: yuz topilmadi ─────────────────────────────────
     if not candidates:
         await message.answer(
@@ -142,8 +208,9 @@ async def edu_receive_photo(message: Message, state: FSMContext):
             "Qayta urinib ko'ring yoki qo'lda qidiring:",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📸 Qayta rasm",      callback_data="edu_mark_attendance")],
-                [InlineKeyboardButton(text="🔍 Qo'lda qidirish", callback_data="edu_search_student")],
+                [InlineKeyboardButton(text="📸 Qayta rasm",      callback_data=f"edu_attend_group:{group_id}")],
+                [InlineKeyboardButton(text="🔍 Qo'lda qidirish", callback_data=search_cb)],
+                [InlineKeyboardButton(text="🔙 Guruhlar",        callback_data="edu_mark_attendance")],
                 [InlineKeyboardButton(text="🔙 Asosiy menyu",    callback_data="edu_back_main")],
             ])
         )
@@ -165,10 +232,11 @@ async def edu_receive_photo(message: Message, state: FSMContext):
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
-                    text=f"✅ Ha, qayd qilish",
+                    text="✅ Ha, qayd qilish",
                     callback_data=f"edu_confirm:{best['id']}"
                 )],
-                [InlineKeyboardButton(text="🔍 Boshqa tinglovchi", callback_data="edu_search_student")],
+                [InlineKeyboardButton(text="🔍 Boshqa tinglovchi", callback_data=search_cb)],
+                [InlineKeyboardButton(text="🔙 Guruhlar",          callback_data="edu_mark_attendance")],
                 [InlineKeyboardButton(text="🔙 Asosiy menyu",      callback_data="edu_back_main")],
             ])
         )
@@ -182,8 +250,9 @@ async def edu_receive_photo(message: Message, state: FSMContext):
             text=f"👤 {c['full_name']}{score_txt}",
             callback_data=f"edu_confirm:{c['id']}"
         )])
-    buttons.append([InlineKeyboardButton(text="🔍 Boshqa tinglovchi", callback_data="edu_search_student")])
-    buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu",      callback_data="edu_back_main")])
+    buttons.append([InlineKeyboardButton(text="🔍 Qo'lda qidirish", callback_data=search_cb)])
+    buttons.append([InlineKeyboardButton(text="🔙 Guruhlar",        callback_data="edu_mark_attendance")])
+    buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu",    callback_data="edu_back_main")])
 
     await message.answer(
         f"🔍 <b>Mumkin bo'lgan nomzodlar</b>  <i>{method_label}</i>\n"
@@ -204,7 +273,7 @@ async def edu_wrong_input(message: Message):
 
 
 # ─────────────────────────────────────────────────────────────
-# 🔍 QO'LDA QIDIRISH
+# 4. QO'LDA QIDIRISH (GURUH ICHIDA)
 # ─────────────────────────────────────────────────────────────
 
 from aiogram.fsm.state import State, StatesGroup
@@ -213,16 +282,24 @@ class EduStudentSearch(StatesGroup):
     waiting_for_name = State()
 
 
+@router.callback_query(F.data.startswith("edu_search_student:"))
 @router.callback_query(F.data == "edu_search_student")
 async def edu_start_search(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    # group_id ni callback_data'dan olish: "edu_search_student:5" yoki "edu_search_student"
+    parts    = callback.data.split(":")
+    group_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+
     await state.set_state(EduStudentSearch.waiting_for_name)
+    await state.update_data(group_id=group_id)
+
     await callback.message.edit_text(
         "🔍 <b>Tinglovchini qidirish</b>\n\n"
         "Tinglovchining <b>ismini</b> yozing (qisman ham bo'ladi):",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="edu_back_main")]
+            [InlineKeyboardButton(text="🔙 Guruhlar",     callback_data="edu_mark_attendance")],
+            [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
         ])
     )
     await callback.answer()
@@ -230,10 +307,16 @@ async def edu_start_search(callback: CallbackQuery, state: FSMContext):
 
 @router.message(EduStudentSearch.waiting_for_name, F.text)
 async def edu_search_results(message: Message, state: FSMContext):
-    query   = message.text.strip()
+    query    = message.text.strip()
     admin_id = message.from_user.id
+    data     = await state.get_data()
+    group_id = data.get('group_id') or 0
 
-    students = await get_all_students_for_admin(admin_id, search=query)
+    students = await get_all_students_for_admin(
+        admin_id,
+        search=query,
+        group_id=group_id if group_id else None
+    )
     await state.clear()
 
     if not students:
@@ -241,8 +324,12 @@ async def edu_search_results(message: Message, state: FSMContext):
             f"❌ <b>«{query}»</b> bo'yicha tinglovchi topilmadi.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔍 Qayta qidirish", callback_data="edu_search_student")],
-                [InlineKeyboardButton(text="🔙 Asosiy menyu",   callback_data="edu_back_main")],
+                [InlineKeyboardButton(
+                    text="🔍 Qayta qidirish",
+                    callback_data=f"edu_search_student:{group_id}"
+                )],
+                [InlineKeyboardButton(text="🔙 Guruhlar",     callback_data="edu_mark_attendance")],
+                [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")],
             ])
         )
         return
@@ -254,6 +341,7 @@ async def edu_search_results(message: Message, state: FSMContext):
         )]
         for s in students
     ]
+    buttons.append([InlineKeyboardButton(text="🔙 Guruhlar",     callback_data="edu_mark_attendance")])
     buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")])
 
     await message.answer(
@@ -265,7 +353,7 @@ async def edu_search_results(message: Message, state: FSMContext):
 
 
 # ─────────────────────────────────────────────────────────────
-# ✅ TASDIQLASH → DAVOMAT QAYD QILISH
+# 5. TASDIQLASH → DAVOMAT QAYD QILISH
 # ─────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("edu_confirm:"), StateFilter(None))

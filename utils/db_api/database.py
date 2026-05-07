@@ -1748,18 +1748,62 @@ def get_students_with_face_images(admin_telegram_id: int) -> list:
 
 
 @sync_to_async
-def get_all_students_for_admin(admin_telegram_id: int, search: str = '') -> list:
+def get_students_with_face_images_by_group(admin_telegram_id: int, group_id: int) -> list:
     """
-    Edu admin tashkilotidagi barcha tinglovchilar (qo'lda tanlash uchun).
-    search bo'lsa — ismi bo'yicha filtrlanadi.
+    Muayyan guruhdagi, yuz rasmi bo'lgan tinglovchilar (face recognition uchun).
+    Har bir element: {'id', 'full_name', 'phone', 'image_path'}
     """
-    from apps.students.models import Student
+    from apps.students.models import Student, Group
+    from django.conf import settings
+    import os
+
+    admin = Administrator.objects.filter(telegram_id=int(admin_telegram_id)).first()
+    if not admin:
+        return []
+    try:
+        group = Group.objects.get(id=group_id)
+    except Exception:
+        return []
+
+    qs = group.students.filter(
+        face_image__isnull=False,
+        face_verified=True,
+    ).exclude(face_image='')
+
+    results = []
+    for s in qs:
+        abs_path = os.path.join(settings.MEDIA_ROOT, str(s.face_image))
+        if os.path.exists(abs_path):
+            results.append({
+                'id':         s.id,
+                'full_name':  s.full_name,
+                'phone':      s.phone or '',
+                'image_path': abs_path,
+            })
+    return results
+
+
+@sync_to_async
+def get_all_students_for_admin(admin_telegram_id: int, search: str = '', group_id: int = None) -> list:
+    """
+    Edu admin tashkilotidagi tinglovchilar (qo'lda tanlash uchun).
+    group_id berilsa — faqat o'sha guruh; search bo'lsa — ismi bo'yicha filtr.
+    """
+    from apps.students.models import Student, Group
 
     admin = Administrator.objects.filter(telegram_id=admin_telegram_id).first()
     if not admin:
         return []
 
-    qs = Student.objects.filter(organization=admin.organization).order_by('full_name')
+    if group_id:
+        try:
+            group = Group.objects.get(id=group_id)
+            qs = group.students.all().order_by('full_name')
+        except Exception:
+            qs = Student.objects.none()
+    else:
+        qs = Student.objects.filter(organization=admin.organization).order_by('full_name')
+
     if search:
         qs = qs.filter(full_name__icontains=search)
 
