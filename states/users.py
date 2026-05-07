@@ -27,8 +27,7 @@ class ReportDateRange(StatesGroup):
 
 
 class EduAdminAttendance(StatesGroup):
-    waiting_for_group = State()   # edu_admin guruh tanlayapti
-    waiting_for_photo = State()   # edu_admin tinglovchi rasmini yuborishi kutilmoqda
+    pass   # Davomat FSMsiz ishlaydi (inline keyboard orqali)
 
 
 class EmployeeNameInput(StatesGroup):

@@ -686,6 +686,20 @@ def get_students_by_group(group_id: int):
 
 
 @sync_to_async
+def get_all_students_in_group(group_id: int) -> list:
+    """Davomat uchun: guruhdagi BARCHA tinglovchilar (is_registered filtersiz)."""
+    from apps.students.models import Group
+    try:
+        group = Group.objects.get(id=group_id)
+        return [
+            {'id': s.id, 'full_name': s.full_name}
+            for s in group.students.all().order_by('full_name')
+        ]
+    except Exception:
+        return []
+
+
+@sync_to_async
 def link_student_telegram(student_id: int, telegram_id: int):
     """Student ga telegram_id bog'lash"""
     from apps.students.models import Student
