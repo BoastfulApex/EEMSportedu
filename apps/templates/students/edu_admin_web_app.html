@@ -103,19 +103,23 @@ console.log("[face-embed] fetch override OK");
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Tugma ── */
-    .btn-row { width: 100%; max-width: 320px; }
+    /* ── Tugmalar ── */
+    .btn-row {
+      width: 100%; max-width: 320px;
+      display: flex; gap: 10px;
+    }
     .btn {
-      width: 100%;
-      padding: 17px 10px;
+      flex: 1;
+      padding: 16px 8px;
       border: none; border-radius: 14px;
-      font-size: 1.05rem; font-weight: 600;
+      font-size: 1rem; font-weight: 600;
       cursor: pointer;
-      background: var(--btn);
-      color: var(--btn-text);
-      display: flex; align-items: center; justify-content: center; gap: 8px;
+      color: #fff;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
       transition: opacity 0.15s, transform 0.1s;
     }
+    .btn-checkin  { background: #27ae60; }
+    .btn-checkout { background: #e74c3c; }
     .btn:active   { transform: scale(0.97); opacity: 0.85; }
     .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
@@ -157,9 +161,8 @@ console.log("[face-embed] fetch override OK");
   </div>
 
   <div class="btn-row">
-    <button class="btn" id="actionBtn" disabled>
-      📸 &nbsp;Qayd qilish
-    </button>
+    <button class="btn btn-checkin"  id="checkinBtn"  disabled>🔓 Kelish</button>
+    <button class="btn btn-checkout" id="checkoutBtn" disabled>🔒 Ketish</button>
   </div>
 
   <div class="result-block" id="resultBlock"></div>
@@ -185,8 +188,14 @@ console.log("[face-embed] fetch override OK");
     const canvas      = document.getElementById("snapshot");
     const statusCard  = document.getElementById("statusCard");
     const statusMsg   = document.getElementById("statusMsg");
-    const actionBtn   = document.getElementById("actionBtn");
+    const checkinBtn  = document.getElementById("checkinBtn");
+    const checkoutBtn = document.getElementById("checkoutBtn");
     const resultBlock = document.getElementById("resultBlock");
+
+    function setBtnsDisabled(val) {
+      checkinBtn.disabled  = val;
+      checkoutBtn.disabled = val;
+    }
 
     // Sana
     document.getElementById("dateLabel").textContent = new Date().toLocaleDateString("uz-UZ", {
@@ -217,7 +226,7 @@ console.log("[face-embed] fetch override OK");
           const stream = await navigator.mediaDevices.getUserMedia(c);
           video.srcObject = stream;
           await video.play();
-          actionBtn.disabled = false;
+          setBtnsDisabled(false);
           setStatus("", "📷", "Tinglovchining yuzini kameraga ko'rsating va tugmani bosing.");
           return;
         } catch (_) { /* keyingi variantga o'tish */ }
@@ -366,13 +375,13 @@ console.log("[face-embed] fetch override OK");
     }
 
     // ── Asosiy action ──────────────────────────────────────
-    async function performCheck() {
+    async function performCheck(action) {
       if (!adminId) {
         setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi.");
         return;
       }
 
-      actionBtn.disabled = true;
+      setBtnsDisabled(true);
       resultBlock.classList.remove("visible");
 
       // ── Jonlilik tekshiruvi ────────────────────────────────
@@ -400,7 +409,7 @@ console.log("[face-embed] fetch override OK");
           "Jonlilik tasdiqlanmadi.<br>" +
           "<small>Tinglovchi yuzini to'g'rilang va ko'zini bir necha marta yumib ochsin.</small>"
         );
-        actionBtn.disabled = false;
+        setBtnsDisabled(false);
         return;
       }
 
@@ -408,7 +417,7 @@ console.log("[face-embed] fetch override OK");
       const photo = takePhoto();
       if (!photo) {
         setStatus("error", "⚠️", "Kamera tayyor emas. Sahifani yangilang.");
-        actionBtn.disabled = false;
+        setBtnsDisabled(false);
         return;
       }
 
@@ -422,7 +431,7 @@ console.log("[face-embed] fetch override OK");
       } catch (err) {
         const geoKeys = ["GEO_DENIED","GEO_UNAVAILABLE","GEO_TIMEOUT","GEO_NOT_SUPPORTED"];
         setStatus("error", "⚠️", geoKeys.includes(err.message) ? geoErrorMsg(err.message) : "Joylashuv aniqlanmadi: " + err.message);
-        actionBtn.disabled = false;
+        setBtnsDisabled(false);
         return;
       }
 
@@ -434,6 +443,7 @@ console.log("[face-embed] fetch override OK");
           latitude:          lat,
           longitude:         lon,
           image:             photo,
+          action:            action,
         };
         if (studentId) payload.student_id = parseInt(studentId);
 
@@ -446,16 +456,15 @@ console.log("[face-embed] fetch override OK");
         const data = await res.json().catch(() => ({}));
 
         if (res.ok && data?.status === "SUCCESS") {
-          const label = data.type === "check_in" ? "Kirish qayd etildi" : "Chiqish qayd etildi";
+          const label = data.type === "check_in" ? "✅ Kelish qayd etildi" : "✅ Ketish qayd etildi";
           setStatus("success", "✅", `${label}: ${data.time}`);
           showResult(data);
-          // 3 soniyadan keyin yopish
           setTimeout(() => tg.close(), 3000);
         } else {
           const reason = (data?.reason || data?.detail || "Noma'lum xato")
             .replace(/\n/g, "<br>");
           setStatus("error", "❌", reason);
-          actionBtn.disabled = false;
+          setBtnsDisabled(false);
         }
 
       } catch (err) {
@@ -464,11 +473,12 @@ console.log("[face-embed] fetch override OK");
           setStatus("error", "⚠️", geoErrorMsg(err.message));
         else
           setStatus("error", "⚠️", "Xatolik: " + err.message);
-        actionBtn.disabled = false;
+        setBtnsDisabled(false);
       }
     }
 
-    actionBtn.addEventListener("click", performCheck);
+    checkinBtn.addEventListener("click",  () => performCheck("check_in"));
+    checkoutBtn.addEventListener("click", () => performCheck("check_out"));
     startCamera();
   </script>
 

@@ -466,8 +466,13 @@ class EduAdminCheckSerializer(serializers.Serializer):
     admin_telegram_id = serializers.IntegerField()
     latitude          = serializers.FloatField()
     longitude         = serializers.FloatField()
-    image             = serializers.CharField()          # base64 rasm
-    student_id        = serializers.IntegerField(required=False, allow_null=True)  # tanlangan tinglovchi
+    image             = serializers.CharField()
+    student_id        = serializers.IntegerField(required=False, allow_null=True)
+    action            = serializers.ChoiceField(
+        choices=['check_in', 'check_out'],
+        required=False,
+        default='check_in'
+    )
 
 
 class EduAdminCheckAPIView(generics.CreateAPIView):
@@ -631,24 +636,29 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         # ── 7. Jadval vaqtlari ────────────────────────────────
         expected_start, expected_end = get_lesson_schedule_times(group, today, lesson)
 
-        # ── 8. Davomat holati → check_in yoki check_out ──────
+        # ── 8. Davomat holati → action (check_in / check_out) ──
+        action   = data.get('action', 'check_in')
         existing = StudentAttendance.objects.filter(
             student=student, group=group, date=today
         ).first()
 
-        if existing and existing.check_in and existing.check_out:
-            return Response({
-                "status": "FAIL",
-                "reason": (
-                    f"✅ {student.full_name}\n"
-                    f"ℹ️ Bugungi davomat allaqachon to'liq:\n"
-                    f"🔓 Kirdi: {existing.check_in.strftime('%H:%M')}\n"
-                    f"🔒 Chiqdi: {existing.check_out.strftime('%H:%M')}"
-                )
-            }, status=400)
-
-        if existing and existing.check_in:
+        if action == 'check_out':
             # ── check_out ──────────────────────────────────
+            if not existing or not existing.check_in:
+                return Response({
+                    "status": "FAIL",
+                    "reason": f"✅ {student.full_name}\n⚠️ Avval kirish qayd qilinmagan, chiqish mumkin emas."
+                }, status=400)
+
+            if existing.check_out:
+                return Response({
+                    "status": "FAIL",
+                    "reason": (
+                        f"✅ {student.full_name}\n"
+                        f"ℹ️ Chiqish allaqachon qayd qilingan: {existing.check_out.strftime('%H:%M')}"
+                    )
+                }, status=400)
+
             early_leave_minutes = 0
             if expected_end:
                 now_dt     = datetime.combine(today, now_time)
@@ -674,6 +684,15 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
 
         else:
             # ── check_in ───────────────────────────────────
+            if existing and existing.check_in:
+                return Response({
+                    "status": "FAIL",
+                    "reason": (
+                        f"✅ {student.full_name}\n"
+                        f"ℹ️ Kirish allaqachon qayd qilingan: {existing.check_in.strftime('%H:%M')}"
+                    )
+                }, status=400)
+
             late_minutes = 0
             status_val   = 'present'
             if expected_start:
