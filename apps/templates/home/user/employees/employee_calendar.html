@@ -83,6 +83,13 @@
       </div>
       {% endif %}
 
+      {% if assigned %}
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        ✅ Jadval biriktirildi! {{ gen_count }} ta kunlik yozuv yaratildi.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endif %}
+
       {# ── Generatsiya ── #}
       {% if not has_daily %}
       <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2">

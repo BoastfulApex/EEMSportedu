@@ -1,0 +1,112 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Jadval biriktirish — {{ employee.name }}{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content-header">
+    <div class="container-fluid">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <h1 class="mb-0">📋 Jadval biriktirish</h1>
+          <div class="text-muted small">{{ employee.name }}</div>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="{% url 'employee_calendar' employee.pk %}"
+             class="btn btn-outline-success btn-sm">📅 Kunlik jadval</a>
+          <a href="{% url 'employees' %}"
+             class="btn btn-outline-secondary btn-sm">← Orqaga</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row g-4">
+
+        {# ── Biriktirish formasi ── #}
+        <div class="col-lg-5">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">➕ Yangi jadval biriktirish</div>
+            <div class="card-body">
+              <form method="post">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">{{ form.schedule.label }}</label>
+                  {{ form.schedule }}
+                  {% if form.schedule.errors %}
+                    <div class="text-danger small mt-1">{{ form.schedule.errors.0 }}</div>
+                  {% endif %}
+                  <div class="form-text">
+                    Tanlangan jadval kunlik jadvallarga qo'shiladi.
+                  </div>
+                </div>
+
+                <div class="mb-4">
+                  <label class="form-label fw-semibold">{{ form.from_date.label }}</label>
+                  {{ form.from_date }}
+                  {% if form.from_date.errors %}
+                    <div class="text-danger small mt-1">{{ form.from_date.errors.0 }}</div>
+                  {% endif %}
+                  <div class="form-text">
+                    Shu sanadan boshlab yil oxirigacha kunlik jadval yaratiladi.
+                    Qo'lda o'zgartirilgan kunlar saqlanib qoladi.
+                  </div>
+                </div>
+
+                <div class="alert alert-warning small py-2 mb-4">
+                  ⚠️ Tanlangan sanadan boshlab avvalgi kunlik jadvallar
+                  (qo'lda o'zgartirilmaganlar) yangi jadval bilan almashtiriladi.
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 fw-semibold">
+                  ⚙️ Biriktirish va jadval yaratish
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {# ── Hozirgi jadvallar ── #}
+        <div class="col-lg-7">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">📌 Hozirgi biriktirilgan jadvallar</div>
+            <div class="card-body">
+              {% if current_schedules %}
+                <div class="d-flex flex-column gap-3">
+                {% for sched in current_schedules %}
+                  <div class="border rounded p-3">
+                    <div class="fw-semibold mb-2">{{ sched.name }}</div>
+                    {% if sched.location %}
+                      <div class="text-muted small mb-2">
+                        📍 {{ sched.location.name }}
+                      </div>
+                    {% endif %}
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for day in sched.days.all %}
+                        <span class="badge bg-primary-subtle text-primary fw-semibold" style="font-size:11px">
+                          {{ day.weekday.name }}: {{ day.start|time:"H:i" }}–{{ day.end|time:"H:i" }}
+                        </span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endfor %}
+                </div>
+              {% else %}
+                <div class="text-center text-muted py-4">
+                  <i data-feather="calendar" style="width:36px;height:36px;opacity:.3;margin-bottom:10px"></i>
+                  <p class="mb-0">Hali hech qanday jadval biriktirilmagan</p>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

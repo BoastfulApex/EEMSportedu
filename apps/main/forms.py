@@ -167,6 +167,30 @@ class SalaryConfigForm(forms.ModelForm):
         fields = ["monthly_hours", "monthly_salary"]
 
 
+class AssignScheduleForm(forms.Form):
+    """Xodimga jadval biriktirish + qaysi sanadan boshlanishini belgilash"""
+    schedule = forms.ModelChoiceField(
+        queryset=Schedule.objects.none(),
+        label="Jadval",
+        empty_label="— Jadval tanlang —",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    from_date = forms.DateField(
+        label="Qaysi sanadan boshlansin",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"})
+    )
+
+    def __init__(self, *args, **kwargs):
+        filial = kwargs.pop('filial', None)
+        super().__init__(*args, **kwargs)
+        if filial:
+            self.fields['schedule'].queryset = Schedule.objects.filter(
+                filial=filial
+            ).order_by('name')
+        else:
+            self.fields['schedule'].queryset = Schedule.objects.all().order_by('name')
+
+
 class PublicHolidayForm(forms.ModelForm):
     date = forms.DateField(
         label="Sana",

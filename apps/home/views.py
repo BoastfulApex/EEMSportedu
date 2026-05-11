@@ -25,7 +25,7 @@ from apps.main.models import (
 )
 from apps.main.forms import (
     EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm,
-    PublicHolidayForm, DailyScheduleEditForm,
+    PublicHolidayForm, DailyScheduleEditForm, AssignScheduleForm,
 )
 
 
@@ -2114,7 +2114,9 @@ def employee_calendar(request, pk):
                  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
 
     has_daily = EmployeeDailySchedule.objects.filter(employee=employee).exists()
-    generated = request.GET.get('generated')
+    generated  = request.GET.get('generated')
+    assigned   = request.GET.get('assigned')
+    gen_count  = request.GET.get('gen_count', 0)
 
     return render(request, 'home/user/employees/employee_calendar.html', {
         'employee':      employee,
@@ -2130,6 +2132,8 @@ def employee_calendar(request, pk):
         'edited':        edited,
         'has_daily':     has_daily,
         'generated':     generated,
+        'assigned':      assigned,
+        'gen_count':     gen_count,
         'segment':       'employees',
         'data':          {'filials': _base_context(admin_user)['filials']},
         'tashkent_time': timezone.localtime(timezone.now()),
@@ -2218,4 +2222,58 @@ def generate_all_daily_schedules(request):
         emp_count     += 1
 
     return redirect(f"{reverse('schedules')}?generated=1&gen_count={emp_count}")
+
+
+# ============================================================
+# XODIMGA JADVAL BIRIKTIRISH (sana bilan)
+# ============================================================
+
+@hr_admin_required
+def assign_schedule(request, pk):
+    """
+    Xodimga jadval tanlash + qaysi sanadan boshlanishini belgilash.
+    Tanlangan sanadan yil oxirigacha kunlik jadval qayta generatsiya qilinadi.
+    """
+    from datetime import date as ddate
+    admin_user = request.admin_user
+    employee   = get_object_or_404(Employee, pk=pk)
+    filial     = employee.filial
+
+    if request.method == 'POST':
+        form = AssignScheduleForm(request.POST, filial=filial)
+        if form.is_valid():
+            schedule   = form.cleaned_data['schedule']
+            from_date  = form.cleaned_data['from_date']
+            year_end   = ddate(from_date.year, 12, 31)
+
+            # Xodimning jadvallar M2M ga qo'shish (agar yo'q bo'lsa)
+            employee.schedules.add(schedule)
+
+            # from_date dan boshlab qayta generatsiya
+            count = generate_employee_daily_schedules(
+                employee, from_date=from_date, to_date=year_end
+            )
+
+            return redirect(
+                f"{reverse('employee_calendar', args=[employee.pk])}"
+                f"?year={from_date.year}&month={from_date.month}"
+                f"&assigned=1&gen_count={count}"
+            )
+    else:
+        form = AssignScheduleForm(
+            filial=filial,
+            initial={'from_date': ddate.today().isoformat()}
+        )
+
+    # Xodimning hozirgi jadvallari
+    current_schedules = employee.schedules.prefetch_related('days__weekday').all()
+
+    return render(request, 'home/user/employees/assign_schedule.html', {
+        'form':              form,
+        'employee':          employee,
+        'current_schedules': current_schedules,
+        'segment':           'employees',
+        'data':              {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':     timezone.localtime(timezone.now()),
+    })
 

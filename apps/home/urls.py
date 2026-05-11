@@ -38,6 +38,9 @@ urlpatterns = [
     # Barcha xodimlar uchun bulk generatsiya
     path('schedules/generate-all/', views.generate_all_daily_schedules, name='generate_all_daily_schedules'),
 
+    # Xodimga jadval biriktirish (sana bilan)
+    path('employees/<int:pk>/assign-schedule/', views.assign_schedule, name='assign_schedule'),
+
     # Monitoring bo'limi
     path('monitoring/', views.monitoring_dashboard, name='monitoring_dashboard'),
     path('monitoring/reports/', views.monitoring_reports, name='monitoring_reports'),
