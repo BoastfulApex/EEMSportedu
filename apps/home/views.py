@@ -648,12 +648,14 @@ def schedules(request):
     page_obj = paginator.get_page(request.GET.get('page'))
 
     return render(request, 'home/user/workschedule/schedules.html', {
-        'page_obj': page_obj,
-        'segment': 'schedules',
-        'filial': filial.filial_name,
+        'page_obj':      page_obj,
+        'segment':       'schedules',
+        'filial':        filial.filial_name,
         'tashkent_time': timezone.localtime(timezone.now()),
-        'data': data,
-        'search_query': search_query,
+        'data':          data,
+        'search_query':  search_query,
+        'generated':     request.GET.get('generated'),
+        'gen_count':     request.GET.get('gen_count', 0),
     })
 
 
@@ -2176,4 +2178,44 @@ def daily_schedule_edit(request, pk):
         'data':      {'filials': _base_context(admin_user)['filials']},
         'tashkent_time': timezone.localtime(timezone.now()),
     })
+
+
+# ============================================================
+# BARCHA XODIMLAR UCHUN BULK GENERATSIYA
+# ============================================================
+
+@hr_admin_required
+def generate_all_daily_schedules(request):
+    """
+    Filialdagi barcha xodimlar uchun kunlik jadval generatsiya qilish.
+    Faqat POST — "Jadvallar" sahifasidagi tugmadan chaqiriladi.
+    """
+    if request.method != 'POST':
+        return redirect('schedules')
+
+    from datetime import date as ddate
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+    if not filial_id:
+        return redirect('schedules')
+
+    employees = Employee.objects.filter(
+        filial_id=filial_id
+    ).prefetch_related('schedules__days__weekday', 'schedules__location')
+
+    today    = ddate.today()
+    year_end = ddate(today.year, 12, 31)
+
+    total_entries = 0
+    emp_count     = 0
+    for emp in employees:
+        if not emp.schedules.exists():
+            continue
+        count = generate_employee_daily_schedules(
+            emp, from_date=today, to_date=year_end
+        )
+        total_entries += count
+        emp_count     += 1
+
+    return redirect(f"{reverse('schedules')}?generated=1&gen_count={emp_count}")
 

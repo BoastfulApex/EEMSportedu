@@ -49,6 +49,13 @@
           </a>
         </li>
 
+        <li class="sidebar-item {% if segment == 'public_holidays' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'public_holidays' %}">
+            <i data-feather="sun"></i>
+            <span>Dam olish kunlari</span>
+          </a>
+        </li>
+
         <li class="sidebar-item {% if segment == 'salary' %}active{% endif %}">
           <a class="sidebar-link" href="{% url 'salary_list' %}">
             <i data-feather="dollar-sign"></i>

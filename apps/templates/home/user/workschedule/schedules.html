@@ -11,10 +11,26 @@
       <h4>Ish jadvallari</h4>
       <p class="breadcrumb-info mb-0">Filial: <strong>{{ filial }}</strong></p>
     </div>
-    <a href="{% url 'schedule_create' %}" class="btn btn-primary">
-      <i data-feather="plus"></i> Yangi jadval
-    </a>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <form method="post" action="{% url 'generate_all_daily_schedules' %}"
+            onsubmit="return confirm('Barcha xodimlar uchun bugundan yil oxirigacha kunlik jadval yaratilsinmi?\nQo\'lda o\'zgartirilgan kunlar saqlanib qoladi.')">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-success">
+          <i data-feather="zap"></i> Barcha uchun jadval yaratish
+        </button>
+      </form>
+      <a href="{% url 'schedule_create' %}" class="btn btn-primary">
+        <i data-feather="plus"></i> Yangi jadval
+      </a>
+    </div>
   </div>
+
+  {% if generated %}
+  <div class="alert alert-success alert-dismissible fade show mx-0 mb-3" role="alert">
+    ✅ {{ gen_count }} ta xodim uchun kunlik jadval yaratildi (bugundan yil oxirigacha).
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
 
   <div class="filter-bar">
     <form class="d-flex gap-2 align-items-center" method="get">
