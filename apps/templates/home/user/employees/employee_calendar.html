@@ -30,8 +30,9 @@
   color: #1e293b; line-height: 1;
 }
 .day-num.today-num { color: #2563eb; }
-.cal-time { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 3px; }
-.cal-loc  { font-size: 10px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-time   { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 3px; }
+.cal-lunch  { font-size: 10px; color: #b45309; margin-top: 2px; }
+.cal-loc    { font-size: 10px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-off  { font-size: 11px; color: #dc2626; margin-top: 3px; }
 .cal-edit-icon {
   position: absolute; top: 4px; right: 5px;
@@ -200,6 +201,9 @@
                           </div>
                         {% else %}
                           <div class="cal-time">{{ entry.start|time:"H:i" }}–{{ entry.end|time:"H:i" }}</div>
+                          {% if entry.lunch_start and entry.lunch_end %}
+                            <div class="cal-lunch">🍽 {{ entry.lunch_start|time:"H:i" }}–{{ entry.lunch_end|time:"H:i" }}</div>
+                          {% endif %}
                           {% if entry.location %}
                             <div class="cal-loc">📍 {{ entry.location.name }}</div>
                           {% endif %}

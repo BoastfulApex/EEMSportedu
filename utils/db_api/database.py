@@ -627,13 +627,15 @@ def get_schedules_detail_by_ids(schedule_ids: list) -> list:
 
 @sync_to_async
 def assign_schedules_to_employee(emp_user_id: int, schedule_ids: list):
-    """Xodimga tanlangan jadvallarni biriktirish (M2M)"""
-    from apps.main.models import Schedule
+    """Xodimga tanlangan jadvallarni biriktirish (M2M) va yil oxirigacha kunlik jadval yaratish"""
+    from apps.main.models import Schedule, generate_employee_daily_schedules
     employee = Employee.objects.filter(telegram_user_id=emp_user_id).first()
     if not employee:
         return False
     schedules = Schedule.objects.filter(id__in=schedule_ids)
     employee.schedules.set(schedules)
+    # Bugundan yil oxirigacha kunlik jadval avtomatik yaratiladi
+    generate_employee_daily_schedules(employee)
     return True
 
 

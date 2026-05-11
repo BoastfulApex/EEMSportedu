@@ -236,6 +236,16 @@ class DailyScheduleEditForm(forms.ModelForm):
         label="Dam olish kuni",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"})
     )
+    lunch_start = forms.TimeField(
+        label="Tushlik boshlanishi",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"})
+    )
+    lunch_end = forms.TimeField(
+        label="Tushlik tugashi",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"})
+    )
     day_off_reason = forms.CharField(
         required=False,
         label="Dam olish sababi",
@@ -244,7 +254,7 @@ class DailyScheduleEditForm(forms.ModelForm):
 
     class Meta:
         model = EmployeeDailySchedule
-        fields = ['start', 'end', 'location', 'is_day_off', 'day_off_reason']
+        fields = ['start', 'end', 'lunch_start', 'lunch_end', 'location', 'is_day_off', 'day_off_reason']
 
     def __init__(self, *args, **kwargs):
         filial = kwargs.pop('filial', None)

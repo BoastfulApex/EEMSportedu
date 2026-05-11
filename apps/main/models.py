@@ -372,6 +372,8 @@ class EmployeeDailySchedule(models.Model):
         related_name='daily_entries',
         verbose_name="Manba jadval"
     )
+    lunch_start = models.TimeField(null=True, blank=True, verbose_name="Tushlik boshlanishi")
+    lunch_end   = models.TimeField(null=True, blank=True, verbose_name="Tushlik tugashi")
     is_manually_edited = models.BooleanField(
         default=False,
         verbose_name="Qo'lda o'zgartirilgan"
@@ -498,6 +500,8 @@ def generate_employee_daily_schedules(employee, from_date=None, to_date=None):
                 location=ref_sched.location,
                 start=ref_sd.start,
                 end=ref_sd.end,
+                lunch_start=ref_sched.lunch_start,
+                lunch_end=ref_sched.lunch_end,
                 is_day_off=False,
                 source_schedule=ref_sched,
             ))
