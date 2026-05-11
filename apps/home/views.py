@@ -526,7 +526,7 @@ def employees(request):
 
     data = {'filials': _base_context(admin_user)['filials']}
     filial = Filial.objects.get(id=filial_id)
-    emps = Employee.objects.filter(filial_id=filial_id)
+    emps = Employee.objects.filter(filial_id=filial_id).order_by('name')
     search_query = request.GET.get('q')
     if search_query:
         emps = emps.filter(Q(name__icontains=search_query))
