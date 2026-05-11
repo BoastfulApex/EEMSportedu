@@ -1,6 +1,7 @@
 from django.urls import path
 from apps.home import views
 
+
 urlpatterns = [
 
     path('', views.index, name='home'),
@@ -25,6 +26,14 @@ urlpatterns = [
     path('employees/<int:pk>/report/download', views.employee_download_excel, name='employee_download_excel'),
     path('salaries/', views.salary_list, name='salary_list'),
     path('salaries/<int:pk>/update/', views.salary_update, name='salary_update'),
+
+    # Umumiy dam olish kunlari
+    path('public-holidays/', views.public_holidays, name='public_holidays'),
+    path('public-holidays/<int:pk>/delete/', views.public_holiday_delete, name='public_holiday_delete'),
+
+    # Xodim kunlik kalendar
+    path('employees/<int:pk>/calendar/', views.employee_calendar, name='employee_calendar'),
+    path('daily-schedule/<int:pk>/edit/', views.daily_schedule_edit, name='daily_schedule_edit'),
 
     # Monitoring bo'limi
     path('monitoring/', views.monitoring_dashboard, name='monitoring_dashboard'),

@@ -26,8 +26,10 @@
       <div class="d-flex align-items-center justify-content-between mb-2">
         <h1 class="mb-0">Xodimni tahrirlash</h1>
         <div class="d-flex gap-2">
+          <a href="{% url 'employee_calendar' employee.id %}"
+             class="btn btn-outline-success btn-sm">📅 Kunlik jadval</a>
           <a href="{% url 'schedules' %}"
-             class="btn btn-outline-primary btn-sm">📅 Jadvallar</a>
+             class="btn btn-outline-primary btn-sm">📋 Jadvallar</a>
           <a href="{% url 'employee_report' employee.id %}"
              class="btn btn-outline-secondary btn-sm">📊 Hisobot</a>
           <a href="{% url 'employees' %}" class="btn btn-outline-secondary btn-sm">← Orqaga</a>

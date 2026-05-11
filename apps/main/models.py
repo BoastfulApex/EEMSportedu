@@ -302,3 +302,216 @@ class SalaryConfig(models.Model):
     class Meta:
         verbose_name = "Maosh konfiguratsiyasi"
         verbose_name_plural = "Maosh konfiguratsiyalari"
+
+
+# ============================================================
+# UMUMIY DAM OLISH KUNLARI (kadrlar bo'limi kiritadi)
+# ============================================================
+
+class PublicHoliday(models.Model):
+    """
+    Umumiy bayram / dam olish kunlari.
+    Kadrlar bo'limi kiritadi — barcha xodimlar uchun is_day_off=True bo'ladi.
+    filial=None → butun tashkilot uchun.
+    """
+    date = models.DateField(unique=True, verbose_name="Sana")
+    name = models.CharField(max_length=200, verbose_name="Nomi")
+    filial = models.ForeignKey(
+        'superadmin.Filial',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='public_holidays',
+        verbose_name="Filial (bo'sh = barchasi)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.date} — {self.name}"
+
+    class Meta:
+        ordering = ['date']
+        verbose_name = "Umumiy dam olish kuni"
+        verbose_name_plural = "Umumiy dam olish kunlari"
+
+
+# ============================================================
+# XODIMNING KUNLIK JADVALI (shablon → aniq sanalar)
+# ============================================================
+
+class EmployeeDailySchedule(models.Model):
+    """
+    Xodimning har bir kuni uchun aniq jadval yozuvi.
+    Schedule shablonidan avtomatik generatsiya qilinadi,
+    keyin alohida kunlarni qo'lda o'zgartirish mumkin.
+    """
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='daily_schedules',
+        verbose_name="Xodim"
+    )
+    date = models.DateField(verbose_name="Sana")
+    location = models.ForeignKey(
+        Location,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='daily_schedules',
+        verbose_name="Lokatsiya"
+    )
+    start = models.TimeField(null=True, blank=True, verbose_name="Ish boshlanishi")
+    end   = models.TimeField(null=True, blank=True, verbose_name="Ish tugashi")
+    is_day_off    = models.BooleanField(default=False, verbose_name="Dam olish kuni")
+    day_off_reason = models.CharField(
+        max_length=200, null=True, blank=True,
+        verbose_name="Dam olish sababi"
+    )
+    source_schedule = models.ForeignKey(
+        Schedule,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='daily_entries',
+        verbose_name="Manba jadval"
+    )
+    is_manually_edited = models.BooleanField(
+        default=False,
+        verbose_name="Qo'lda o'zgartirilgan"
+    )
+
+    class Meta:
+        unique_together = ('employee', 'date')
+        ordering = ['date']
+        verbose_name = "Xodim kunlik jadvali"
+        verbose_name_plural = "Xodim kunlik jadvallari"
+
+    def __str__(self):
+        if self.is_day_off:
+            return f"{self.employee.name} — {self.date} (Dam olish)"
+        return f"{self.employee.name} — {self.date} {self.start}-{self.end}"
+
+
+# ============================================================
+# GENERATSIYA FUNKSIYASI
+# ============================================================
+
+# Python date.weekday() → inglizcha nom
+_PYTHON_WD_TO_EN = {
+    0: 'Monday', 1: 'Tuesday', 2: 'Wednesday',
+    3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday',
+}
+
+
+def generate_employee_daily_schedules(employee, from_date=None, to_date=None):
+    """
+    Xodimga biriktirilgan barcha Schedule lar asosida
+    EmployeeDailySchedule yozuvlarini yaratadi.
+
+    Qoidalar:
+      1. PublicHoliday → is_day_off=True, sabab: bayram nomi
+      2. Jadvalda bo'lmagan hafta kuni → is_day_off=True, sabab: "Dam olish kuni"
+      3. Bir kun bir nechta jadvalda bo'lsa → birinchisi qo'llaniladi (priority: jadval tartibi)
+      4. Qo'lda o'zgartirilgan kunlar (is_manually_edited=True) saqlanib qoladi
+
+    from_date: default = bugun
+    to_date:   default = joriy yil 31-dekabri
+    """
+    from datetime import date, timedelta
+    from django.db.models import Q
+
+    today = date.today()
+    if from_date is None:
+        from_date = today
+    if to_date is None:
+        to_date = date(today.year, 12, 31)
+
+    if from_date > to_date:
+        return 0
+
+    # ── Umumiy bayramlar (filial = None yoki xodimning filiali) ──
+    holiday_qs = PublicHoliday.objects.filter(
+        date__gte=from_date, date__lte=to_date
+    ).filter(
+        Q(filial__isnull=True) | Q(filial=employee.filial)
+    )
+    holiday_map = {h.date: h.name for h in holiday_qs}
+
+    # ── Jadvallar va ularning kunlari ──────────────────────────
+    schedules = list(
+        employee.schedules.prefetch_related('days__weekday').filter(
+            days__isnull=False
+        ).distinct()
+    )
+
+    # weekday_en → (schedule, schedule_day) birinchi topilgani
+    from apps.superadmin.models import Weekday
+    day_map: dict[str, tuple] = {}  # 'Monday' → (schedule, schedule_day)
+    for sched in schedules:
+        for sd in sched.days.select_related('weekday'):
+            en_name = sd.weekday.name_en or ''
+            if en_name and en_name not in day_map:
+                day_map[en_name] = (sched, sd)
+
+    # ── Qo'lda o'zgartirilmagan yozuvlarni o'chirish ──────────
+    EmployeeDailySchedule.objects.filter(
+        employee=employee,
+        date__gte=from_date,
+        date__lte=to_date,
+        is_manually_edited=False,
+    ).delete()
+
+    # ── Kunlik yozuvlarni yaratish ─────────────────────────────
+    to_create = []
+    current = from_date
+    while current <= to_date:
+        # Qo'lda o'zgartirilgan kun bo'lsa — o'tkazib yuborish
+        already_edited = EmployeeDailySchedule.objects.filter(
+            employee=employee, date=current, is_manually_edited=True
+        ).exists()
+        if already_edited:
+            current += timedelta(days=1)
+            continue
+
+        en_name = _PYTHON_WD_TO_EN[current.weekday()]
+
+        if current in holiday_map:
+            # Bayram kuni
+            sched_loc = None
+            sched_start = sched_end = None
+            sched_ref = None
+            if en_name in day_map:
+                ref_sched, ref_sd = day_map[en_name]
+                sched_loc   = ref_sched.location
+                sched_start = ref_sd.start
+                sched_end   = ref_sd.end
+                sched_ref   = ref_sched
+            to_create.append(EmployeeDailySchedule(
+                employee=employee, date=current,
+                location=sched_loc, start=sched_start, end=sched_end,
+                is_day_off=True,
+                day_off_reason=holiday_map[current],
+                source_schedule=sched_ref,
+            ))
+        elif en_name in day_map:
+            # Oddiy ish kuni
+            ref_sched, ref_sd = day_map[en_name]
+            to_create.append(EmployeeDailySchedule(
+                employee=employee, date=current,
+                location=ref_sched.location,
+                start=ref_sd.start,
+                end=ref_sd.end,
+                is_day_off=False,
+                source_schedule=ref_sched,
+            ))
+        else:
+            # Dam olish kuni (jadvalda yo'q hafta kuni)
+            to_create.append(EmployeeDailySchedule(
+                employee=employee, date=current,
+                is_day_off=True,
+                day_off_reason="Dam olish kuni",
+            ))
+
+        current += timedelta(days=1)
+
+    if to_create:
+        EmployeeDailySchedule.objects.bulk_create(to_create, ignore_conflicts=True)
+
+    return len(to_create)

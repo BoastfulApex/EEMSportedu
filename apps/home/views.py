@@ -18,9 +18,14 @@ from django.utils import timezone
 from django.views.generic.edit import DeleteView
 
 from apps.superadmin.models import Administrator, Filial, Weekday
-from apps.main.models import Employee, WorkSchedule, Attendance, Schedule, ScheduleDay, ExtraSchedule, SalaryConfig, DailyAttendanceSummary
+from apps.main.models import (
+    Employee, WorkSchedule, Attendance, Schedule, ScheduleDay,
+    ExtraSchedule, SalaryConfig, DailyAttendanceSummary,
+    PublicHoliday, EmployeeDailySchedule, generate_employee_daily_schedules,
+)
 from apps.main.forms import (
-    EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm
+    EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm,
+    PublicHolidayForm, DailyScheduleEditForm,
 )
 
 
@@ -1924,5 +1929,251 @@ def monitoring_student_detail_report(request, student_pk):
         'date_to_str':     date_to_str,
         'data':            {'filials': _base_context(admin_user)['filials']},
         'tashkent_time':   timezone.localtime(timezone.now()),
+    })
+
+
+# ============================================================
+# UMUMIY DAM OLISH KUNLARI (PublicHoliday)
+# ============================================================
+
+@hr_admin_required
+def public_holidays(request):
+    """Bayram / dam olish kunlari ro'yxati va qo'shish"""
+    admin_user  = request.admin_user
+    filial_id   = _get_filial_id(admin_user, request)
+    filial      = Filial.objects.filter(id=filial_id).first() if filial_id else None
+
+    if request.method == 'POST':
+        form = PublicHolidayForm(request.POST)
+        if form.is_valid():
+            holiday = form.save(commit=False)
+            # Agar filial tanlagan bo'lmasa va admin o'z filialida bo'lsa
+            if not holiday.filial and filial:
+                holiday.filial = None  # None = barchasi uchun
+            holiday.save()
+
+            # Yangi bayram qo'shildi → shu sanada is_day_off=False bo'lgan
+            # kunlik jadvallarni is_day_off=True ga o'tkazish
+            _apply_holiday_to_daily_schedules(holiday)
+
+            return redirect('public_holidays')
+    else:
+        form = PublicHolidayForm()
+
+    from django.utils.timezone import now
+    year = int(request.GET.get('year', now().year))
+    holidays_qs = PublicHoliday.objects.filter(date__year=year).order_by('date')
+    if filial:
+        holidays_qs = holidays_qs.filter(
+            Q(filial__isnull=True) | Q(filial=filial)
+        )
+
+    return render(request, 'home/public_holidays.html', {
+        'form':     form,
+        'holidays': holidays_qs,
+        'year':     year,
+        'segment':  'public_holidays',
+        'data':     {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@hr_admin_required
+def public_holiday_delete(request, pk):
+    """Bayramni o'chirish"""
+    holiday = get_object_or_404(PublicHoliday, pk=pk)
+    if request.method == 'POST':
+        date_val = holiday.date
+        filial_val = holiday.filial
+        holiday.delete()
+        # O'chirilgan bayram kunini ish kuni qilib qayta belgilash
+        _remove_holiday_from_daily_schedules(date_val, filial_val)
+        return redirect('public_holidays')
+    return render(request, 'home/public_holiday_confirm_delete.html', {
+        'holiday': holiday,
+        'data':    {'filials': _base_context(request.admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+def _apply_holiday_to_daily_schedules(holiday):
+    """Yangi bayram kuni barcha mos xodimlarning kunlik jadvalini day_off qiladi"""
+    qs = EmployeeDailySchedule.objects.filter(
+        date=holiday.date, is_day_off=False
+    )
+    if holiday.filial:
+        qs = qs.filter(employee__filial=holiday.filial)
+    qs.update(is_day_off=True, day_off_reason=holiday.name)
+
+
+def _remove_holiday_from_daily_schedules(date_val, filial_val):
+    """Bayram o'chirilganda, shu kun ish kuni bo'lgan xodimlarni qayta tiklash"""
+    from apps.main.models import _PYTHON_WD_TO_EN
+    en_name = _PYTHON_WD_TO_EN[date_val.weekday()]
+
+    qs = EmployeeDailySchedule.objects.filter(
+        date=date_val,
+        is_day_off=True,
+        day_off_reason__isnull=False,
+        is_manually_edited=False,
+    ).exclude(day_off_reason='Dam olish kuni')
+
+    if filial_val:
+        qs = qs.filter(employee__filial=filial_val)
+
+    # Shu xodimlarni qayta ish kuniga o'tkazish (agar jadvalida shu hafta kuni bo'lsa)
+    for entry in qs.select_related('source_schedule__location').iterator():
+        sched = entry.source_schedule
+        if sched:
+            sd = sched.days.filter(weekday__name_en=en_name).first()
+            if sd:
+                entry.is_day_off    = False
+                entry.day_off_reason = None
+                entry.start          = sd.start
+                entry.end            = sd.end
+                entry.location       = sched.location
+                entry.save(update_fields=['is_day_off', 'day_off_reason', 'start', 'end', 'location'])
+            else:
+                # Jadvalda yo'q kun — dam olish qolsin
+                entry.day_off_reason = 'Dam olish kuni'
+                entry.save(update_fields=['day_off_reason'])
+        else:
+            entry.day_off_reason = 'Dam olish kuni'
+            entry.save(update_fields=['day_off_reason'])
+
+
+# ============================================================
+# XODIM KUNLIK KALENDAR
+# ============================================================
+
+@hr_admin_required
+def employee_calendar(request, pk):
+    """Xodimning kalendar ko'rinishdagi kunlik jadvali"""
+    import calendar as cal_module
+    from datetime import date
+
+    admin_user = request.admin_user
+    employee   = get_object_or_404(Employee, pk=pk)
+
+    today = date.today()
+    year  = int(request.GET.get('year',  today.year))
+    month = int(request.GET.get('month', today.month))
+
+    # Oy chegaralari
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, cal_module.monthrange(year, month)[1])
+
+    # Jadval yaratish tugmasi
+    if request.method == 'POST' and 'generate' in request.POST:
+        from datetime import date as ddate
+        count = generate_employee_daily_schedules(
+            employee,
+            from_date=ddate.today(),
+            to_date=ddate(today.year, 12, 31),
+        )
+        return redirect(f"{request.path}?year={year}&month={month}&generated={count}")
+
+    # Oy uchun kunlik jadvallar
+    entries = {
+        e.date: e
+        for e in EmployeeDailySchedule.objects.filter(
+            employee=employee,
+            date__gte=first_day,
+            date__lte=last_day,
+        ).select_related('location')
+    }
+
+    # Kalendar qatorlari
+    weeks = cal_module.monthcalendar(year, month)
+    calendar_rows = []
+    for week in weeks:
+        row = []
+        for day_num in week:
+            if day_num == 0:
+                row.append(None)
+            else:
+                d = date(year, month, day_num)
+                row.append({'date': d, 'entry': entries.get(d)})
+        calendar_rows.append(row)
+
+    # Oy navigatsiya
+    prev_month = month - 1 if month > 1 else 12
+    prev_year  = year if month > 1 else year - 1
+    next_month = month + 1 if month < 12 else 1
+    next_year  = year if month < 12 else year + 1
+
+    # Statistika
+    month_entries = list(entries.values())
+    work_days  = sum(1 for e in month_entries if not e.is_day_off)
+    day_offs   = sum(1 for e in month_entries if e.is_day_off)
+    edited     = sum(1 for e in month_entries if e.is_manually_edited)
+
+    UZ_MONTHS = ['', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+                 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
+
+    has_daily = EmployeeDailySchedule.objects.filter(employee=employee).exists()
+    generated = request.GET.get('generated')
+
+    return render(request, 'home/user/employees/employee_calendar.html', {
+        'employee':      employee,
+        'calendar_rows': calendar_rows,
+        'year':          year,
+        'month':         month,
+        'month_name':    UZ_MONTHS[month],
+        'today':         today,
+        'prev_year':     prev_year,  'prev_month': prev_month,
+        'next_year':     next_year,  'next_month': next_month,
+        'work_days':     work_days,
+        'day_offs':      day_offs,
+        'edited':        edited,
+        'has_daily':     has_daily,
+        'generated':     generated,
+        'segment':       'employees',
+        'data':          {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@hr_admin_required
+def daily_schedule_edit(request, pk):
+    """Xodimning bitta kunlik jadvalini tahrirlash"""
+    admin_user = request.admin_user
+    entry      = get_object_or_404(EmployeeDailySchedule, pk=pk)
+    employee   = entry.employee
+    filial     = employee.filial
+    org        = filial.organization if filial else None
+
+    if request.method == 'POST':
+        form = DailyScheduleEditForm(
+            request.POST, instance=entry,
+            filial=filial, organization=org
+        )
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.is_manually_edited = True
+            obj.save()
+            return redirect(
+                f"{reverse('employee_calendar', args=[employee.pk])}"
+                f"?year={entry.date.year}&month={entry.date.month}"
+            )
+    else:
+        form = DailyScheduleEditForm(
+            instance=entry, filial=filial, organization=org
+        )
+
+    UZ_DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba',
+               'Juma', 'Shanba', 'Yakshanba']
+    UZ_MONTHS = ['', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+                 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
+
+    return render(request, 'home/user/employees/daily_schedule_edit.html', {
+        'form':      form,
+        'entry':     entry,
+        'employee':  employee,
+        'day_name':  UZ_DAYS[entry.date.weekday()],
+        'month_name': UZ_MONTHS[entry.date.month],
+        'segment':   'employees',
+        'data':      {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
     })
 

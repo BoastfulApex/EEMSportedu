@@ -1,5 +1,5 @@
 from django import forms
-from apps.main.models import Employee, WorkSchedule, ExtraSchedule, Location, Attendance, Schedule, ScheduleDay
+from apps.main.models import Employee, WorkSchedule, ExtraSchedule, Location, Attendance, Schedule, ScheduleDay, PublicHoliday, EmployeeDailySchedule
 from apps.superadmin.models import Weekday, Filial
 
 
@@ -165,3 +165,70 @@ class SalaryConfigForm(forms.ModelForm):
         from apps.main.models import SalaryConfig
         model = SalaryConfig
         fields = ["monthly_hours", "monthly_salary"]
+
+
+class PublicHolidayForm(forms.ModelForm):
+    date = forms.DateField(
+        label="Sana",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"})
+    )
+    name = forms.CharField(
+        label="Bayram nomi",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Masalan: Navro'z bayrami"})
+    )
+    filial = forms.ModelChoiceField(
+        queryset=Filial.objects.all(),
+        required=False,
+        empty_label="— Barcha filiallar uchun —",
+        label="Filial",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+
+    class Meta:
+        model = PublicHoliday
+        fields = ['date', 'name', 'filial']
+
+
+class DailyScheduleEditForm(forms.ModelForm):
+    start = forms.TimeField(
+        label="Ish boshlanishi",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"})
+    )
+    end = forms.TimeField(
+        label="Ish tugashi",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control", "type": "time"})
+    )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.none(),
+        required=False,
+        empty_label="— Tanlang —",
+        label="Lokatsiya",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    is_day_off = forms.BooleanField(
+        required=False,
+        label="Dam olish kuni",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"})
+    )
+    day_off_reason = forms.CharField(
+        required=False,
+        label="Dam olish sababi",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Masalan: Bayram, Kasallik..."})
+    )
+
+    class Meta:
+        model = EmployeeDailySchedule
+        fields = ['start', 'end', 'location', 'is_day_off', 'day_off_reason']
+
+    def __init__(self, *args, **kwargs):
+        filial = kwargs.pop('filial', None)
+        organization = kwargs.pop('organization', None)
+        super().__init__(*args, **kwargs)
+        if filial and filial.organization:
+            self.fields['location'].queryset = Location.objects.filter(organization=filial.organization)
+        elif organization:
+            self.fields['location'].queryset = Location.objects.filter(organization=organization)
+        else:
+            self.fields['location'].queryset = Location.objects.all()

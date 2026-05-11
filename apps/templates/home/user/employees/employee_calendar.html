@@ -1,0 +1,239 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}{{ employee.name }} — Kalendar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+/* ── Kalendar ── */
+.cal-table { width: 100%; border-collapse: separate; border-spacing: 4px; }
+.cal-table th {
+  text-align: center; font-size: 12px; font-weight: 700;
+  color: #888; text-transform: uppercase; padding: 4px 2px;
+}
+.cal-cell {
+  width: 14.28%; vertical-align: top;
+  border-radius: 10px; padding: 6px 8px; min-height: 80px;
+  font-size: 13px; position: relative;
+  border: 1.5px solid transparent;
+  transition: border-color .15s;
+}
+.cal-cell:hover { border-color: #adb5bd; cursor: pointer; }
+.cal-cell.today { border-color: #3b82f6 !important; background: #eff6ff; }
+.cal-cell.work   { background: #f0fdf4; }
+.cal-cell.dayoff { background: #fef2f2; }
+.cal-cell.holiday { background: #fff7ed; }
+.cal-cell.edited  { background: #faf5ff; }
+.cal-cell.empty   { background: transparent; border: none; cursor: default; }
+.day-num {
+  font-size: 15px; font-weight: 700;
+  color: #1e293b; line-height: 1;
+}
+.day-num.today-num { color: #2563eb; }
+.cal-time { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 3px; }
+.cal-loc  { font-size: 10px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-off  { font-size: 11px; color: #dc2626; margin-top: 3px; }
+.cal-edit-icon {
+  position: absolute; top: 4px; right: 5px;
+  font-size: 11px; opacity: .4;
+}
+.cal-cell:hover .cal-edit-icon { opacity: 1; }
+.badge-edit { background: #7c3aed; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 999px; position: absolute; bottom: 5px; right: 5px; }
+
+/* ── Statistika ── */
+.stat-box { border-radius: 10px; padding: 14px 18px; text-align: center; }
+.stat-box .num { font-size: 28px; font-weight: 800; line-height: 1; }
+.stat-box .lbl { font-size: 12px; color: #888; margin-top: 4px; }
+
+/* ── Navigatsiya ── */
+.month-nav { display: flex; align-items: center; gap: 12px; }
+.month-nav a {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #f0f0f0; color: #333; text-decoration: none; font-size: 18px;
+}
+.month-nav a:hover { background: #ddd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content-header">
+    <div class="container-fluid">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div>
+          <h1 class="mb-0">📅 {{ employee.name }}</h1>
+          <div class="text-muted small">Kunlik jadval kalendari</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <a href="{% url 'public_holidays' %}" class="btn btn-outline-danger btn-sm">🗓 Bayram kunlari</a>
+          <a href="{% url 'employee_update' employee.pk %}" class="btn btn-outline-secondary btn-sm">← Xodim</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="content">
+    <div class="container-fluid">
+
+      {% if generated %}
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        ✅ {{ generated }} ta kunlik jadval yaratildi (bugundan yil oxirigacha)
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endif %}
+
+      {# ── Generatsiya ── #}
+      {% if not has_daily %}
+      <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>⚠️ Ushbu xodim uchun kunlik jadval hali yaratilmagan.</span>
+        <form method="post">
+          {% csrf_token %}
+          <button name="generate" type="submit" class="btn btn-warning btn-sm fw-semibold">
+            ⚙️ Kunlik jadval yaratish
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <form method="post" class="d-inline">
+        {% csrf_token %}
+        <button name="generate" type="submit"
+                class="btn btn-outline-primary btn-sm mb-3"
+                onclick="return confirm('Bugundan yil oxirigacha jadval qayta yaratilsinmi? Qo\'lda o\'zgartirilgan kunlar saqlanib qoladi.')">
+          🔄 Qayta generatsiya (bugundan yil oxirigacha)
+        </button>
+      </form>
+      {% endif %}
+
+      {# ── Statistika ── #}
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#f0fdf4; border:1px solid #bbf7d0">
+            <div class="num text-success">{{ work_days }}</div>
+            <div class="lbl">Ish kuni</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#fef2f2; border:1px solid #fecaca">
+            <div class="num text-danger">{{ day_offs }}</div>
+            <div class="lbl">Dam olish</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#faf5ff; border:1px solid #e9d5ff">
+            <div class="num" style="color:#7c3aed">{{ edited }}</div>
+            <div class="lbl">Qo'lda o'zgartirilgan</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#f0f9ff; border:1px solid #bae6fd">
+            <div class="num text-primary">{{ month_name }}</div>
+            <div class="lbl">{{ year }}</div>
+          </div>
+        </div>
+      </div>
+
+      {# ── Oy navigatsiya ── #}
+      <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="month-nav">
+            <a href="?year={{ prev_year }}&month={{ prev_month }}">‹</a>
+            <span class="fw-bold fs-5">{{ month_name }} {{ year }}</span>
+            <a href="?year={{ next_year }}&month={{ next_month }}">›</a>
+          </div>
+          <a href="?year={{ today.year }}&month={{ today.month }}"
+             class="btn btn-sm btn-outline-secondary">Bugun</a>
+        </div>
+        <div class="card-body p-2">
+          <table class="cal-table">
+            <thead>
+              <tr>
+                {% for d in "Du Se Ch Pa Ju Sh Ya"|split:" " %}
+                <th>{{ d }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for week in calendar_rows %}
+              <tr>
+                {% for cell in week %}
+                  {% if cell == None %}
+                    <td class="cal-cell empty"></td>
+                  {% else %}
+                    {% with entry=cell.entry d=cell.date %}
+                    {% if entry %}
+                      {% if entry.is_manually_edited %}
+                        {% if d == today %}
+                          <td class="cal-cell today edited" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% else %}
+                          <td class="cal-cell edited" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% endif %}
+                      {% elif entry.is_day_off and entry.day_off_reason != "Dam olish kuni" %}
+                        {% if d == today %}
+                          <td class="cal-cell today holiday" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% else %}
+                          <td class="cal-cell holiday" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% endif %}
+                      {% elif entry.is_day_off %}
+                        {% if d == today %}
+                          <td class="cal-cell today dayoff" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% else %}
+                          <td class="cal-cell dayoff" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% endif %}
+                      {% else %}
+                        {% if d == today %}
+                          <td class="cal-cell today work" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% else %}
+                          <td class="cal-cell work" onclick="window.location='{% url 'daily_schedule_edit' entry.pk %}'">
+                        {% endif %}
+                      {% endif %}
+                        <div class="day-num {% if d == today %}today-num{% endif %}">{{ d.day }}</div>
+                        {% if entry.is_day_off %}
+                          <div class="cal-off">
+                            {% if entry.day_off_reason == "Dam olish kuni" %}🔴 Dam{% else %}🟠 {{ entry.day_off_reason|truncatechars:12 }}{% endif %}
+                          </div>
+                        {% else %}
+                          <div class="cal-time">{{ entry.start|time:"H:i" }}–{{ entry.end|time:"H:i" }}</div>
+                          {% if entry.location %}
+                            <div class="cal-loc">📍 {{ entry.location.name }}</div>
+                          {% endif %}
+                        {% endif %}
+                        {% if entry.is_manually_edited %}
+                          <span class="badge-edit">✏️</span>
+                        {% endif %}
+                        <span class="cal-edit-icon">✏️</span>
+                      </td>
+                    {% else %}
+                      {# Entry yo'q — sana bor #}
+                      {% if d == today %}
+                        <td class="cal-cell today">
+                      {% else %}
+                        <td class="cal-cell">
+                      {% endif %}
+                        <div class="day-num {% if d == today %}today-num{% endif %}">{{ d.day }}</div>
+                        <div class="cal-off" style="color:#ccc; font-size:10px">—</div>
+                      </td>
+                    {% endif %}
+                    {% endwith %}
+                  {% endif %}
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {# ── Ranglar izohи ── #}
+      <div class="d-flex flex-wrap gap-3 mt-3">
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#f0fdf4;border:1px solid #bbf7d0"></span> Ish kuni</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#fef2f2;border:1px solid #fecaca"></span> Dam olish</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#fff7ed;border:1px solid #fed7aa"></span> Bayram kuni</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#faf5ff;border:1px solid #e9d5ff"></span> Qo'lda o'zgartirilgan</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#eff6ff;border:2px solid #3b82f6"></span> Bugun</span>
+      </div>
+
+    </div>
+  </section>
+</div>
+{% endblock %}
