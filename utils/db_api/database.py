@@ -176,22 +176,28 @@ def get_students_in_group_for_reg(group_id: int) -> list:
 def save_student_face_by_id(student_id: int, photo_path: str) -> dict | None:
     """
     Tinglovchi rasmi saqlash (telegram_id o'zgarmaydi).
+    Rasm saqlangandan so'ng face encoding ham hisoblanib DB ga yoziladi.
     Qaytaradi: {'full_name', 'login', 'password'} yoki None.
     """
     from apps.students.models import Student
+    from utils.face_recognition_util import compute_face_encoding
+    import os
     try:
         student = Student.objects.get(id=student_id)
         # Eski rasmni o'chirish
         if student.face_image:
             try:
-                import os
                 if os.path.exists(student.face_image.path):
                     os.remove(student.face_image.path)
             except Exception:
                 pass
-        student.face_image = photo_path
+        student.face_image    = photo_path
         student.is_registered = True
-        student.save(update_fields=['face_image', 'is_registered'])
+        # Face encoding hisoblash (bir marta — keyingi so'rovlar tez bo'ladi)
+        encoding = compute_face_encoding(photo_path)
+        student.face_encoding = encoding  # None bo'lsa ham saqlash (keyinroq qayta hisoblash mumkin)
+        update_fields = ['face_image', 'is_registered', 'face_encoding']
+        student.save(update_fields=update_fields)
         return {
             'full_name': student.full_name,
             'login':     student.user.username if student.user else '',
@@ -1527,8 +1533,9 @@ def has_student_photo(telegram_id: int) -> bool:
 
 @sync_to_async
 def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
-    """Tinglovchi yuz rasmini saqlash va face_verified=True qo'yish"""
+    """Tinglovchi yuz rasmini saqlash, face_verified=True va face encoding hisoblash"""
     from apps.students.models import Student
+    from utils.face_recognition_util import compute_face_encoding
     try:
         student = Student.objects.get(telegram_id=telegram_id)
         # Eski rasmni o'chirish
@@ -1539,10 +1546,11 @@ def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
                     os.remove(old_path)
             except Exception:
                 pass
-        student.face_image = photo_path
+        student.face_image    = photo_path
         student.face_verified = True
         student.is_registered = True
-        student.save(update_fields=['face_image', 'face_verified', 'is_registered'])
+        student.face_encoding = compute_face_encoding(photo_path)
+        student.save(update_fields=['face_image', 'face_verified', 'is_registered', 'face_encoding'])
         return True
     except Exception as e:
         print(f"save_student_face_photo xatosi: {e}")
@@ -1702,14 +1710,16 @@ def get_student_monthly_report(telegram_id: int, year: int, month: int):
 
 @sync_to_async
 def save_student_face_photo(telegram_id: int, photo_path: str) -> bool:
-    """Tinglovchi yuz rasmini saqlash"""
+    """Tinglovchi yuz rasmini saqlash va face encoding hisoblash"""
     from apps.students.models import Student
+    from utils.face_recognition_util import compute_face_encoding
     try:
         student = Student.objects.get(telegram_id=telegram_id)
-        student.face_image = photo_path
+        student.face_image    = photo_path
         student.face_verified = True
         student.is_registered = True
-        student.save(update_fields=['face_image', 'face_verified', 'is_registered'])
+        student.face_encoding = compute_face_encoding(photo_path)
+        student.save(update_fields=['face_image', 'face_verified', 'is_registered', 'face_encoding'])
         return True
     except Exception:
         return False

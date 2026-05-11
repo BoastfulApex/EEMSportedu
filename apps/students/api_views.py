@@ -59,8 +59,11 @@ def get_distance_meters(lat1, lon1, lat2, lon2):
 
 def verify_student_face(student, base64_image):
     """
-    Tinglovchi yuzini saqlangan rasm bilan face_recognition orqali solishtiradi.
+    Tinglovchi yuzini saqlangan rasm/encoding bilan face_recognition orqali solishtiradi.
     face_image yo'q bo'lsa → o'tkazib yuboradi.
+
+    Tezlashtirish: student.face_encoding mavjud bo'lsa — diskdan rasm o'qilmaydi (~5ms).
+    Fallback: face_encoding yo'q bo'lsa — diskdan rasm o'qib encoding hisoblanadi (~3s).
     """
     if not student.face_image:
         return True
@@ -69,27 +72,38 @@ def verify_student_face(student, base64_image):
         return True
 
     try:
+        import json
         import numpy as np
         unknown_pil = base64_to_pil(base64_image)
         unknown_arr = np.array(unknown_pil)
-
-        known_arr = face_recognition.load_image_file(student.face_image.path)
-        known_encodings = face_recognition.face_encodings(known_arr)
-        if not known_encodings:
-            return True  # Bazadagi rasmda yuz topilmadi
 
         unknown_encodings = face_recognition.face_encodings(unknown_arr)
         if not unknown_encodings:
             return False, "Rasmda yuz aniqlanmadi"
 
+        # ── Cached encoding — diskdan o'qmasdan (tez) ─────────
+        known_enc = None
+        if student.face_encoding:
+            try:
+                known_enc = np.array(json.loads(student.face_encoding), dtype=np.float64)
+            except Exception:
+                known_enc = None  # buzilgan bo'lsa → fallback
+
+        # ── Fallback: diskdan o'qish (encoding yo'q yoki buzilgan) ─
+        if known_enc is None:
+            known_arr = face_recognition.load_image_file(student.face_image.path)
+            known_encodings = face_recognition.face_encodings(known_arr)
+            if not known_encodings:
+                return True  # Bazadagi rasmda yuz topilmadi
+            known_enc = known_encodings[0]
+
         # tolerance=0.65 — 1:1 tasdiq uchun yumshoqroq
-        # (tinglovchi o'z rasmini turli yoritish/burchakda olishi mumkin)
         match = face_recognition.compare_faces(
-            [known_encodings[0]], unknown_encodings[0], tolerance=0.65
+            [known_enc], unknown_encodings[0], tolerance=0.65
         )
         if match[0]:
             return True
-        distance = round(face_recognition.face_distance([known_encodings[0]], unknown_encodings[0])[0], 2)
+        distance = round(face_recognition.face_distance([known_enc], unknown_encodings[0])[0], 2)
         return False, f"Yuz mos kelmadi (masofa: {distance})"
 
     except Exception:
@@ -536,15 +550,19 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 qs = qs.filter(filial=admin.filial)
 
         students_data = []
-        for s in qs.only('id', 'full_name', 'phone', 'face_image'):
+        for s in qs.only('id', 'full_name', 'phone', 'face_image', 'face_encoding'):
             try:
-                path = s.face_image.path
-                if os.path.exists(path):
+                path = s.face_image.path if s.face_image else None
+                # face_encoding bo'lsa — rasm yo'lini tekshirmasdan ham qo'shish mumkin
+                has_encoding = bool(s.face_encoding)
+                has_image    = bool(path and os.path.exists(path))
+                if has_encoding or has_image:
                     students_data.append({
-                        'id':         s.id,
-                        'full_name':  s.full_name,
-                        'phone':      s.phone or '',
-                        'image_path': path,
+                        'id':            s.id,
+                        'full_name':     s.full_name,
+                        'phone':         s.phone or '',
+                        'image_path':    path or '',
+                        'face_encoding': s.face_encoding or '',
                     })
             except Exception:
                 pass
