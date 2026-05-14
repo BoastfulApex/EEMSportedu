@@ -41,6 +41,9 @@ urlpatterns = [
     # Xodimga jadval biriktirish (sana bilan)
     path('employees/<int:pk>/assign-schedule/', views.assign_schedule, name='assign_schedule'),
 
+    # Bir nechta kunga bulk extra shift qo'shish
+    path('employees/<int:pk>/bulk-extra-shift/', views.bulk_add_extra_shift, name='bulk_add_extra_shift'),
+
     # Monitoring bo'limi
     path('monitoring/', views.monitoring_dashboard, name='monitoring_dashboard'),
     path('monitoring/reports/', views.monitoring_reports, name='monitoring_reports'),

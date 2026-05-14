@@ -21,7 +21,8 @@ from apps.superadmin.models import Administrator, Filial, Weekday
 from apps.main.models import (
     Employee, WorkSchedule, Attendance, Schedule, ScheduleDay,
     ExtraSchedule, SalaryConfig, DailyAttendanceSummary,
-    PublicHoliday, EmployeeDailySchedule, generate_employee_daily_schedules,
+    PublicHoliday, EmployeeDailySchedule, EmployeeDailyExtraShift,
+    generate_employee_daily_schedules,
 )
 from apps.main.forms import (
     EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm,
@@ -2115,9 +2116,21 @@ def employee_calendar(request, pk):
                  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
 
     has_daily = EmployeeDailySchedule.objects.filter(employee=employee).exists()
-    generated  = request.GET.get('generated')
-    assigned   = request.GET.get('assigned')
-    gen_count  = request.GET.get('gen_count', 0)
+    generated   = request.GET.get('generated')
+    assigned    = request.GET.get('assigned')
+    gen_count   = request.GET.get('gen_count', 0)
+    bulk_added  = request.GET.get('bulk_added')
+
+    # Filial lokatsiyalari (bulk shift modal uchun)
+    from apps.main.models import Location as Loc
+    filial = employee.filial
+    org    = filial.organization if filial else None
+    if org:
+        locations = list(Loc.objects.filter(organization=org))
+    elif filial:
+        locations = list(Loc.objects.filter(filial=filial))
+    else:
+        locations = list(Loc.objects.all())
 
     return render(request, 'home/user/employees/employee_calendar.html', {
         'employee':      employee,
@@ -2135,6 +2148,8 @@ def employee_calendar(request, pk):
         'generated':     generated,
         'assigned':      assigned,
         'gen_count':     gen_count,
+        'bulk_added':    bulk_added,
+        'locations':     locations,
         'segment':       'employees',
         'data':          {'filials': _base_context(admin_user)['filials']},
         'tashkent_time': timezone.localtime(timezone.now()),
@@ -2238,6 +2253,86 @@ def generate_all_daily_schedules(request):
 # ============================================================
 
 @hr_admin_required
+def bulk_add_extra_shift(request, pk):
+    """
+    Tanlangan bir nechta kunga bir zarbada qo'shimcha shift qo'shish.
+    POST: daily_ids (list), location_id, start, end, lunch_start, lunch_end, note
+    """
+    from datetime import time as dtime
+    employee = get_object_or_404(Employee, pk=pk)
+    filial   = employee.filial
+    org      = filial.organization if filial else None
+
+    if request.method != 'POST':
+        return redirect('employee_calendar', pk=pk)
+
+    # Tanlangan kunlik jadval ID lari
+    daily_ids = request.POST.getlist('daily_ids')
+    if not daily_ids:
+        return redirect('employee_calendar', pk=pk)
+
+    # Shift ma'lumotlari
+    from apps.main.models import Location as Loc
+    location_id = request.POST.get('location_id') or None
+    start_str   = request.POST.get('start', '')
+    end_str     = request.POST.get('end', '')
+    lunch_start_str = request.POST.get('lunch_start', '')
+    lunch_end_str   = request.POST.get('lunch_end', '')
+    note        = request.POST.get('note', '')
+
+    def parse_time(s):
+        try:
+            h, m = s.split(':')
+            return dtime(int(h), int(m))
+        except Exception:
+            return None
+
+    start       = parse_time(start_str)
+    end         = parse_time(end_str)
+    lunch_start = parse_time(lunch_start_str)
+    lunch_end   = parse_time(lunch_end_str)
+    location    = Loc.objects.filter(pk=location_id).first() if location_id else None
+
+    if not start or not end:
+        return redirect(request.META.get('HTTP_REFERER', 'employee_calendar'))
+
+    # Faqat ushbu xodimga tegishli kunlik jadvallar
+    dailies = EmployeeDailySchedule.objects.filter(
+        pk__in=daily_ids, employee=employee, is_day_off=False
+    )
+
+    # Har bir kunga qo'shish (mavjud bo'lmasa)
+    to_create = []
+    existing_count = 0
+    for daily in dailies:
+        # Bir xil vaqt + lokatsiya bo'lsa qayta qo'shmaymiz
+        already = EmployeeDailyExtraShift.objects.filter(
+            daily=daily, start=start, end=end,
+            location=location
+        ).exists()
+        if not already:
+            to_create.append(EmployeeDailyExtraShift(
+                daily=daily,
+                location=location,
+                start=start,
+                end=end,
+                lunch_start=lunch_start,
+                lunch_end=lunch_end,
+                note=note,
+            ))
+        else:
+            existing_count += 1
+
+    if to_create:
+        EmployeeDailyExtraShift.objects.bulk_create(to_create)
+
+    # Qaytish: xuddi shu oy-yilga
+    year  = request.POST.get('year',  '')
+    month = request.POST.get('month', '')
+    base  = reverse('employee_calendar', args=[pk])
+    return redirect(f"{base}?year={year}&month={month}&bulk_added={len(to_create)}")
+
+
 def assign_schedule(request, pk):
     """
     Xodimga jadval tanlash + qaysi sanadan boshlanishini belgilash.
