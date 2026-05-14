@@ -390,6 +390,51 @@ class EmployeeDailySchedule(models.Model):
             return f"{self.employee.name} — {self.date} (Dam olish)"
         return f"{self.employee.name} — {self.date} {self.start}-{self.end}"
 
+    def all_locations(self):
+        """Asosiy + qo'shimcha shiftlarning barcha lokatsiyalari"""
+        locs = []
+        if self.location:
+            locs.append(self.location)
+        for shift in self.extra_shifts.select_related('location'):
+            if shift.location:
+                locs.append(shift.location)
+        return locs
+
+
+class EmployeeDailyExtraShift(models.Model):
+    """
+    Xodimning bir kunda qo'shimcha ish joyi / vaqti.
+    Asosiy EmployeeDailySchedule ga bog'liq.
+    """
+    daily = models.ForeignKey(
+        EmployeeDailySchedule,
+        on_delete=models.CASCADE,
+        related_name='extra_shifts',
+        verbose_name="Kunlik jadval"
+    )
+    location = models.ForeignKey(
+        Location,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='extra_shifts',
+        verbose_name="Lokatsiya"
+    )
+    start = models.TimeField(verbose_name="Boshlanish vaqti")
+    end   = models.TimeField(verbose_name="Tugash vaqti")
+    lunch_start = models.TimeField(null=True, blank=True, verbose_name="Tushlik boshlanishi")
+    lunch_end   = models.TimeField(null=True, blank=True, verbose_name="Tushlik tugashi")
+    note  = models.CharField(max_length=200, null=True, blank=True, verbose_name="Izoh")
+    order = models.PositiveSmallIntegerField(default=2, verbose_name="Tartib")
+
+    class Meta:
+        ordering = ['order', 'start']
+        verbose_name = "Qo'shimcha shift"
+        verbose_name_plural = "Qo'shimcha shiftlar"
+
+    def __str__(self):
+        loc = self.location.name if self.location else "—"
+        return f"{self.daily} | Shift {self.order}: {self.start}-{self.end} @ {loc}"
+
 
 # ============================================================
 # GENERATSIYA FUNKSIYASI

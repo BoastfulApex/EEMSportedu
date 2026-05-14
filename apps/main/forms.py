@@ -1,5 +1,6 @@
 from django import forms
-from apps.main.models import Employee, WorkSchedule, ExtraSchedule, Location, Attendance, Schedule, ScheduleDay, PublicHoliday, EmployeeDailySchedule
+from django.forms import inlineformset_factory
+from apps.main.models import Employee, WorkSchedule, ExtraSchedule, Location, Attendance, Schedule, ScheduleDay, PublicHoliday, EmployeeDailySchedule, EmployeeDailyExtraShift
 from apps.superadmin.models import Weekday, Filial
 
 
@@ -266,3 +267,74 @@ class DailyScheduleEditForm(forms.ModelForm):
             self.fields['location'].queryset = Location.objects.filter(organization=organization)
         else:
             self.fields['location'].queryset = Location.objects.all()
+
+
+class ExtraShiftForm(forms.ModelForm):
+    """Qo'shimcha shift (bir kunda bir nechta lokatsiya) formi"""
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.none(),
+        required=False,
+        empty_label="— Lokatsiya —",
+        label="Lokatsiya",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"})
+    )
+    start = forms.TimeField(
+        label="Boshlanish",
+        widget=forms.TimeInput(attrs={"class": "form-control form-control-sm", "type": "time"})
+    )
+    end = forms.TimeField(
+        label="Tugash",
+        widget=forms.TimeInput(attrs={"class": "form-control form-control-sm", "type": "time"})
+    )
+    lunch_start = forms.TimeField(
+        label="Tushlik bosh.",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control form-control-sm", "type": "time"})
+    )
+    lunch_end = forms.TimeField(
+        label="Tushlik tug.",
+        required=False,
+        widget=forms.TimeInput(attrs={"class": "form-control form-control-sm", "type": "time"})
+    )
+    note = forms.CharField(
+        label="Izoh",
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "Ixtiyoriy izoh"})
+    )
+
+    class Meta:
+        model = EmployeeDailyExtraShift
+        fields = ['location', 'start', 'end', 'lunch_start', 'lunch_end', 'note']
+
+    def __init__(self, *args, **kwargs):
+        filial = kwargs.pop('filial', None)
+        organization = kwargs.pop('organization', None)
+        super().__init__(*args, **kwargs)
+        if filial and filial.organization:
+            self.fields['location'].queryset = Location.objects.filter(organization=filial.organization)
+        elif organization:
+            self.fields['location'].queryset = Location.objects.filter(organization=organization)
+        else:
+            self.fields['location'].queryset = Location.objects.all()
+
+
+def make_extra_shift_formset(filial=None, organization=None, **kwargs):
+    """Inline formset — bir kunlik jadvaldagi qo'shimcha shiftlar"""
+    BaseFormSet = inlineformset_factory(
+        EmployeeDailySchedule,
+        EmployeeDailyExtraShift,
+        form=ExtraShiftForm,
+        extra=1,
+        can_delete=True,
+        min_num=0,
+        validate_min=False,
+    )
+
+    class BoundFormSet(BaseFormSet):
+        def get_form_kwargs(self, index):
+            kw = super().get_form_kwargs(index)
+            kw['filial'] = filial
+            kw['organization'] = organization
+            return kw
+
+    return BoundFormSet(**kwargs)

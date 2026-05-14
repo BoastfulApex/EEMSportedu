@@ -26,6 +26,7 @@ from apps.main.models import (
 from apps.main.forms import (
     EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm,
     PublicHolidayForm, DailyScheduleEditForm, AssignScheduleForm,
+    make_extra_shift_formset,
 )
 
 
@@ -2142,22 +2143,28 @@ def employee_calendar(request, pk):
 
 @hr_admin_required
 def daily_schedule_edit(request, pk):
-    """Xodimning bitta kunlik jadvalini tahrirlash"""
+    """Xodimning bitta kunlik jadvalini tahrirlash (qo'shimcha shiftlar bilan)"""
     admin_user = request.admin_user
     entry      = get_object_or_404(EmployeeDailySchedule, pk=pk)
     employee   = entry.employee
     filial     = employee.filial
     org        = filial.organization if filial else None
 
+    fs_kwargs = dict(filial=filial, organization=org)
+
     if request.method == 'POST':
         form = DailyScheduleEditForm(
             request.POST, instance=entry,
             filial=filial, organization=org
         )
-        if form.is_valid():
+        formset = make_extra_shift_formset(**fs_kwargs)(
+            request.POST, instance=entry
+        )
+        if form.is_valid() and formset.is_valid():
             obj = form.save(commit=False)
             obj.is_manually_edited = True
             obj.save()
+            formset.save()
             return redirect(
                 f"{reverse('employee_calendar', args=[employee.pk])}"
                 f"?year={entry.date.year}&month={entry.date.month}"
@@ -2166,6 +2173,7 @@ def daily_schedule_edit(request, pk):
         form = DailyScheduleEditForm(
             instance=entry, filial=filial, organization=org
         )
+        formset = make_extra_shift_formset(**fs_kwargs)(instance=entry)
 
     UZ_DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba',
                'Juma', 'Shanba', 'Yakshanba']
@@ -2174,6 +2182,7 @@ def daily_schedule_edit(request, pk):
 
     return render(request, 'home/user/employees/daily_schedule_edit.html', {
         'form':      form,
+        'formset':   formset,
         'entry':     entry,
         'employee':  employee,
         'day_name':  UZ_DAYS[entry.date.weekday()],

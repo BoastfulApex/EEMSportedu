@@ -2,7 +2,7 @@ from rest_framework.response import Response
 from rest_framework import serializers, generics
 from rest_framework.renderers import JSONRenderer
 from rest_framework.permissions import AllowAny
-from .models import Location, Attendance, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay, TelegramUser
+from .models import Location, Attendance, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay, TelegramUser, EmployeeDailySchedule, EmployeeDailyExtraShift
 from django.utils import timezone
 from apps.superadmin.models import Administrator
 from datetime import datetime
@@ -92,12 +92,40 @@ def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
     Xodimning hozirgi vaqt va joylashuviga mos lokatsiyani topadi.
 
     Tekshiruv tartibi:
-    1. Employee.schedules (yangi) — bugungi kunga mos jadvallarni tekshir
-    2. Tashkilotning barcha lokatsiyalari — umumiy fallback
+    1. EmployeeDailySchedule (bugungi kun) — asosiy + qo'shimcha shiftlar
+    2. Employee.schedules (haftalik shablon) — ScheduleDay
+    3. Tashkilotning barcha lokatsiyalari — umumiy fallback
 
     Qaytaradi: (location, schedule, schedule_type, distance_meters) yoki (None, None, None, None)
     """
-    # 1. Yangi ScheduleDay — xodimning bugungi kunga mos jadval kunlari
+    from datetime import date as _date
+    today = _date.today()
+
+    # 1. EmployeeDailySchedule — bugungi kunlik jadval (asosiy + extra shiftlar)
+    try:
+        daily = EmployeeDailySchedule.objects.select_related('location').prefetch_related(
+            'extra_shifts__location'
+        ).get(employee=employee, date=today)
+
+        if not daily.is_day_off:
+            # 1a. Asosiy lokatsiya
+            if daily.location and daily.location.latitude and daily.location.longitude:
+                dist = get_distance_meters(latitude, longitude,
+                                           daily.location.latitude, daily.location.longitude)
+                if dist < 150:
+                    return daily.location, daily, 'daily_main', int(dist)
+
+            # 1b. Qo'shimcha shiftlar lokatsiyalari
+            for es in daily.extra_shifts.all():
+                if es.location and es.location.latitude and es.location.longitude:
+                    dist = get_distance_meters(latitude, longitude,
+                                               es.location.latitude, es.location.longitude)
+                    if dist < 150:
+                        return es.location, daily, 'daily_extra', int(dist)
+    except EmployeeDailySchedule.DoesNotExist:
+        pass
+
+    # 2. Haftalik shablon — ScheduleDay (eski usul, fallback)
     schedule_days = ScheduleDay.objects.filter(
         schedule__employees=employee,
         weekday__id=weekday_id,
@@ -114,7 +142,7 @@ def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
         if matched_day is None:
             matched_day = sd
 
-    # 2. Tashkilotning barcha lokatsiyalari (fallback)
+    # 3. Tashkilotning barcha lokatsiyalari (fallback)
     if employee.filial and employee.filial.organization:
         all_locations = Location.objects.filter(
             organization=employee.filial.organization,

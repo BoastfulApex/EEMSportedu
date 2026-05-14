@@ -30,9 +30,10 @@
   color: #1e293b; line-height: 1;
 }
 .day-num.today-num { color: #2563eb; }
-.cal-time   { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 3px; }
-.cal-lunch  { font-size: 10px; color: #b45309; margin-top: 2px; }
-.cal-loc    { font-size: 10px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-time        { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 3px; }
+.cal-lunch       { font-size: 10px; color: #b45309; margin-top: 2px; }
+.cal-loc         { font-size: 10px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-extra-shift { font-size: 10px; color: #0369a1; margin-top: 2px; border-top: 1px dashed #bae6fd; padding-top: 2px; }
 .cal-off  { font-size: 11px; color: #dc2626; margin-top: 3px; }
 .cal-edit-icon {
   position: absolute; top: 4px; right: 5px;
@@ -207,6 +208,12 @@
                           {% if entry.location %}
                             <div class="cal-loc">📍 {{ entry.location.name }}</div>
                           {% endif %}
+                          {% for es in entry.extra_shifts.all %}
+                            <div class="cal-extra-shift">
+                              🔁 {{ es.start|time:"H:i" }}–{{ es.end|time:"H:i" }}
+                              {% if es.location %}<span class="cal-loc d-inline">@ {{ es.location.name }}</span>{% endif %}
+                            </div>
+                          {% endfor %}
                         {% endif %}
                         {% if entry.is_manually_edited %}
                           <span class="badge-edit">✏️</span>

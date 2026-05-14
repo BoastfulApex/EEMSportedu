@@ -92,6 +92,94 @@
                   </div>
                 </div>
 
+                {# ── Qo'shimcha shiftlar ── #}
+                <div id="extra-shifts-block">
+                  <hr class="my-3">
+                  <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="fw-semibold">➕ Qo'shimcha shiftlar</span>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="add-shift-btn">
+                      + Shift qo'shish
+                    </button>
+                  </div>
+
+                  {{ formset.management_form }}
+                  <div id="shift-forms">
+                    {% for sf in formset %}
+                    <div class="shift-row border rounded p-2 mb-2 position-relative {% if sf.instance.pk %}existing-shift{% endif %}">
+                      <div class="row g-2">
+                        <div class="col-12">
+                          <label class="form-label small fw-semibold">{{ sf.location.label }}</label>
+                          {{ sf.location }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">{{ sf.start.label }}</label>
+                          {{ sf.start }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">{{ sf.end.label }}</label>
+                          {{ sf.end }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">{{ sf.lunch_start.label }}</label>
+                          {{ sf.lunch_start }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">{{ sf.lunch_end.label }}</label>
+                          {{ sf.lunch_end }}
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label small">{{ sf.note.label }}</label>
+                          {{ sf.note }}
+                        </div>
+                      </div>
+                      {% if sf.instance.pk %}
+                        <div class="form-check mt-1">
+                          {{ sf.DELETE }}
+                          <label class="form-check-label text-danger small" for="{{ sf.DELETE.id_for_label }}">
+                            O'chirish
+                          </label>
+                        </div>
+                      {% endif %}
+                      {% for hf in sf.hidden_fields %}{{ hf }}{% endfor %}
+                    </div>
+                    {% endfor %}
+                  </div>
+
+                  {# Yangi shift qo'shish uchun shablon #}
+                  <template id="shift-template">
+                    <div class="shift-row border rounded p-2 mb-2 new-shift" style="background:#f0f9ff">
+                      <div class="row g-2">
+                        <div class="col-12">
+                          <label class="form-label small fw-semibold">Lokatsiya</label>
+                          {{ formset.empty_form.location }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Boshlanish</label>
+                          {{ formset.empty_form.start }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Tugash</label>
+                          {{ formset.empty_form.end }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Tushlik bosh.</label>
+                          {{ formset.empty_form.lunch_start }}
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small">Tushlik tug.</label>
+                          {{ formset.empty_form.lunch_end }}
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label small">Izoh</label>
+                          {{ formset.empty_form.note }}
+                        </div>
+                      </div>
+                      <button type="button" class="btn btn-link text-danger btn-sm p-0 mt-1 remove-shift-btn">✕ Olib tashlash</button>
+                      {% for hf in formset.empty_form.hidden_fields %}{{ hf }}{% endfor %}
+                    </div>
+                  </template>
+                </div>
+
                 <div class="d-flex gap-2 mt-4">
                   <button type="submit" class="btn btn-primary flex-fill">💾 Saqlash</button>
                   <a href="{% url 'employee_calendar' employee.pk %}?year={{ entry.date.year }}&month={{ entry.date.month }}"
@@ -108,21 +196,46 @@
 
 <script>
 (function(){
-  const chk      = document.getElementById('{{ form.is_day_off.id_for_label }}');
-  const workRows = document.getElementById('work-rows');
-  const reasonRow = document.getElementById('reason-row');
+  // ── Dam olish toggle ──
+  const chk        = document.getElementById('{{ form.is_day_off.id_for_label }}');
+  const workRows   = document.getElementById('work-rows');
+  const reasonRow  = document.getElementById('reason-row');
+  const extraBlock = document.getElementById('extra-shifts-block');
 
   function toggle() {
-    if (chk.checked) {
-      workRows.style.display  = 'none';
-      reasonRow.style.display = 'block';
-    } else {
-      workRows.style.display  = 'block';
-      reasonRow.style.display = 'none';
-    }
+    const off = chk.checked;
+    workRows.style.display   = off ? 'none'  : 'block';
+    reasonRow.style.display  = off ? 'block' : 'none';
+    extraBlock.style.display = off ? 'none'  : 'block';
   }
   chk.addEventListener('change', toggle);
   toggle();
+
+  // ── Qo'shimcha shift qo'shish ──
+  const addBtn      = document.getElementById('add-shift-btn');
+  const shiftForms  = document.getElementById('shift-forms');
+  const tmpl        = document.getElementById('shift-template');
+  const totalInput  = document.querySelector('[name="{{ formset.management_form.TOTAL_FORM_COUNT.html_name }}"]');
+
+  addBtn.addEventListener('click', function() {
+    const idx   = parseInt(totalInput.value);
+    const clone = tmpl.content.cloneNode(true);
+    // __prefix__ ni haqiqiy index bilan almashtirish
+    clone.querySelectorAll('[name],[id],[for]').forEach(el => {
+      ['name','id','for'].forEach(attr => {
+        if (el.getAttribute(attr)) {
+          el.setAttribute(attr, el.getAttribute(attr).replace(/__prefix__/g, idx));
+        }
+      });
+    });
+    // O'chirish tugmasi
+    clone.querySelector('.remove-shift-btn').addEventListener('click', function(){
+      this.closest('.shift-row').remove();
+      totalInput.value = parseInt(totalInput.value) - 1;
+    });
+    shiftForms.appendChild(clone);
+    totalInput.value = idx + 1;
+  });
 })();
 </script>
 {% endblock %}
