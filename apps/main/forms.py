@@ -318,8 +318,10 @@ class ExtraShiftForm(forms.ModelForm):
             self.fields['location'].queryset = Location.objects.all()
 
 
-def make_extra_shift_formset(filial=None, organization=None, **kwargs):
-    """Inline formset — bir kunlik jadvaldagi qo'shimcha shiftlar"""
+def make_extra_shift_formset(filial=None, organization=None):
+    """Inline formset klassi — bir kunlik jadvaldagi qo'shimcha shiftlar.
+    Qaytarilgan klass keyinroq (request.POST, instance=...) bilan chaqiriladi.
+    """
     BaseFormSet = inlineformset_factory(
         EmployeeDailySchedule,
         EmployeeDailyExtraShift,
@@ -337,4 +339,4 @@ def make_extra_shift_formset(filial=None, organization=None, **kwargs):
             kw['organization'] = organization
             return kw
 
-    return BoundFormSet(**kwargs)
+    return BoundFormSet  # klass qaytariladi, instance emas
