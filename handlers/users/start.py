@@ -94,8 +94,13 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             from keyboards.inline.main_inline import edu_admin_keyboard, edu_admin_employee_keyboard
             if info['is_employee']:
                 if await has_employee_photo(user.id):
+                    # Avval doimiy pastki menyu — keyin edu admin inline
                     await message.answer(greeting, parse_mode="HTML",
-                                         reply_markup=edu_admin_employee_keyboard())
+                                         reply_markup=employee_reply_keyboard())
+                    await message.answer(
+                        "👇 O'quv bo'limi va davomat:",
+                        reply_markup=edu_admin_employee_keyboard()
+                    )
                 else:
                     await state.set_state(EmployeeRegistration.waiting_for_photo)
                     await state.update_data(is_admin=True)
@@ -404,6 +409,10 @@ async def receive_employee_photo(message: Message, state: FSMContext):
                 "✅ <b>Rasm qabul qilindi!</b>\n\n"
                 "Ro'yxatdan o'tish yakunlandi.",
                 parse_mode="HTML",
+                reply_markup=employee_reply_keyboard()
+            )
+            await message.answer(
+                "👇 O'quv bo'limi va davomat:",
                 reply_markup=edu_admin_employee_keyboard()
             )
         else:
