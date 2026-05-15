@@ -1,5 +1,46 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
+    ReplyKeyboardMarkup, KeyboardButton,
+)
 from data.config import URL, BASE_URL
+
+
+# ============================================================
+# XODIM — PASTKI DOIMIY MENYU (ReplyKeyboard)
+# ============================================================
+
+def employee_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Xodim uchun pastda doim turadigan klaviatura.
+    WebApp bu yerda ishlatib bo'lmaydi — shuning uchun 2 ta tugma:
+    📊 Hisobotlar va 🪪 Face ID.
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="🪪 Face ID"),
+                KeyboardButton(text="📊 Hisobotlar"),
+            ]
+        ],
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Quyidagi menyudan tanlang...",
+    )
+
+
+def employee_faceid_keyboard() -> InlineKeyboardMarkup:
+    """Face ID tugmasiga bosilganda chiqadigan WebApp inline klaviatura."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🔓 Kirish",
+                web_app=WebAppInfo(url=f"{URL}?action=check_in")
+            ),
+            InlineKeyboardButton(
+                text="🔒 Chiqish",
+                web_app=WebAppInfo(url=f"{URL}?action=check_out")
+            ),
+        ],
+    ])
 
 
 # ============================================================
@@ -7,14 +48,8 @@ from data.config import URL, BASE_URL
 # ============================================================
 
 async def employee_main_keyboard() -> InlineKeyboardMarkup:
-    """Xodim uchun asosiy menyu — web app + hisobotlar"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔓 Kirish", web_app=WebAppInfo(url=f"{URL}?action=check_in")),
-            InlineKeyboardButton(text="🔒 Chiqish", web_app=WebAppInfo(url=f"{URL}?action=check_out")),
-        ],
-        [InlineKeyboardButton(text="📊 Hisobotlar", callback_data="my_reports")],
-    ])
+    """Xodim uchun WebApp inline klaviatura (employee_faceid_keyboard alias)."""
+    return employee_faceid_keyboard()
 
 
 def edu_admin_keyboard() -> InlineKeyboardMarkup:
@@ -54,7 +89,6 @@ def edu_admin_employee_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🔓 Kirish", web_app=WebAppInfo(url=f"{URL}?action=check_in")),
             InlineKeyboardButton(text="🔒 Chiqish", web_app=WebAppInfo(url=f"{URL}?action=check_out")),
         ],
-        [InlineKeyboardButton(text="📊 Hisobotlar", callback_data="my_reports")],
     ])
 
 
@@ -167,11 +201,17 @@ def get_schedule_selection_keyboard(schedules: list, selected_ids: set) -> Inlin
             text=f"{mark}{s['label']}",
             callback_data=f"asel:{s['id']}"
         )])
+    action_row = []
     if selected_ids:
-        buttons.append([InlineKeyboardButton(
+        action_row.append(InlineKeyboardButton(
             text="✔️ Tasdiqlash",
             callback_data="asel_done"
-        )])
+        ))
+    action_row.append(InlineKeyboardButton(
+        text="❌ Bekor qilish",
+        callback_data="asel_cancel"
+    ))
+    buttons.append(action_row)
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

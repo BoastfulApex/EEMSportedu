@@ -10,6 +10,8 @@ from loader import dp, bot
 from states.users import EmployeeRegistration, StudentGroupSelect, StudentPhotoUpload, EmployeeNameInput
 from keyboards.inline.main_inline import (
     employee_main_keyboard,
+    employee_reply_keyboard,
+    employee_faceid_keyboard,
     student_main_keyboard,
     get_user_approval_keyboard,
     get_organization_selection_keyboard,
@@ -113,8 +115,15 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
                              reply_markup=await admin_menu_keyboard())
         if info['is_employee']:
             if await has_employee_photo(user.id):
-                await message.answer("👇 Xodim sifatida davomat:",
-                                     reply_markup=await employee_main_keyboard())
+                await message.answer(
+                    "👇 Xodim sifatida davomat:",
+                    reply_markup=employee_reply_keyboard()
+                )
+                await message.answer(
+                    "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+                    parse_mode="HTML",
+                    reply_markup=employee_faceid_keyboard()
+                )
             else:
                 await state.set_state(EmployeeRegistration.waiting_for_photo)
                 await state.update_data(is_admin=True)
@@ -129,8 +138,17 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
     if info['is_employee']:
         greeting = _build_greeting(info)
         if await has_employee_photo(user.id):
-            await message.answer(greeting, parse_mode="HTML",
-                                 reply_markup=await employee_main_keyboard())
+            # Avval doimiy pastki menyu
+            await message.answer(
+                greeting, parse_mode="HTML",
+                reply_markup=employee_reply_keyboard()
+            )
+            # Keyin Face ID inline keyboard
+            await message.answer(
+                "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+                parse_mode="HTML",
+                reply_markup=employee_faceid_keyboard()
+            )
         else:
             await state.set_state(EmployeeRegistration.waiting_for_photo)
             await message.answer(
@@ -382,16 +400,24 @@ async def receive_employee_photo(message: Message, state: FSMContext):
         # Admin ham xodim bo'lsa — rol ga mos keyboard ko'rsatamiz
         if is_admin_flag and await is_edu_admin_user(user_id):
             from keyboards.inline.main_inline import edu_admin_employee_keyboard
-            reply_markup = edu_admin_employee_keyboard()
+            await message.answer(
+                "✅ <b>Rasm qabul qilindi!</b>\n\n"
+                "Ro'yxatdan o'tish yakunlandi.",
+                parse_mode="HTML",
+                reply_markup=edu_admin_employee_keyboard()
+            )
         else:
-            reply_markup = await employee_main_keyboard()
-
-        await message.answer(
-            "✅ <b>Rasm qabul qilindi!</b>\n\n"
-            "Ro'yxatdan o'tish yakunlandi. Kirish uchun quyidagi tugmani bosing:",
-            parse_mode="HTML",
-            reply_markup=reply_markup
-        )
+            await message.answer(
+                "✅ <b>Rasm qabul qilindi!</b>\n\n"
+                "Ro'yxatdan o'tish yakunlandi.",
+                parse_mode="HTML",
+                reply_markup=employee_reply_keyboard()
+            )
+            await message.answer(
+                "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+                parse_mode="HTML",
+                reply_markup=employee_faceid_keyboard()
+            )
     else:
         await message.answer(
             "❌ Rasm saqlanishda xatolik yuz berdi.\n"
@@ -406,6 +432,95 @@ async def receive_wrong_input_photo(message: Message):
         "📌 Eslatma: Faylni hujjat sifatida emas, oddiy rasm sifatida yuboring.",
         parse_mode="HTML"
     )
+
+
+# ============================================================
+# PASTKI MENYU TUGMALARI — ReplyKeyboard
+# ============================================================
+
+@router.message(F.text == "🪪 Face ID", StateFilter(None))
+async def faceid_reply_button(message: Message):
+    """Xodim 'Face ID' tugmasini bosdi — WebApp kirish/chiqish inline klaviaturasini ko'rsatamiz."""
+    await message.answer(
+        "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+        parse_mode="HTML",
+        reply_markup=employee_faceid_keyboard()
+    )
+
+
+@router.message(F.text == "📊 Hisobotlar", StateFilter(None))
+async def reports_reply_button(message: Message):
+    """Xodim 'Hisobotlar' tugmasini bosdi — hisobot menyu + haftalik/oylik statistika."""
+    user_id = message.from_user.id
+    from keyboards.inline.main_inline import reports_menu_keyboard
+    from utils.db_api.database import (
+        get_emp_weekly_monthly_stats, is_user_student, get_student_report_months,
+    )
+
+    # Tinglovchi bo'lsa — oylar ro'yxatini ko'rsatamiz
+    if await is_user_student(user_id):
+        months = await get_student_report_months(user_id)
+        if not months:
+            await message.answer("📭 Hozircha davomat ma'lumotlari topilmadi.")
+            return
+        buttons = [
+            [InlineKeyboardButton(
+                text=m['label'],
+                callback_data=f"srep_{m['year']}_{m['month']}"
+            )]
+            for m in months
+        ]
+        buttons.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")])
+        await message.answer(
+            "📊 <b>Davomat hisoboti</b>\nQaysi oyni ko'rmoqchisiz?",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+        return
+
+    # Xodim — haftalik + oylik statistika
+    data = await get_emp_weekly_monthly_stats(user_id)
+    if not data:
+        await message.answer(
+            "❌ Xodim ma'lumoti topilmadi.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")]
+            ])
+        )
+        return
+
+    w, m_data = data['weekly'], data['monthly']
+    ws, td = data['week_start'], data['today']
+
+    def _fmt(minutes: int) -> str:
+        if not minutes:
+            return "—"
+        h, m = divmod(minutes, 60)
+        return f"{h}s {m}d" if h else f"{m}d"
+
+    def _bar(pct: float) -> str:
+        filled = min(10, int(pct / 10))
+        return f"{'🟩' * filled}{'⬜' * (10 - filled)} {pct}%"
+
+    def _block(s: dict) -> str:
+        return (
+            f"  📋 Kerakli: <b>{s['required_h']}s</b>  |  Ishlagan: <b>{s['worked_h']}s</b>\n"
+            f"  {_bar(s['progress'])}\n"
+            f"  ⏰ Kechikish: <b>{_fmt(s['late_total'])}</b>"
+            f"  |  ✅ Ortiqcha: <b>{_fmt(s['overtime_total'])}</b>"
+        )
+
+    text = (
+        f"📊 <b>Hisobotlaringiz</b>\n{'─' * 30}\n\n"
+        f"📆 <b>Haftalik</b>  "
+        f"<i>{ws.strftime('%d-%b')} – {td.strftime('%d-%b')}</i>\n"
+        f"{_block(w)}\n\n"
+        f"📅 <b>Oylik</b>  "
+        f"<i>{data['month_label']} · {data['month_start'].strftime('%d-%b')} – {td.strftime('%d-%b')}</i>\n"
+        f"{_block(m_data)}"
+    )
+
+    await message.answer(text, parse_mode="HTML", reply_markup=reports_menu_keyboard())
 
 
 # ============================================================

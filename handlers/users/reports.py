@@ -318,7 +318,8 @@ async def show_late_for_month(callback: CallbackQuery):
 async def start_date_range(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ReportDateRange.waiting_start)
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="rep_cancel")]
+        [InlineKeyboardButton(text="🔙 Hisobotlar", callback_data="my_reports")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="rep_cancel")],
     ])
     await callback.message.edit_text(
         "🗓 <b>Sana bo'yicha hisobot</b>\n\n"
@@ -347,7 +348,8 @@ async def receive_start_date(message: Message, state: FSMContext):
     await state.set_state(ReportDateRange.waiting_end)
 
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="rep_cancel")]
+        [InlineKeyboardButton(text="🔙 Hisobotlar", callback_data="my_reports")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="rep_cancel")],
     ])
     await message.answer(
         f"✅ Boshlanish: <b>{start}</b>\n\n"

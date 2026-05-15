@@ -26,9 +26,13 @@ async def show_months(callback: CallbackQuery):
     months = await get_available_months(user_id)
 
     if not months:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await callback.message.edit_text(
             "📭 Hozircha davomat ma'lumotlari topilmadi.\n"
-            "Kirish/chiqish qayd etilgandan so'ng statistika paydo bo'ladi."
+            "Kirish/chiqish qayd etilgandan so'ng statistika paydo bo'ladi.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")]
+            ])
         )
         await callback.answer()
         return
@@ -53,7 +57,13 @@ async def show_month_stats(callback: CallbackQuery):
     stats = await get_employee_monthly_stats(user_id, year, month)
 
     if not stats:
-        await callback.message.edit_text("❌ Ma'lumot topilmadi.")
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await callback.message.edit_text(
+            "❌ Ma'lumot topilmadi.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Oylar ro'yxati", callback_data="my_stats")]
+            ])
+        )
         await callback.answer()
         return
 
@@ -85,7 +95,8 @@ async def show_month_stats(callback: CallbackQuery):
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Oylar ro'yxatiga", callback_data="my_stats")]
+        [InlineKeyboardButton(text="🔙 Oylar ro'yxati", callback_data="my_stats")],
+        [InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="back_to_main")],
     ])
 
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb)
@@ -126,13 +137,17 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
             # Oddiy admin + xodim — xodim inline keyboard
             if await is_user_employee(user_id):
                 await callback.message.edit_text(
-                    "📋 Asosiy menyu:", reply_markup=await employee_main_keyboard()
+                    "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+                    parse_mode="HTML",
+                    reply_markup=await employee_main_keyboard()
                 )
             else:
                 await callback.answer("Asosiy menyu uchun /start bosing.")
                 return
     else:
         await callback.message.edit_text(
-            "📋 Asosiy menyu:", reply_markup=await employee_main_keyboard()
+            "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+            parse_mode="HTML",
+            reply_markup=await employee_main_keyboard()
         )
     await callback.answer()

@@ -199,10 +199,17 @@ async def approve_emp_callback(callback: CallbackQuery, state: FSMContext):
 
     schedules = await get_schedules_by_filial(filial_id)
     if not schedules:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await callback.message.edit_text(
             f"⚠️ Bu filialda hech qanday jadval topilmadi.\n"
             "Avval admin panelda jadval yarating.",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="❌ Rad etish",
+                    callback_data=f"reject_emp:{emp_user_id}"
+                )]
+            ])
         )
         await callback.answer()
         return
@@ -271,7 +278,16 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
         filial_id=filial_id,
     )
     if not employee:
-        await callback.message.edit_text("❌ Xodim yaratishda xatolik yuz berdi.")
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await callback.message.edit_text(
+            "❌ Xodim yaratishda xatolik yuz berdi.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="🔄 Qayta urinish",
+                    callback_data=f"approve_emp:{emp_user_id}:{data['org_id']}:{filial_id}"
+                )]
+            ])
+        )
         await state.clear()
         await callback.answer()
         return
@@ -320,12 +336,16 @@ async def finish_schedule_assignment(callback: CallbackQuery, state: FSMContext)
     except Exception as e:
         logger.error(f"Xodimga xabar yuborishda xato (user_id={emp_user_id}): {e}")
 
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.edit_text(
         f"✅ <b>Xodim tasdiqlandi!</b>\n\n"
         f"👤 {emp_name}\n\n"
         f"📅 Biriktirilgan jadvallar:\n{short_labels}\n\n"
         f"Xodimga to'liq jadval ma'lumotlari yuborildi.",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Yopish", callback_data="dismiss_msg")]
+        ])
     )
     await state.clear()
     await callback.answer()
@@ -351,7 +371,13 @@ async def reject_emp_callback(callback: CallbackQuery, state: FSMContext):
 
     await delete_employee_by_user_id(emp_user_id)
     await state.clear()
-    await callback.message.edit_text("🔴 Xodim so'rovi rad etildi.")
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        "🔴 Xodim so'rovi rad etildi.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Yopish", callback_data="dismiss_msg")]
+        ])
+    )
     await callback.answer("Rad javobi yuborildi.")
 
 
@@ -481,6 +507,28 @@ async def back_to_start(callback: CallbackQuery, state: FSMContext):
         f"🆔 {user.user_id}\n\nTasdiqlaysizmi?",
         reply_markup=keyboard
     )
+    await callback.answer()
+
+
+# ============================================================
+# YORDAMCHI CALLBACK HANDLERLARI
+# ============================================================
+
+@router.callback_query(lambda c: c.data == "asel_cancel")
+async def cancel_schedule_selection(callback: CallbackQuery, state: FSMContext):
+    """Jadval tanlashni bekor qilish — xodim so'rovini qayta ko'rish uchun"""
+    await state.clear()
+    await callback.message.edit_text(
+        "❌ Jadval tayinlash bekor qilindi.\n\n"
+        "Xodimning so'rovi hali kutilmoqda."
+    )
+    await callback.answer("Bekor qilindi.")
+
+
+@router.callback_query(lambda c: c.data == "dismiss_msg")
+async def dismiss_message(callback: CallbackQuery):
+    """Inline xabarni yopish (tugmani olib tashlash)"""
+    await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
 
 
