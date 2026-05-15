@@ -164,6 +164,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CSRF_TRUSTED_ORIGINS = [
     'https://sportedu.boastful.uz',
+    'https://www.sportedu.boastful.uz',
     'https://kpi.sportedu.uz',
+    'https://www.kpi.sportedu.uz',
     'https://kpi.boastful.uz',
+    'https://www.kpi.boastful.uz',
 ]
+
+# Cloudflare / Nginx reverse proxy orqali kelayotgan HTTPS so'rovlar uchun
+# Django request.scheme ni to'g'ri aniqlashi uchun
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Cloudflare IP laridan keladigan so'rovlarda USE_X_FORWARDED_HOST
+USE_X_FORWARDED_HOST = True
