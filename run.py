@@ -48,9 +48,50 @@ async def on_startup(bot: Bot, dp: Dispatcher):
     import filters
 
     filters.setup(dp)
-
-    # Qo'shimcha ishlar (masalan, bazani sozlash yoki xabar jo'natish)
     logging.info("Bot ishga tushdi.")
+
+    # Barcha userlarga "Bot yangilandi, /start bosing" xabari
+    await _broadcast_restart(bot)
+
+
+async def _broadcast_restart(bot: Bot):
+    """
+    Bot ishga tushganda barcha ro'yxatdan o'tgan foydalanuvchilarga
+    qayta /start bosishni so'rash xabari yuboradi.
+    Telegram flood limit: sekundiga 30 ta xabar → har xabardan keyin kichik tanaffus.
+    """
+    from utils.db_api.database import get_all_telegram_user_ids
+    from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+
+    user_ids = await get_all_telegram_user_ids()
+    logging.info(f"Broadcast boshlandi: {len(user_ids)} ta foydalanuvchi")
+
+    sent = 0
+    failed = 0
+
+    for uid in user_ids:
+        try:
+            await bot.send_message(
+                chat_id=uid,
+                text=(
+                    "🔄 <b>Bot yangilandi!</b>\n\n"
+                    "Yangi menyu va funksiyalar faollashtirish uchun\n"
+                    "👇 <b>/start</b> tugmasini bosing."
+                ),
+                parse_mode="HTML",
+            )
+            sent += 1
+            await asyncio.sleep(0.05)   # 20 msg/sek — flood limitdan past
+        except TelegramForbiddenError:
+            # User botni bloklagan — o'tkazib yuboramiz
+            failed += 1
+        except TelegramBadRequest:
+            failed += 1
+        except Exception as e:
+            logging.warning(f"Broadcast xato (uid={uid}): {e}")
+            failed += 1
+
+    logging.info(f"Broadcast tugadi: {sent} yuborildi, {failed} xato.")
 
 
 async def on_shutdown(bot: Bot, dp: Dispatcher):

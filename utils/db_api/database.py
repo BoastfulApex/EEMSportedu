@@ -808,6 +808,14 @@ def update_telegram_user_name(user_id: int, full_name: str):
 
 
 @sync_to_async
+def get_all_telegram_user_ids() -> list:
+    """Botdan foydalangan barcha TelegramUser larning user_id (telegram chat_id) ro'yxati."""
+    return list(
+        TelegramUser.objects.values_list('user_id', flat=True)
+    )
+
+
+@sync_to_async
 def create_employee_with_filial(user_id: int, full_name: str, filial_id: int):
     """Xodim yaratish va filialga biriktirish"""
     try:
