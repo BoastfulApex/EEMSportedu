@@ -165,4 +165,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CSRF_TRUSTED_ORIGINS = [
     'https://sportedu.boastful.uz',
     'https://kpi.sportedu.uz',
+    'https://kpi.boastful.uz',
 ]
