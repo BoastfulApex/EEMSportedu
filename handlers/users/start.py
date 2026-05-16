@@ -13,6 +13,7 @@ from keyboards.inline.main_inline import (
     employee_reply_keyboard,
     employee_faceid_keyboard,
     edu_admin_reply_keyboard,
+    hr_admin_reply_keyboard,
     student_main_keyboard,
     get_user_approval_keyboard,
     get_organization_selection_keyboard,
@@ -113,6 +114,27 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             else:
                 await message.answer(greeting, parse_mode="HTML",
                                      reply_markup=edu_admin_keyboard())
+            return
+
+        # HR admin (faqat hr_admin roli, org_admin emas)
+        if info['is_hr_admin'] and not info['is_edu_admin']:
+            await message.answer(greeting, parse_mode="HTML",
+                                 reply_markup=hr_admin_reply_keyboard())
+            if info['is_employee']:
+                if await has_employee_photo(user.id):
+                    await message.answer(
+                        "👇 Davomat uchun <b>Face ID</b> tugmasini bosing:",
+                        parse_mode="HTML",
+                        reply_markup=employee_faceid_keyboard()
+                    )
+                else:
+                    await state.set_state(EmployeeRegistration.waiting_for_photo)
+                    await state.update_data(is_admin=True)
+                    await message.answer(
+                        "📸 <b>Yuz rasmingiz saqlanmagan.</b>\n"
+                        "Iltimos, yuzingiz aniq ko'rinib turgan rasmingizni yuboring:",
+                        parse_mode="HTML"
+                    )
             return
 
         # Oddiy admin

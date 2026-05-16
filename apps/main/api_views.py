@@ -321,6 +321,144 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
 
 
 # ════════════════════════════════════════════════════════════════
+# HR ADMIN — XODIM DAVOMATINI QAYD QILISH API
+# ════════════════════════════════════════════════════════════════
+
+class HrAdminCheckSerializer(serializers.Serializer):
+    admin_telegram_id    = serializers.IntegerField()
+    employee_telegram_id = serializers.IntegerField()
+    latitude             = serializers.FloatField()
+    longitude            = serializers.FloatField()
+    image                = serializers.CharField()
+    action               = serializers.ChoiceField(choices=['check_in', 'check_out'], default='check_in')
+
+
+class HrAdminCheckAPIView(generics.CreateAPIView):
+    """
+    POST /web_app/hr-admin/api/check/
+
+    HR admin WebApp orqali xodim davomatini qayd qilish.
+    Edu admin student attendance bilan bir xil pattern.
+    """
+    serializer_class       = HrAdminCheckSerializer
+    renderer_classes       = [JSONRenderer]
+    authentication_classes = []
+    permission_classes     = [AllowAny]
+
+    def create(self, request):
+        import os
+        import tempfile
+        import base64 as _b64
+        from utils.face_recognition_util import recognize_student
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        admin_telegram_id    = data['admin_telegram_id']
+        employee_telegram_id = data['employee_telegram_id']
+        latitude             = data['latitude']
+        longitude            = data['longitude']
+        image_base64         = data['image']
+        action               = data['action']
+
+        # ── 1. Admin tekshirish ──────────────────────────────────
+        from apps.superadmin.models import Administrator
+        admin = Administrator.objects.filter(
+            telegram_id=admin_telegram_id,
+            role__in=['hr_admin', 'org_admin', 'filial_admin']
+        ).select_related('filial').first()
+        if not admin:
+            return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
+
+        # ── 2. Xodimni topish ────────────────────────────────────
+        try:
+            employee = Employee.objects.select_related('filial').get(
+                telegram_user_id=employee_telegram_id
+            )
+        except Employee.DoesNotExist:
+            return Response({"status": "FAIL", "reason": "Xodim topilmadi"}, status=404)
+
+        if not employee.image:
+            return Response({"status": "FAIL", "reason": "Xodim yuz rasmi tizimda topilmadi"}, status=404)
+
+        image_path = employee.image.path if os.path.exists(employee.image.path) else None
+        if not image_path:
+            return Response({"status": "FAIL", "reason": "Xodim rasmi diskda topilmadi"}, status=404)
+
+        employees_data = [{
+            'id':            employee.id,
+            'full_name':     employee.name or '—',
+            'image_path':    image_path,
+            'face_encoding': '',
+        }]
+
+        # ── 3. Rasmni vaqtinchalik faylga saqlash ───────────────
+        tmp_path = None
+        try:
+            raw = image_base64.split(",", 1)[1] if "," in image_base64 else image_base64
+            img_bytes = _b64.b64decode(raw)
+            fd, tmp_path = tempfile.mkstemp(suffix=".jpg", prefix="hr_admin_")
+            with os.fdopen(fd, "wb") as f:
+                f.write(img_bytes)
+        except Exception as ex:
+            return Response({"status": "FAIL", "reason": f"Rasm o'qib bo'lmadi: {ex}"}, status=400)
+
+        # ── 4. Yuz tanish (1:1) ──────────────────────────────────
+        try:
+            result = recognize_student(tmp_path, employees_data, top_n=1, one_to_one=True)
+        except Exception as ex:
+            return Response({"status": "FAIL", "reason": f"Yuz tanish xatosi: {ex}"}, status=500)
+        finally:
+            try:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+        if not result.get('found'):
+            reason = (
+                "Rasmda yuz aniqlanmadi." if not result.get('candidates')
+                else "Yuz mos kelmadi. Bu tanlangan xodim emas yoki rasm sifati past."
+            )
+            return Response({"status": "FAIL", "reason": reason}, status=404)
+
+        # ── 5. Lokatsiya tekshirish ──────────────────────────────
+        today      = timezone.localdate()
+        now_time   = timezone.localtime().time()
+        weekday_id = today.weekday() + 1
+
+        location, schedule, _, distance_m = find_matching_location(
+            employee, latitude, longitude, weekday_id, now_time
+        )
+        if location is None:
+            return Response({
+                "status": "FAIL",
+                "reason": f"✅ {employee.name} aniqlandi.\n⚠️ Hech qaysi ish lokatsiyasiga yaqin emassiz."
+            }, status=403)
+
+        # ── 6. Davomat yozish ────────────────────────────────────
+        attendance, _ = Attendance.objects.get_or_create(employee=employee, date=today)
+
+        if action == 'check_in':
+            attendance.check_number = (attendance.check_number or 0) + 1
+            attendance.check_in = attendance.check_in or now_time
+        else:
+            attendance.check_out = now_time
+
+        attendance.save()
+
+        return Response({
+            "status":         "SUCCESS",
+            "type":           action,
+            "time":           now_time.strftime('%H:%M'),
+            "employee_name":  employee.name or '—',
+            "location":       location.name or "Noma'lum lokatsiya",
+            "distance_meters": distance_m,
+        }, status=200)
+
+
+# ════════════════════════════════════════════════════════════════
 # TEST DATA UPLOAD API
 # ════════════════════════════════════════════════════════════════
 

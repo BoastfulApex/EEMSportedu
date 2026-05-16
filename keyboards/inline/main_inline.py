@@ -41,6 +41,22 @@ def edu_admin_reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def hr_admin_reply_keyboard() -> ReplyKeyboardMarkup:
+    """HR admin uchun pastki doimiy menyu."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="👤 Xodim davomati")],
+            [
+                KeyboardButton(text="🪪 Face ID"),
+                KeyboardButton(text="📊 Hisobotlar"),
+            ],
+        ],
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Quyidagi menyudan tanlang...",
+    )
+
+
 def employee_faceid_keyboard() -> InlineKeyboardMarkup:
     """Face ID tugmasiga bosilganda chiqadigan WebApp inline klaviatura."""
     return InlineKeyboardMarkup(inline_keyboard=[

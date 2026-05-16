@@ -115,6 +115,7 @@ def get_user_roles_info(telegram_id: int) -> dict:
     return {
         'is_admin':        bool(admin),
         'is_edu_admin':    bool(admin and admin.role in ('edu_admin', 'org_admin')),
+        'is_hr_admin':     bool(admin and admin.role in ('hr_admin', 'org_admin')),
         'is_employee':     bool(employee),
         'is_student':      bool(student),
         'admin_name':      admin.full_name if admin else "",
@@ -637,6 +638,49 @@ def assign_schedules_to_employee(emp_user_id: int, schedule_ids: list):
     # Bugundan yil oxirigacha kunlik jadval avtomatik yaratiladi
     generate_employee_daily_schedules(employee)
     return True
+
+
+@sync_to_async
+def get_employees_for_hr_admin(admin_telegram_id: int) -> list:
+    """HR admin filialidagi barcha xodimlar ro'yxati"""
+    admin = Administrator.objects.filter(telegram_id=admin_telegram_id).first()
+    if not admin or not admin.filial:
+        return []
+    employees = Employee.objects.filter(filial=admin.filial).order_by('name')
+    return [
+        {'id': e.id, 'name': e.name or '—', 'telegram_user_id': e.telegram_user_id}
+        for e in employees if e.telegram_user_id
+    ]
+
+
+@sync_to_async
+def get_employee_by_telegram_id(telegram_user_id: int) -> dict | None:
+    """Xodimni telegram_user_id orqali topish"""
+    emp = Employee.objects.filter(telegram_user_id=telegram_user_id).first()
+    if not emp:
+        return None
+    return {
+        'id': emp.id,
+        'name': emp.name or '—',
+        'telegram_user_id': emp.telegram_user_id,
+        'image_path': emp.image.path if emp.image else None,
+    }
+
+
+@sync_to_async
+def get_or_create_filial_invite_token(admin_telegram_id: int):
+    """HR admin filiali uchun mavjud yoki yangi InviteToken qaytaradi"""
+    from apps.main.models import InviteToken
+    admin = Administrator.objects.filter(telegram_id=admin_telegram_id).first()
+    if not admin or not admin.filial:
+        return None
+    invite = InviteToken.objects.filter(filial=admin.filial, is_active=True).first()
+    if not invite:
+        invite = InviteToken.objects.create(filial=admin.filial)
+    return {
+        'token': invite.token,
+        'filial_name': admin.filial.filial_name,
+    }
 
 
 @sync_to_async
