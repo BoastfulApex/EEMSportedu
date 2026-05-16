@@ -10,16 +10,30 @@ from data.config import URL, BASE_URL
 # ============================================================
 
 def employee_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Xodim uchun pastda doim turadigan klaviatura.
-    WebApp bu yerda ishlatib bo'lmaydi — shuning uchun 2 ta tugma:
-    📊 Hisobotlar va 🪪 Face ID.
-    """
+    """Xodim uchun pastda doim turadigan klaviatura."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [
                 KeyboardButton(text="🪪 Face ID"),
                 KeyboardButton(text="📊 Hisobotlar"),
             ]
+        ],
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Quyidagi menyudan tanlang...",
+    )
+
+
+def edu_admin_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Edu admin (+ xodim) uchun pastki doimiy menyu — 3 ta amal."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Tinglovchi davomati")],
+            [KeyboardButton(text="👤 Tinglovchi ro'yxati")],
+            [
+                KeyboardButton(text="🪪 Face ID"),
+                KeyboardButton(text="📊 Hisobotlar"),
+            ],
         ],
         resize_keyboard=True,
         persistent=True,

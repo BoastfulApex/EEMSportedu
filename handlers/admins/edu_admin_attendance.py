@@ -9,9 +9,10 @@ Flow:
 import logging
 
 from aiogram import F, Router
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    CallbackQuery,
+    CallbackQuery, Message,
     InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
 )
 
@@ -33,6 +34,43 @@ _EDU_WEB_APP_URL = BASE_URL.rstrip('/') + '/students/edu-admin/web-app/'
 _BACK_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")]
 ])
+
+
+# ─────────────────────────────────────────────────────────────
+# YORDAMCHI: guruhlar ro'yxatini yuborish (message yoki callback uchun)
+# ─────────────────────────────────────────────────────────────
+
+async def _send_attendance_groups(admin_id: int, send_fn):
+    """
+    Davomat uchun guruhlar ro'yxatini yuboradi.
+    send_fn — message.answer yoki callback.message.edit_text
+    """
+    groups = await get_active_groups_for_edu_admin(admin_id)
+
+    if not groups:
+        await send_fn(
+            "📭 <b>Hozirgi oyda faol guruhlar topilmadi.</b>\n\n"
+            "Avval admin panelda guruh yarating.",
+            parse_mode="HTML",
+            reply_markup=_BACK_KB
+        )
+        return
+
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"📚 {g['name']}  ({g['student_count']} ta)",
+            callback_data=f"edu_attend_group:{g['id']}"
+        )]
+        for g in groups
+    ]
+    buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")])
+
+    await send_fn(
+        "📚 <b>Guruhni tanlang</b>\n\n"
+        "Davomat qilmoqchi bo'lgan guruhni tanlang:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -65,36 +103,15 @@ async def edu_back_to_main(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "edu_mark_attendance")
 async def edu_show_groups(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    admin_id = callback.from_user.id
-
-    groups = await get_active_groups_for_edu_admin(admin_id)
-
-    if not groups:
-        await callback.message.edit_text(
-            "📭 <b>Hozirgi oyda faol guruhlar topilmadi.</b>\n\n"
-            "Avval admin panelda guruh yarating.",
-            parse_mode="HTML",
-            reply_markup=_BACK_KB
-        )
-        await callback.answer()
-        return
-
-    buttons = [
-        [InlineKeyboardButton(
-            text=f"📚 {g['name']}  ({g['student_count']} ta)",
-            callback_data=f"edu_attend_group:{g['id']}"
-        )]
-        for g in groups
-    ]
-    buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")])
-
-    await callback.message.edit_text(
-        "📚 <b>Guruhni tanlang</b>\n\n"
-        "Davomat qilmoqchi bo'lgan guruhni tanlang:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
+    await _send_attendance_groups(callback.from_user.id, callback.message.edit_text)
     await callback.answer()
+
+
+@router.message(F.text == "📋 Tinglovchi davomati", StateFilter(None))
+async def edu_show_groups_reply(message: Message, state: FSMContext):
+    """ReplyKeyboard 'Tinglovchi davomati' tugmasi."""
+    await state.clear()
+    await _send_attendance_groups(message.from_user.id, message.answer)
 
 
 # ─────────────────────────────────────────────────────────────

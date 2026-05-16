@@ -40,14 +40,14 @@ _BACK_MAIN = InlineKeyboardMarkup(inline_keyboard=[
 
 
 # ─────────────────────────────────────────────────────────────
-# 1. GURUHLAR RO'YXATI
+# YORDAMCHI: ro'yxatga olish uchun guruhlar ro'yxatini yuborish
 # ─────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "edu_reg_start")
-async def edu_reg_show_groups(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    admin_id = callback.from_user.id
-
+async def _send_reg_groups(admin_id: int, send_fn):
+    """
+    Ro'yxatdan o'tkazish uchun guruhlar ro'yxatini yuboradi.
+    send_fn — message.answer yoki callback.message.edit_text
+    """
     from datetime import date
     today = date.today()
     month_names = {
@@ -59,14 +59,13 @@ async def edu_reg_show_groups(callback: CallbackQuery, state: FSMContext):
     groups = await get_active_groups_for_edu_admin(admin_id)
 
     if not groups:
-        await callback.message.edit_text(
+        await send_fn(
             f"📭 <b>{month_names[today.month]} {today.year}</b> uchun "
             f"faol guruhlar topilmadi.\n\n"
             f"Avval admin panelda guruh yarating.",
             parse_mode="HTML",
             reply_markup=_BACK_MAIN
         )
-        await callback.answer()
         return
 
     buttons = [
@@ -78,13 +77,30 @@ async def edu_reg_show_groups(callback: CallbackQuery, state: FSMContext):
     ]
     buttons.append([InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="edu_back_main")])
 
-    await callback.message.edit_text(
+    await send_fn(
         f"📋 <b>{month_names[today.month]} {today.year} — Faol guruhlar</b>\n\n"
         f"Tinglovchi rasmini yuklash uchun guruhni tanlang:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# 1. GURUHLAR RO'YXATI
+# ─────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "edu_reg_start")
+async def edu_reg_show_groups(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await _send_reg_groups(callback.from_user.id, callback.message.edit_text)
     await callback.answer()
+
+
+@router.message(F.text == "👤 Tinglovchi ro'yxati", StateFilter(None))
+async def edu_reg_show_groups_reply(message: Message, state: FSMContext):
+    """ReplyKeyboard 'Tinglovchi ro'yxati' tugmasi."""
+    await state.clear()
+    await _send_reg_groups(message.from_user.id, message.answer)
 
 
 # ─────────────────────────────────────────────────────────────
