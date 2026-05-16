@@ -44,14 +44,13 @@ import asyncio
 
 
 async def on_startup(bot: Bot, dp: Dispatcher):
-    from utils.set_bot_commands import set_default_commands
     import filters
 
     filters.setup(dp)
     logging.info("Bot ishga tushdi.")
 
-    # Barcha userlarga "Bot yangilandi, /start bosing" xabari
-    await _broadcast_restart(bot)
+    # Broadcast background task sifatida — polling ni bloklamaydi
+    asyncio.create_task(_broadcast_restart(bot))
 
 
 async def _broadcast_restart(bot: Bot):
