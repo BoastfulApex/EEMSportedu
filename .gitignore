@@ -174,3 +174,6 @@ db.sqlite3
 
 # Test data development (local only)
 test_data_dev/
+
+# Claude Code
+.claude/
