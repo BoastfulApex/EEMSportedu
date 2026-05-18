@@ -32,15 +32,14 @@ def edu_admin_reply_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [
                 KeyboardButton(text="👥 Xodimlar davomati"),
-                KeyboardButton(text="🎓 Tinglovchilar davomati"),
+                KeyboardButton(text="📋 Tinglovchi davomati"),
             ],
             [
-                KeyboardButton(text="📋 Tinglovchi davomati"),
                 KeyboardButton(text="👤 Tinglovchi ro'yxati"),
+                KeyboardButton(text="📊 Hisobotlar"),
             ],
             [
                 KeyboardButton(text="🪪 Face ID"),
-                KeyboardButton(text="📊 Hisobotlar"),
             ],
         ],
         resize_keyboard=True,
