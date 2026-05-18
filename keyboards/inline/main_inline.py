@@ -47,7 +47,10 @@ def hr_admin_reply_keyboard() -> ReplyKeyboardMarkup:
     """HR admin uchun pastki doimiy menyu."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="👤 Xodim davomati")],
+            [
+                KeyboardButton(text="👥 Xodimlar davomati"),
+                KeyboardButton(text="🎓 Tinglovchilar davomati"),
+            ],
             [
                 KeyboardButton(text="🪪 Face ID"),
                 KeyboardButton(text="📊 Hisobotlar"),
