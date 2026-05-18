@@ -13,10 +13,12 @@ def employee_reply_keyboard() -> ReplyKeyboardMarkup:
     """Xodim uchun pastda doim turadigan klaviatura."""
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="👥 Xodimlar davomati")],
+            [KeyboardButton(text="🎓 Tinglovchilar davomati")],
             [
                 KeyboardButton(text="🪪 Face ID"),
                 KeyboardButton(text="📊 Hisobotlar"),
-            ]
+            ],
         ],
         resize_keyboard=True,
         persistent=True,

@@ -738,6 +738,38 @@ def get_students_by_group(group_id: int):
 
 
 @sync_to_async
+def get_employees_for_employee(telegram_id: int) -> list:
+    """Xodimning filiali bo'yicha barcha xodimlar ro'yxati (o'zi uchun davomatni qayd qilishda)."""
+    emp = Employee.objects.filter(telegram_user_id=telegram_id).first()
+    if not emp or not emp.filial:
+        return []
+    employees = Employee.objects.filter(filial=emp.filial).order_by('name')
+    return [
+        {'id': e.id, 'name': e.name or '—', 'telegram_user_id': e.telegram_user_id}
+        for e in employees if e.telegram_user_id
+    ]
+
+
+@sync_to_async
+def get_active_groups_for_employee(telegram_id: int) -> list:
+    """Xodimning filiali bo'yicha hozirgi oydagi faol guruhlar."""
+    from apps.students.models import Group
+    today = date.today()
+    emp = Employee.objects.filter(telegram_user_id=telegram_id).first()
+    if not emp or not emp.filial:
+        return []
+    groups = Group.objects.filter(
+        filial=emp.filial,
+        year=today.year,
+        month=today.month,
+    ).order_by('name')
+    return [
+        {'id': g.id, 'name': g.name, 'student_count': g.students.count()}
+        for g in groups
+    ]
+
+
+@sync_to_async
 def get_all_students_in_group(group_id: int) -> list:
     """Davomat uchun: guruhdagi BARCHA tinglovchilar (is_registered filtersiz)."""
     from apps.students.models import Group
