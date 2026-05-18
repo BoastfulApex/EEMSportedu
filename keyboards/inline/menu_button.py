@@ -22,12 +22,18 @@ async def start_webapp_menu():
 async def admin_menu_keyboard():
     admin_menu_keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🧑‍💼 Xodim qo'shish")],
-            [KeyboardButton(text="📊 Hisobotlar")],
-            [KeyboardButton(text="📍 Manzillar")]
+            [
+                KeyboardButton(text="👥 Xodimlar davomati"),
+                KeyboardButton(text="🎓 Tinglovchilar davomati"),
+            ],
+            [
+                KeyboardButton(text="🧑‍💼 Xodim qo'shish"),
+                KeyboardButton(text="📊 Hisobotlar"),
+            ],
+            [KeyboardButton(text="📍 Manzillar")],
         ],
         resize_keyboard=True,
-        one_time_keyboard=True
+        persistent=True,
     )
     return admin_menu_keyboard
 
