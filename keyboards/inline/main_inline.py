@@ -27,11 +27,17 @@ def employee_reply_keyboard() -> ReplyKeyboardMarkup:
 
 
 def edu_admin_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Edu admin (+ xodim) uchun pastki doimiy menyu — 3 ta amal."""
+    """Edu admin (+ xodim) uchun pastki doimiy menyu."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📋 Tinglovchi davomati")],
-            [KeyboardButton(text="👤 Tinglovchi ro'yxati")],
+            [
+                KeyboardButton(text="👥 Xodimlar davomati"),
+                KeyboardButton(text="🎓 Tinglovchilar davomati"),
+            ],
+            [
+                KeyboardButton(text="📋 Tinglovchi davomati"),
+                KeyboardButton(text="👤 Tinglovchi ro'yxati"),
+            ],
             [
                 KeyboardButton(text="🪪 Face ID"),
                 KeyboardButton(text="📊 Hisobotlar"),
