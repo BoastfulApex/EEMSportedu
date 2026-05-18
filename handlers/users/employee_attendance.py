@@ -60,6 +60,8 @@ async def emp_attend_list_cb(callback: CallbackQuery):
 
 async def _send_emp_list(user_id: int, send_fn):
     employees = await get_employees_for_employee(user_id)
+    if not employees:
+        employees = await get_employees_for_hr_admin(user_id)
 
     if not employees:
         await send_fn(
