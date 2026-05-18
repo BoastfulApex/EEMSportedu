@@ -128,6 +128,8 @@ async def emp_stu_groups_cb(callback: CallbackQuery):
 
 async def _send_stu_groups(user_id: int, send_fn):
     groups = await get_active_groups_for_employee(user_id)
+    if not groups:
+        groups = await get_active_groups_for_edu_admin(user_id)
 
     if not groups:
         await send_fn(
