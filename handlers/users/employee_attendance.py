@@ -20,7 +20,9 @@ from loader import dp
 from data.config import BASE_URL
 from utils.db_api.database import (
     get_employees_for_employee,
+    get_employees_for_hr_admin,
     get_active_groups_for_employee,
+    get_active_groups_for_edu_admin,
     get_all_students_in_group,
     get_employee_by_telegram_id,
 )
