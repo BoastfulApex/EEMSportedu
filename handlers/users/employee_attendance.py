@@ -73,7 +73,7 @@ async def _send_emp_list(user_id: int, send_fn):
     buttons = [
         [InlineKeyboardButton(
             text=f"👤 {e['name']}",
-            callback_data=f"emp_attend_emp:{e['telegram_user_id']}"
+            web_app=WebAppInfo(url=f"{_HR_WEB_APP_URL}?employee_telegram_id={e['telegram_user_id']}")
         )]
         for e in employees
     ]
@@ -82,33 +82,6 @@ async def _send_emp_list(user_id: int, send_fn):
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
-
-
-@router.callback_query(F.data.startswith("emp_attend_emp:"))
-async def emp_attend_employee(callback: CallbackQuery):
-    telegram_user_id = int(callback.data.split(":")[1])
-
-    emp = await get_employee_by_telegram_id(telegram_user_id)
-    if not emp:
-        await callback.message.edit_text("❌ Xodim topilmadi.")
-        await callback.answer()
-        return
-
-    url_in  = f"{_HR_WEB_APP_URL}?employee_telegram_id={telegram_user_id}&action=check_in"
-    url_out = f"{_HR_WEB_APP_URL}?employee_telegram_id={telegram_user_id}&action=check_out"
-
-    await callback.message.edit_text(
-        f"👤 <b>{emp['name']}</b>\n\nDavomat qayd qiling:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔓 Kirish",  web_app=WebAppInfo(url=url_in)),
-                InlineKeyboardButton(text="🔒 Chiqish", web_app=WebAppInfo(url=url_out)),
-            ],
-            [InlineKeyboardButton(text="🔙 Orqaga", callback_data="emp_attend_list")],
-        ]),
-    )
-    await callback.answer()
 
 
 # ─────────────────────────────────────────────────────────────
