@@ -1307,11 +1307,14 @@ def _compute_student_stats(student, group, para_hours):
 
     for date, lesson in lesson_map.items():
         smena = lesson.smena
-        para_starts = [smena.para1_start]
-        if smena.para2_start:
-            para_starts.append(smena.para2_start)
-        if smena.para3_start:
-            para_starts.append(smena.para3_start)
+        slots = smena.get_slots()
+        para_starts = [s.start for s in slots if s.start]
+        if not para_starts and smena.para1_start:
+            para_starts = [smena.para1_start]
+            if smena.para2_start:
+                para_starts.append(smena.para2_start)
+            if smena.para3_start:
+                para_starts.append(smena.para3_start)
         para_count = len(para_starts)
 
         att = att_by_date.get(date)
