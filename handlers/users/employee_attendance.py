@@ -24,7 +24,6 @@ from utils.db_api.database import (
     get_active_groups_for_employee,
     get_active_groups_for_edu_admin,
     get_all_students_in_group,
-    get_employee_by_telegram_id,
 )
 
 router = Router()
