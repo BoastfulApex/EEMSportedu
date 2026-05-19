@@ -1624,6 +1624,17 @@ def monitoring_exceeded(request):
 # MONITORING — YANGI GURUHLAR BO'LIMI
 # ============================================================
 
+def _get_smena_para_starts(smena):
+    """SmenaSlot → eski para*_start fallback."""
+    slots = smena.get_slots()
+    starts = [s.start for s in slots if s.start]
+    if not starts:
+        for t in [smena.para1_start, smena.para2_start, smena.para3_start]:
+            if t:
+                starts.append(t)
+    return starts
+
+
 def _get_para_attendance(att, lesson):
     """
     Bir kun uchun para-davomat ma'lumotini qaytaradi.
