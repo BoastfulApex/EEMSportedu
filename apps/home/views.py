@@ -1323,9 +1323,8 @@ def _compute_student_stats(student, group, para_hours):
             continue
 
         # Har bir parani alohida tekshir (para-asosida)
-        check_in_dt       = _dt.datetime.combine(date, att.check_in)
-        has_checkout      = bool(att.check_out)
-        found_kelgan_para = False
+        check_in_dt  = _dt.datetime.combine(date, att.check_in)
+        check_out_dt = _dt.datetime.combine(date, att.check_out) if att.check_out else None
 
         for p in para_starts:
             para_dt = _dt.datetime.combine(date, p)
@@ -1333,16 +1332,14 @@ def _compute_student_stats(student, group, para_hours):
                 # 40+ daqiqa kech → paraga kelmadi
                 absent       += 1
                 missed_paras += 1
-            elif not has_checkout and found_kelgan_para:
-                # Check_out yo'q, "kelgan para" allaqachon topilgan → keyingisi absent
+            elif check_out_dt and check_out_dt < para_dt:
+                # Chiqish vaqti para boshlanishidan oldin → paraga kelmadi
                 absent       += 1
                 missed_paras += 1
             else:
                 # Paraga keldi
                 present += 1
-                found_kelgan_para = True
                 if check_in_dt > para_dt:
-                    # Kechikib keldi (1–40 daqiqa)
                     late += 1
 
     # Total = barcha dars kunlarining paralari yig'indisi
