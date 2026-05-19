@@ -1798,10 +1798,9 @@ def monitoring_group_report(request, pk):
     rows = []
     for date in sorted_dates:
         lesson   = lesson_map[date]
-        _slots   = lesson.smena.get_slots()
-        _slot_starts = [s.start for s in _slots if s.start]
-        has_p2   = len(_slot_starts) >= 2 or bool(lesson.smena.para2_start)
-        has_p3   = len(_slot_starts) >= 3 or bool(lesson.smena.para3_start)
+        _para_starts = _get_smena_para_starts(lesson.smena)
+        has_p2   = len(_para_starts) >= 2
+        has_p3   = len(_para_starts) >= 3
         day_rows = []
         for student in students:
             att    = att_map.get((student.id, date))
