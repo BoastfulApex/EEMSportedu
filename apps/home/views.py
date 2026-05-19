@@ -1774,10 +1774,7 @@ def monitoring_group_report(request, pk):
     # Para-ustunlar sonini aniqlash (max para soni kunlar orasida)
     max_paras = 1
     for lesson in lesson_map.values():
-        slots = lesson.smena.get_slots()
-        cnt = len([s for s in slots if s.start]) or (
-            1 + (1 if lesson.smena.para2_start else 0) + (1 if lesson.smena.para3_start else 0)
-        )
+        cnt = len(_get_smena_para_starts(lesson.smena))
         if cnt > max_paras:
             max_paras = cnt
 
