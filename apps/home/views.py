@@ -1346,10 +1346,7 @@ def _compute_student_stats(student, group, para_hours):
                     late += 1
 
     # Total = barcha dars kunlarining paralari yig'indisi
-    total = sum(
-        1 + (1 if lesson_map[d].smena.para2_start else 0) + (1 if lesson_map[d].smena.para3_start else 0)
-        for d in lesson_map
-    )
+    total = sum(len(_get_smena_para_starts(lesson_map[d].smena)) for d in lesson_map)
     missed_hours = round(missed_paras * para_hours, 1)
     pct          = round(present / total * 100) if total > 0 else 0
 
