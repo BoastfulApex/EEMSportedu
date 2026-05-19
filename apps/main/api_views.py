@@ -362,14 +362,7 @@ class HrAdminCheckAPIView(generics.CreateAPIView):
         image_base64         = data['image']
         action               = data['action']
 
-        # ── 1. Foydalanuvchi tekshirish (admin yoki xodim) ──────────
-        from apps.superadmin.models import Administrator
-        is_admin    = Administrator.objects.filter(telegram_id=admin_telegram_id).exists()
-        is_employee = Employee.objects.filter(telegram_user_id=admin_telegram_id).exists()
-        if not is_admin and not is_employee:
-            return Response({"status": "FAIL", "reason": "Ruxsat yo'q"}, status=403)
-
-        # ── 2. Xodimni topish ────────────────────────────────────
+        # ── 1. Xodimni topish ────────────────────────────────────
         try:
             employee = Employee.objects.select_related('filial').get(
                 telegram_user_id=employee_telegram_id
