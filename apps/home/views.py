@@ -1636,11 +1636,14 @@ def _get_para_attendance(att, lesson):
     smena = lesson.smena
     date  = lesson.date
 
-    para_starts = [smena.para1_start]
-    if smena.para2_start:
-        para_starts.append(smena.para2_start)
-    if smena.para3_start:
-        para_starts.append(smena.para3_start)
+    slots = smena.get_slots()
+    para_starts = [s.start for s in slots if s.start]
+    if not para_starts and smena.para1_start:
+        para_starts = [smena.para1_start]
+        if smena.para2_start:
+            para_starts.append(smena.para2_start)
+        if smena.para3_start:
+            para_starts.append(smena.para3_start)
 
     result = {'p1': None, 'p2': None, 'p3': None}
     labels = ['p1', 'p2', 'p3']
