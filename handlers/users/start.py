@@ -15,6 +15,7 @@ from keyboards.inline.main_inline import (
     edu_admin_reply_keyboard,
     hr_admin_reply_keyboard,
     student_main_keyboard,
+    student_reply_keyboard,
     get_user_approval_keyboard,
     get_organization_selection_keyboard,
     get_filial_selection_keyboard_by_org,
