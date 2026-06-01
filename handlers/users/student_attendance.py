@@ -118,4 +118,139 @@ async def student_davomat_button(message: Message):
     )
 
 
+# ============================================================
+# GURUH DAVOMATI — o'z guruh a'zolarini belgilash
+# ============================================================
+
+def _members_keyboard(members: list, group_id: int) -> InlineKeyboardMarkup:
+    """Guruh a'zolari ro'yxati klaviaturasi (har biri status emoji bilan)."""
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"{m['status_emoji']} {m['full_name']}",
+            callback_data=f"sgrp_mark:{m['student_id']}:{group_id}"
+        )]
+        for m in members
+    ]
+    buttons.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="sgrp_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.message(F.text == "👥 Guruh davomati", StateFilter(None))
+async def student_group_attendance_btn(message: Message):
+    """'👥 Guruh davomati' tugmasi — guruhlar yoki to'g'ridan tinglovchilar."""
+    from datetime import date
+    user_id = message.from_user.id
+    groups = await get_student_groups_for_telegram(user_id)
+
+    if not groups:
+        await message.answer(
+            "⚠️ Siz hali hech qanday guruhga kiritilmagan yoki ro'yxatdan o'tmagansiz."
+        )
+        return
+
+    if len(groups) == 1:
+        # Bitta guruh — to'g'ri tinglovchilar ro'yxatini ko'rsat
+        g = groups[0]
+        members = await get_registered_group_members_with_status(g['group_id'], date.today())
+        if not members:
+            await message.answer(
+                f"📭 <b>{g['group_name']}</b> guruhida ro'yxatdan o'tgan tinglovchilar yo'q.",
+                parse_mode="HTML"
+            )
+            return
+        await message.answer(
+            f"👥 <b>{g['group_name']}</b> — bugungi davomat\n"
+            f"<i>Tinglovchini bosib statusini o'zgartiring</i>",
+            parse_mode="HTML",
+            reply_markup=_members_keyboard(members, g['group_id'])
+        )
+    else:
+        # Bir nechta guruh — avval guruh tanlash
+        buttons = [
+            [InlineKeyboardButton(
+                text=f"📚 {g['group_name']}",
+                callback_data=f"sgrp_select:{g['group_id']}"
+            )]
+            for g in groups
+        ]
+        buttons.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="sgrp_back")])
+        await message.answer(
+            "📚 Qaysi guruhni ko'rmoqchisiz?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+
+
+@router.callback_query(F.data.startswith("sgrp_select:"), StateFilter(None))
+async def student_group_select(callback: CallbackQuery):
+    from datetime import date
+    group_id = int(callback.data.split(":")[1])
+    members = await get_registered_group_members_with_status(group_id, date.today())
+
+    if not members:
+        await callback.message.edit_text(
+            "📭 Bu guruhda ro'yxatdan o'tgan tinglovchilar yo'q.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Orqaga", callback_data="sgrp_back")]
+            ])
+        )
+        await callback.answer()
+        return
+
+    # Guruh nomini birinchi member'dan emas, to'g'ridan olib ko'rsatamiz
+    await callback.message.edit_text(
+        "👥 <b>Bugungi davomat</b>\n<i>Tinglovchini bosib statusini o'zgartiring</i>",
+        parse_mode="HTML",
+        reply_markup=_members_keyboard(members, group_id)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sgrp_mark:"), StateFilter(None))
+async def student_mark_member(callback: CallbackQuery):
+    """Tinglovchi tanlandı — status tanlash tugmalarini ko'rsat."""
+    _, student_id, group_id = callback.data.split(":")
+    student_id, group_id = int(student_id), int(group_id)
+
+    status_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Keldi",    callback_data=f"sgrp_set:{student_id}:{group_id}:present"),
+            InlineKeyboardButton(text="❌ Kelmadi",  callback_data=f"sgrp_set:{student_id}:{group_id}:absent"),
+        ],
+        [
+            InlineKeyboardButton(text="⏰ Kechikdi", callback_data=f"sgrp_set:{student_id}:{group_id}:late"),
+            InlineKeyboardButton(text="📝 Sababli",  callback_data=f"sgrp_set:{student_id}:{group_id}:excused"),
+        ],
+        [InlineKeyboardButton(text="🔙 Orqaga",     callback_data=f"sgrp_select:{group_id}")],
+    ])
+    await callback.message.edit_reply_markup(reply_markup=status_kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sgrp_set:"), StateFilter(None))
+async def student_set_member_status(callback: CallbackQuery):
+    """Status saqlash va ro'yxatga qaytish."""
+    from datetime import date
+    _, student_id, group_id, status = callback.data.split(":")
+    student_id, group_id = int(student_id), int(group_id)
+
+    await set_group_member_attendance(student_id, group_id, date.today(), status)
+
+    # Yangilangan ro'yxatni ko'rsat
+    members = await get_registered_group_members_with_status(group_id, date.today())
+    STATUS_LABEL = {'present': '✅ Keldi', 'absent': '❌ Kelmadi', 'late': '⏰ Kechikdi', 'excused': '📝 Sababli'}
+    await callback.message.edit_text(
+        "👥 <b>Bugungi davomat</b>\n<i>Tinglovchini bosib statusini o'zgartiring</i>",
+        parse_mode="HTML",
+        reply_markup=_members_keyboard(members, group_id)
+    )
+    await callback.answer(f"✅ Saqlandi: {STATUS_LABEL.get(status, status)}")
+
+
+@router.callback_query(F.data == "sgrp_back", StateFilter(None))
+async def student_group_back(callback: CallbackQuery):
+    """Guruh davomat menyusini yopish."""
+    await callback.message.delete()
+    await callback.answer()
+
+
 # back_to_main callback — stats.py da yagona joyda boshqariladi
