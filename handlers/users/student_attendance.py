@@ -81,6 +81,10 @@ async def student_photo_upload(message: Message, state: FSMContext):
             "✅ <b>Yuz rasmi saqlandi!</b>\n\n"
             "Endi kirish va chiqishda Face ID tekshiruvi ishlaydi.",
             parse_mode="HTML",
+            reply_markup=student_reply_keyboard()
+        )
+        await message.answer(
+            "👇 Davomat uchun tugmani bosing:",
             reply_markup=student_main_keyboard()
         )
     else:
