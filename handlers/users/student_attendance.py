@@ -123,10 +123,10 @@ async def student_davomat_button(message: Message):
 # ============================================================
 
 def _members_keyboard(members: list, group_id: int) -> InlineKeyboardMarkup:
-    """Guruh a'zolari ro'yxati klaviaturasi (har biri status emoji bilan)."""
+    """Guruhdoshlar ro'yxati — faqat ismlar."""
     buttons = [
         [InlineKeyboardButton(
-            text=f"{m['status_emoji']} {m['full_name']}",
+            text=f"👤 {m['full_name']}",
             callback_data=f"sgrp_mark:{m['student_id']}:{group_id}"
         )]
         for m in members
@@ -135,9 +135,9 @@ def _members_keyboard(members: list, group_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.message(F.text == "👥 Guruh davomati", StateFilter(None))
+@router.message(F.text == "📋 Tinglovchi davomati", StateFilter(None))
 async def student_group_attendance_btn(message: Message):
-    """'👥 Guruh davomati' tugmasi — guruhlar yoki to'g'ridan tinglovchilar."""
+    """'📋 Tinglovchi davomati' tugmasi — guruhdoshlar ro'yxati."""
     from datetime import date
     user_id = message.from_user.id
     groups = await get_student_groups_for_telegram(user_id)
@@ -149,7 +149,6 @@ async def student_group_attendance_btn(message: Message):
         return
 
     if len(groups) == 1:
-        # Bitta guruh — to'g'ri tinglovchilar ro'yxatini ko'rsat
         g = groups[0]
         members = await get_registered_group_members_with_status(g['group_id'], date.today())
         if not members:
@@ -159,13 +158,11 @@ async def student_group_attendance_btn(message: Message):
             )
             return
         await message.answer(
-            f"👥 <b>{g['group_name']}</b> — bugungi davomat\n"
-            f"<i>Tinglovchini bosib statusini o'zgartiring</i>",
+            f"👥 <b>{g['group_name']}</b> — guruhdoshlar ro'yxati",
             parse_mode="HTML",
             reply_markup=_members_keyboard(members, g['group_id'])
         )
     else:
-        # Bir nechta guruh — avval guruh tanlash
         buttons = [
             [InlineKeyboardButton(
                 text=f"📚 {g['group_name']}",
@@ -196,9 +193,8 @@ async def student_group_select(callback: CallbackQuery):
         await callback.answer()
         return
 
-    # Guruh nomini birinchi member'dan emas, to'g'ridan olib ko'rsatamiz
     await callback.message.edit_text(
-        "👥 <b>Bugungi davomat</b>\n<i>Tinglovchini bosib statusini o'zgartiring</i>",
+        "👥 <b>Guruhdoshlar ro'yxati</b>",
         parse_mode="HTML",
         reply_markup=_members_keyboard(members, group_id)
     )
@@ -207,7 +203,7 @@ async def student_group_select(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("sgrp_mark:"), StateFilter(None))
 async def student_mark_member(callback: CallbackQuery):
-    """Tinglovchi tanlandı — status tanlash tugmalarini ko'rsat."""
+    """Tinglovchi tanlandi — davomat status tugmalarini ko'rsat."""
     _, student_id, group_id = callback.data.split(":")
     student_id, group_id = int(student_id), int(group_id)
 
@@ -235,20 +231,18 @@ async def student_set_member_status(callback: CallbackQuery):
 
     await set_group_member_attendance(student_id, group_id, date.today(), status)
 
-    # Yangilangan ro'yxatni ko'rsat
     members = await get_registered_group_members_with_status(group_id, date.today())
     STATUS_LABEL = {'present': '✅ Keldi', 'absent': '❌ Kelmadi', 'late': '⏰ Kechikdi', 'excused': '📝 Sababli'}
     await callback.message.edit_text(
-        "👥 <b>Bugungi davomat</b>\n<i>Tinglovchini bosib statusini o'zgartiring</i>",
+        "👥 <b>Guruhdoshlar ro'yxati</b>",
         parse_mode="HTML",
         reply_markup=_members_keyboard(members, group_id)
     )
-    await callback.answer(f"✅ Saqlandi: {STATUS_LABEL.get(status, status)}")
+    await callback.answer(STATUS_LABEL.get(status, status))
 
 
 @router.callback_query(F.data == "sgrp_back", StateFilter(None))
 async def student_group_back(callback: CallbackQuery):
-    """Guruh davomat menyusini yopish."""
     await callback.message.delete()
     await callback.answer()
 
