@@ -206,3 +206,10 @@ async def edu_show_students(callback: CallbackQuery, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "sgrp_close")
+async def student_groupmates_close(callback: CallbackQuery):
+    """Tinglovchi guruhdoshlari xabarini yopish."""
+    await callback.message.delete()
+    await callback.answer()
