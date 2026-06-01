@@ -113,31 +113,4 @@ async def student_davomat_button(message: Message):
     )
 
 
-@router.message(F.text == "📊 Hisobotlar", StateFilter(None))
-async def student_reports_button(message: Message):
-    """Tinglovchi '📊 Hisobotlar' tugmasini bosdi."""
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    from utils.db_api.database import is_user_student, get_student_report_months
-    user_id = message.from_user.id
-    if not await is_user_student(user_id):
-        return
-    months = await get_student_report_months(user_id)
-    if not months:
-        await message.answer("📭 Hozircha davomat ma'lumotlari topilmadi.")
-        return
-    buttons = [
-        [InlineKeyboardButton(
-            text=m['label'],
-            callback_data=f"srep_{m['year']}_{m['month']}"
-        )]
-        for m in months
-    ]
-    buttons.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_to_main")])
-    await message.answer(
-        "📊 <b>Davomat hisoboti</b>\nQaysi oyni ko'rmoqchisiz?",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-
-
 # back_to_main callback — stats.py da yagona joyda boshqariladi
