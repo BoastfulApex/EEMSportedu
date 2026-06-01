@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, Message
 
 from loader import dp, bot
 from states.users import StudentPhotoUpload
-from keyboards.inline.main_inline import student_main_keyboard
+from keyboards.inline.main_inline import student_main_keyboard, student_reply_keyboard
 from utils.db_api.database import save_student_face_photo
 from utils.face_check import detect_face
 
