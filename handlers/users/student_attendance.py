@@ -14,12 +14,7 @@ from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKe
 from loader import dp, bot
 from states.users import StudentPhotoUpload
 from keyboards.inline.main_inline import student_main_keyboard, student_reply_keyboard
-from utils.db_api.database import (
-    save_student_face_photo,
-    get_student_groups_for_telegram,
-    get_registered_group_members_with_status,
-    set_group_member_attendance,
-)
+from utils.db_api.database import save_student_face_photo
 from utils.face_check import detect_face
 
 router = Router()
