@@ -132,6 +132,21 @@ def edu_admin_employee_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def student_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Tinglovchi uchun pastki doimiy menyu."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="🎓 Davomat"),
+                KeyboardButton(text="📊 Hisobotlar"),
+            ],
+        ],
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Quyidagi menyudan tanlang...",
+    )
+
+
 def student_main_keyboard() -> InlineKeyboardMarkup:
     """Tinglovchi uchun asosiy menyu — web app (lokatsiya + face ID) + hisobotlar"""
     student_url = BASE_URL.rstrip('/') + '/students/web_app/'
