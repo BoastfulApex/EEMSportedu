@@ -22,6 +22,8 @@ from keyboards.inline.main_inline import edu_admin_keyboard
 from utils.db_api.database import (
     get_active_groups_for_edu_admin,
     get_all_students_in_group,
+    get_student_groups_for_telegram,
+    is_user_student,
 )
 
 router = Router()
