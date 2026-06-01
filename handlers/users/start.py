@@ -192,7 +192,11 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         greeting = _build_greeting(info)
         if await has_student_photo(user.id):
             await message.answer(greeting, parse_mode="HTML",
-                                 reply_markup=student_main_keyboard())
+                                 reply_markup=student_reply_keyboard())
+            await message.answer(
+                "👇 Davomat uchun tugmani bosing:",
+                reply_markup=student_main_keyboard()
+            )
         else:
             await state.set_state(StudentPhotoUpload.waiting_for_photo)
             await message.answer(
