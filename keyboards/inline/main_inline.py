@@ -140,6 +140,7 @@ def student_reply_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="🎓 Davomat"),
                 KeyboardButton(text="📊 Hisobotlar"),
             ],
+            [KeyboardButton(text="👥 Guruh davomati")],
         ],
         resize_keyboard=True,
         persistent=True,
