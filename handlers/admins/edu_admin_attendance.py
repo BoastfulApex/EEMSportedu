@@ -76,6 +76,49 @@ async def _send_attendance_groups(admin_id: int, send_fn):
 
 
 # ─────────────────────────────────────────────────────────────
+# TINGLOVCHI — o'z guruhdoshlari ro'yxati (guruh tanlash yo'q)
+# ─────────────────────────────────────────────────────────────
+
+async def _send_student_groupmates(telegram_id: int, send_fn):
+    """Tinglovchining guruhdoshlari ro'yxatini edu_admin uslubida ko'rsatadi."""
+    groups = await get_student_groups_for_telegram(telegram_id)
+
+    if not groups:
+        await send_fn(
+            "⚠️ Siz hali hech qanday guruhga kiritilmagan yoki ro'yxatdan o'tmagansiz."
+        )
+        return
+
+    # Birinchi (yagona) guruhni olamiz
+    g = groups[0]
+    students = await get_all_students_in_group(g['group_id'])
+
+    if not students:
+        await send_fn(
+            f"📭 <b>{g['group_name']}</b> guruhida tinglovchilar topilmadi.",
+            parse_mode="HTML"
+        )
+        return
+
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"👤 {s['full_name']}",
+            web_app=WebAppInfo(url=f"{_EDU_WEB_APP_URL}?student_id={s['id']}")
+        )]
+        for s in students
+    ]
+    buttons.append([InlineKeyboardButton(text="🔙 Yopish", callback_data="sgrp_close")])
+
+    await send_fn(
+        f"👥 <b>{g['group_name']}</b> — guruhdoshlar\n\n"
+        f"Jami: {len(students)} ta tinglovchi\n"
+        f"<i>Tanlangandan keyin yuz va lokatsiya tekshiruvi o'tkaziladi</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+# ─────────────────────────────────────────────────────────────
 # ASOSIY MENYU
 # ─────────────────────────────────────────────────────────────
 
