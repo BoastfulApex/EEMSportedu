@@ -1,0 +1,107 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Taklif Havolalar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<link href="{% static 'css/app.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <h3 class="mb-4">🔗 Telegram Taklif Havolalari — {{ org.name }}</h3>
+
+    {% if not bot_username %}
+    <div class="alert alert-warning">
+      ⚠️ <strong>BOT_USERNAME</strong> .env faylida sozlanmagan.
+      Iltimos, <code>BOT_USERNAME=yourbotusername</code> qo'shing (@ belgisisiz).
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">👤 Xodimlar uchun filial havolalari</h5>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Filial</th>
+              <th>Token</th>
+              <th>Havola</th>
+              <th>Amal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in filial_data %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td><strong>{{ item.filial.filial_name }}</strong></td>
+              <td><code>{{ item.token }}</code></td>
+              <td>
+                {% if item.link %}
+                <div class="input-group input-group-sm" style="min-width:280px">
+                  <input type="text" class="form-control form-control-sm"
+                         id="link_{{ item.filial.id }}"
+                         value="{{ item.link }}" readonly>
+                  <button class="btn btn-outline-secondary btn-sm"
+                          onclick="copyLink('link_{{ item.filial.id }}')">
+                    📋
+                  </button>
+                </div>
+                {% else %}
+                <span class="text-muted small">BOT_USERNAME sozlanmagan</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'regenerate_invite_token' item.filial.id %}"
+                   class="btn btn-outline-warning btn-sm"
+                   onclick="return confirm('Eski havola o\'chadi. Davom etasizmi?')">
+                  🔄 Yangilash
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">Filiallar topilmadi.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Qo'llanma -->
+    <div class="card mt-3">
+      <div class="card-header">📖 Qanday ishlaydi?</div>
+      <div class="card-body">
+        <ol class="mb-0">
+          <li>Kerakli filial havolasini nusxalang va xodimlarga yuboring.</li>
+          <li>Xodim havolani bosib Telegram botga o'tadi.</li>
+          <li>Bot avtomatik ravishda filial va tashkilotni aniqlaydi.</li>
+          <li>Faqat shu filialning HR adminlariga tasdiqlash so'rovi yuboriladi.</li>
+          <li>Admin xodimni tasdiqlaydi va ish jadvalini tayinlaydi.</li>
+          <li>Xodim yuz rasmini yuboradi — tekshiriladi va ro'yxatdan o'tish yakunlanadi.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+function copyLink(id) {
+  const el = document.getElementById(id);
+  el.select();
+  el.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(el.value).then(() => {
+    alert('Havola nusxalandi!');
+  });
+}
+</script>
+{% endblock %}

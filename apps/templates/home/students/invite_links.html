@@ -1,0 +1,138 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Taklif havolalari{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Taklif havolalari</h4>
+    </div>
+  </div>
+
+  <!-- Filter -->
+  <div class="filter-bar">
+    <form class="d-flex gap-2 w-100 flex-wrap align-items-end" method="get">
+
+      <div>
+        <label class="form-label small mb-1">Yil</label>
+        <select class="form-select form-select-sm" name="year" style="min-width:90px">
+          {% for y in years %}
+          <option value="{{ y }}" {% if y == filter_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="form-label small mb-1">Oy</label>
+        <select class="form-select form-select-sm" name="month" style="min-width:120px">
+          {% for num, name in month_choices %}
+          <option value="{{ num }}" {% if num == filter_month %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% if directions %}
+      <div>
+        <label class="form-label small mb-1">Yo'nalish</label>
+        <select class="form-select form-select-sm" name="direction" style="min-width:160px">
+          <option value="">— Barchasi —</option>
+          {% for d in directions %}
+          <option value="{{ d.id }}" {% if d.id|stringformat:"s" == filter_direction %}selected{% endif %}>{{ d.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <div class="d-flex gap-1 align-self-end">
+        <button class="btn btn-sm btn-primary" type="submit">
+          <i data-feather="filter" style="width:14px;height:14px"></i> Filter
+        </button>
+        <a href="{% url 'invite_links' %}" class="btn btn-sm btn-outline-secondary">
+          <i data-feather="x" style="width:14px;height:14px"></i>
+        </a>
+      </div>
+
+    </form>
+  </div>
+
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Guruh nomi</th>
+            <th>Yo'nalish</th>
+            <th>Tinglovchilar</th>
+            <th>Taklif havolasi</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group, link in groups_with_links %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
+            <td>
+              <span class="fw-semibold">{{ group.name }}</span>
+              <br><small class="text-muted">{{ group.year }} — {{ group.get_month_display }}</small>
+            </td>
+            <td>{{ group.direction.name|default:"—" }}</td>
+            <td><span class="badge bg-secondary">{{ group.students.count }} ta</span></td>
+            <td style="max-width:300px">
+              <input type="text" class="form-control form-control-sm"
+                     value="{{ link }}" readonly
+                     style="font-size:12px;font-family:monospace;color:#2563eb">
+            </td>
+            <td class="text-end">
+              <div class="d-flex gap-1 justify-content-end">
+                <!-- Nusxa olish -->
+                <button class="btn btn-sm btn-outline-primary copy-btn"
+                        data-link="{{ link }}" title="Nusxa olish">
+                  <i data-feather="copy" style="width:14px;height:14px"></i>
+                </button>
+                <!-- Qayta generatsiya -->
+                <form method="post" action="{% url 'regenerate_invite_token' group.pk %}"
+                      onsubmit="return confirm('Tokenni yangilash eski havolani o\'chirib tashlaydi. Davom etasizmi?')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-warning" title="Tokenni yangilash">
+                    <i data-feather="refresh-cw" style="width:14px;height:14px"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center py-5 text-muted">
+              <i data-feather="link" style="width:40px;height:40px;opacity:0.3;display:block;margin:0 auto 8px"></i>
+              Bu oy uchun guruhlar topilmadi
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', function () {
+    const link = this.dataset.link;
+    navigator.clipboard.writeText(link).then(() => {
+      const icon = this.querySelector('i');
+      icon.setAttribute('data-feather', 'check');
+      feather.replace();
+      setTimeout(() => {
+        icon.setAttribute('data-feather', 'copy');
+        feather.replace();
+      }, 1500);
+    });
+  });
+});
+</script>
+{% endblock %}

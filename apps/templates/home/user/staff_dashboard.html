@@ -1,0 +1,169 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Dashboard{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  {# ── Page Header ── #}
+  <div class="page-header mb-4">
+    <div>
+      <h4>Dashboard</h4>
+      <p class="breadcrumb-info mb-0">
+        Filial: <strong>{{ filial }}</strong> &mdash; {{ tashkent_time|date:"d MMMM Y" }}
+      </p>
+    </div>
+  </div>
+
+  {# ── KPI Stat Cards ── #}
+  <div class="row g-3 mb-4">
+
+    <div class="col-sm-6 col-xl-4">
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-blue">
+          <i data-feather="user-check"></i>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ todays_attendance_count }}</div>
+          <div class="kpi-label">Bugun kelgan</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-orange">
+          <i data-feather="clock"></i>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ late_percent }}<span style="font-size:16px;font-weight:600">%</span></div>
+          <div class="kpi-label">Oxirgi 7 kunda kechikish</div>
+          {% if late_percent > 20 %}
+            <div class="kpi-trend down"><i data-feather="trending-up"></i> Yuqori</div>
+          {% else %}
+            <div class="kpi-trend up"><i data-feather="trending-down"></i> Yaxshi</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-red">
+          <i data-feather="log-out"></i>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ early_leave_percent }}<span style="font-size:16px;font-weight:600">%</span></div>
+          <div class="kpi-label">Oxirgi 7 kunda erta ketish</div>
+          {% if early_leave_percent > 20 %}
+            <div class="kpi-trend down"><i data-feather="trending-up"></i> Yuqori</div>
+          {% else %}
+            <div class="kpi-trend up"><i data-feather="trending-down"></i> Yaxshi</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Charts ── #}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <i data-feather="clock"></i>
+          Kechikish dinamikasi (oxirgi 6 oy)
+        </div>
+        <div class="card-body">
+          <canvas id="lateChart" style="max-height:240px"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <i data-feather="log-out"></i>
+          Erta ketish dinamikasi (oxirgi 6 oy)
+        </div>
+        <div class="card-body">
+          <canvas id="earlyChart" style="max-height:240px"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock content %}
+
+{% block javascripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const labels    = {{ chart_labels_json|safe }};
+const lateData  = {{ late_values_json|safe }};
+const earlyData = {{ early_values_json|safe }};
+
+const sharedOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  plugins: {
+    legend: { display: false },
+    tooltip: { mode: 'index', intersect: false }
+  },
+  scales: {
+    x: {
+      grid: { color: 'rgba(0,0,0,0.04)' },
+      ticks: { font: { family: 'Inter', size: 11 }, color: '#94A3B8' }
+    },
+    y: {
+      beginAtZero: true, max: 100,
+      grid: { color: 'rgba(0,0,0,0.04)' },
+      ticks: {
+        font: { family: 'Inter', size: 11 }, color: '#94A3B8',
+        callback: v => v + '%'
+      }
+    }
+  }
+};
+
+new Chart(document.getElementById('lateChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'Kechikish (%)',
+      data: lateData,
+      borderColor: '#F39C12',
+      backgroundColor: 'rgba(243,156,18,0.08)',
+      borderWidth: 2.5,
+      fill: true,
+      tension: 0.4,
+      pointBackgroundColor: '#F39C12',
+      pointRadius: 4,
+      pointHoverRadius: 6
+    }]
+  },
+  options: sharedOptions
+});
+
+new Chart(document.getElementById('earlyChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'Erta ketish (%)',
+      data: earlyData,
+      borderColor: '#E74C3C',
+      backgroundColor: 'rgba(231,76,60,0.08)',
+      borderWidth: 2.5,
+      fill: true,
+      tension: 0.4,
+      pointBackgroundColor: '#E74C3C',
+      pointRadius: 4,
+      pointHoverRadius: 6
+    }]
+  },
+  options: sharedOptions
+});
+</script>
+{% endblock %}

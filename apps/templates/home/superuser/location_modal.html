@@ -1,0 +1,98 @@
+<div class="modal fade" id="locationModal" tabindex="-1" role="dialog" aria-labelledby="locationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <form id="locationForm" method="POST">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="locationModalLabel">Lokatsiya qo‘shish</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Yopish">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div id="map" style="height: 400px; margin-bottom: 15px;"></div>
+
+          <div class="form-group">
+            <label for="id_filial">Filial</label>
+            {{ form.filial }}
+          </div>
+
+          <div class="form-group">
+            <label for="id_address">To‘liq manzil</label>
+            {{ form.address }}
+          </div>
+
+          {{ form.latitude }}
+          {{ form.longitude }}
+
+          <div id="formErrors" class="text-danger mt-2"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-success">Saqlash</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var map = L.map("map").setView([41.3111, 69.2797], 13); // Tashkent default
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+    }).addTo(map);
+
+    var marker;
+
+    map.on("click", function (e) {
+        var lat = e.latlng.lat;
+        var lng = e.latlng.lng;
+
+        document.getElementById("id_latitude").value = lat;
+        document.getElementById("id_longitude").value = lng;
+
+        if (marker) {
+            marker.setLatLng(e.latlng);
+        } else {
+            marker = L.marker(e.latlng).addTo(map);
+        }
+
+        // Reverse geocoding
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.display_name) {
+                    document.getElementById("id_address").value = data.display_name;
+                }
+            });
+    });
+
+    // AJAX form submit
+    document.getElementById("locationForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+        let formData = new FormData(this);
+
+        fetch("{% url 'create_location_ajax' %}", {
+            method: "POST",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            body: formData,
+        })
+        .then((res) => res.json())
+        .then((data) => {
+            if (data.success) {
+                location.reload(); // yoki modalni yopib listga qo‘shing
+            } else {
+                document.getElementById("formErrors").innerText = data.errors;
+            }
+        });
+    });
+});
+</script>

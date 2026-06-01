@@ -1,0 +1,106 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %} Manzillar {% endblock %}
+
+<!-- Element injected in the BODY element -->
+{% block body_class %} dashboard {% endblock body_class %} 
+<style>
+	.x {
+    color: red;
+	}
+	.check {
+		color: green;
+	}
+
+</style>
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+  <link href="{% static 'css/app.css' %}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  
+{% endblock stylesheets %}
+
+{% block content %}
+
+			<main class="content">
+				<div class="container-fluid p-0">
+
+					<form class="input-group mb-4" method="get">
+						<input class="form-control" type="text" name="q" value="{{ search_query }}">
+						<button class="input-group-text btn btn-primary" type="submit">Izlash</button>
+					</form>
+
+					<div class="row">
+						<div class="col-12 col-lg-12 col-xxl-12 d-flex">
+							<div class="card flex-fill">
+								<div class="card-header">
+
+									<h5 class="card-title mb-0">Manzillar ro'yxati</h5>
+									<h5 class="card-title mb-0">{{ search_query}}</h5>
+								</div>
+								<table class="table table-hover my-0">
+									<thead>
+										<tr>
+											<th>Id</th>
+											<th>Filial</th>
+											<th>Manzil</th>
+											<th></th>
+											<th></th>
+										</tr>
+									</thead>
+									<tbody>
+									{% for location in page_obj %}
+										<tr>
+											<td class="d-none d-xl-table-cell">{{ location.id }}</td>
+											<td class="d-none d-xl-table-cell">{{ location.filial.filial_name }}</td>
+											<td class="d-none d-xl-table-cell">{{ location.name}}</td>
+											<td class="d-none d-md-table-cell">
+
+												<div class="col-auto">
+												</div>
+											</td>
+											<td class="d-none d-md-table-cell">
+												<div class="col-auto d-flex" >
+													<div class="stat text-primary">
+															<a href="{% url 'admin_location_delete' location.id %}">
+																<i class="align-middle" data-feather="delete"></i>
+															</a>
+													</div>
+												</div>
+											</td>
+										</tr>
+									{% endfor %}
+									<a class="btn btn-outline-success text-right" href="{% url 'admin_create_location' %}">
+										<i class="fas fa-plus"></i>Qo'shish
+									</a>
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+					<div class="pagination">
+						<span class="step-links">
+							{% if page_obj.has_previous %}
+								<a href="?q={{ search_query }}&page=1">&laquo; Boshiga</a>
+								<a href="?q={{ search_query }}&page={{ page_obj.previous_page_number }}">&lsaquo; ortga</a>
+							{% endif %}
+
+							<span class="current-page">
+								{{ page_obj.number }} | {{ page_obj.paginator.num_pages }}
+							</span>
+
+							{% if page_obj.has_next %}
+								<a href="?q={{ search_query }}&page={{ page_obj.next_page_number }}">keyingi &rsaquo;</a>
+								<a href="?q={{ search_query }}&page={{ page_obj.paginator.num_pages }}">Oxirgi &raquo;</a>
+							{% endif %}
+						</span>
+					</div>
+                </div>
+            </main>
+			
+
+{% endblock content %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock javascripts %}

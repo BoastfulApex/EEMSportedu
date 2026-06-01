@@ -1,0 +1,30 @@
+{% extends "layouts/base.html" %}
+{% block title %}Lokatsiya{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper" style="max-width:520px">
+
+  <div class="page-header">
+    <h4>{% if form.instance.pk %}Lokatsiyani tahrirlash{% else %}Yangi lokatsiya{% endif %}</h4>
+  </div>
+
+  <div class="card border-0 p-4">
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors.0 }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary btn-sm">Saqlash</button>
+        <a href="{% url 'buildings_list' %}" class="btn btn-outline-secondary btn-sm">Bekor qilish</a>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

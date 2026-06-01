@@ -1,0 +1,190 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Limitdan Oshgan Tinglovchilar{% endblock %}
+
+{% block stylesheets %}
+<style>
+  .exceeded-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    overflow: hidden;
+  }
+  .exceeded-card .card-header {
+    padding: 16px 22px;
+    border-bottom: 1px solid #f0f0f5;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .exceeded-card .card-header .title {
+    font-weight: 600; color: #344563; font-size: .95rem;
+  }
+  .exc-table { width:100%; border-collapse: collapse; font-size:.875rem; }
+  .exc-table thead th {
+    background: #fff5f5;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: #b82121;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    white-space: nowrap;
+    border-bottom: 1px solid #fde8e8;
+  }
+  .exc-table tbody tr {
+    border-bottom: 1px solid #fef2f2;
+    transition: background .15s;
+  }
+  .exc-table tbody tr:hover { background: #fff8f8; }
+  .exc-table td { padding: 10px 14px; vertical-align: middle; }
+
+  .over-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #fde8e8; color: #b82121;
+    border-radius: 20px; padding: 3px 10px;
+    font-size: .78rem; font-weight: 700;
+  }
+  .hours-badge {
+    display: inline-block; padding: 3px 10px;
+    background: #fde8e8; color: #b82121;
+    border-radius: 20px; font-size: .82rem; font-weight: 700;
+  }
+  .prog-wrap { display:flex; align-items:center; gap:10px; }
+  .prog-bar { flex:1; height:7px; background:#e8eaf0; border-radius:4px; overflow:hidden; min-width:60px; }
+  .prog-fill { height:100%; border-radius:4px; }
+  .prog-fill.red { background: linear-gradient(90deg,#f45c43,#eb3349); }
+  .prog-pct { font-weight:600; font-size:.82rem; min-width:36px; }
+
+  .limit-info-bar {
+    background: #fff3cd; border-left: 4px solid #f7c948;
+    border-radius: 8px; padding: 12px 18px; margin-bottom: 20px;
+    font-size: .88rem; color: #856404; display: flex; align-items: center; gap: 10px;
+  }
+  .empty-state {
+    text-align:center; padding:56px 20px; color:#aab0c0;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <div class="d-flex align-items-center justify-content-between mb-4">
+      <div>
+        <h1 class="h3 mb-0 fw-bold">Limitdan Oshgan Tinglovchilar</h1>
+        <small class="text-muted">Ruxsat etilgan soatdan ko'p dars qoldirganlar</small>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{% url 'monitoring_limit_settings' %}" class="btn btn-outline-primary btn-sm px-3">
+          <i data-feather="settings" style="width:14px;height:14px;margin-right:5px;"></i>
+          Limit sozlash
+        </a>
+        <a href="{% url 'monitoring_dashboard' %}" class="btn btn-outline-secondary btn-sm px-3">
+          <i data-feather="arrow-left" style="width:14px;height:14px;margin-right:5px;"></i>
+          Dashboard
+        </a>
+      </div>
+    </div>
+
+    {% if limit %}
+    <div class="limit-info-bar">
+      <i data-feather="info" style="width:18px;height:18px;flex-shrink:0;"></i>
+      Belgilangan limit: <strong>{{ limit.max_missed_hours }} soat</strong>
+      &nbsp;|&nbsp; 1 para = <strong>{{ limit.para_hours }} soat</strong>
+      &nbsp;|&nbsp; Maksimal paralar: <strong>{{ limit.max_missed_paras }} para</strong>
+    </div>
+    {% else %}
+    <div class="limit-info-bar" style="background:#fde8e8; border-color:#eb3349; color:#b82121;">
+      <i data-feather="alert-triangle" style="width:18px;height:18px;flex-shrink:0;"></i>
+      Davomat limiti belgilanmagan.
+      <a href="{% url 'monitoring_limit_settings' %}" class="ms-2 fw-bold" style="color:#b82121;">Limit qo'yish</a>
+    </div>
+    {% endif %}
+
+    <div class="exceeded-card">
+      <div class="card-header">
+        <span class="title">
+          <i data-feather="alert-triangle" style="width:16px;height:16px;margin-right:6px;color:#eb3349;"></i>
+          Limitdan oshganlar
+          {% if exceeded_list %}
+            <span class="badge ms-2" style="background:#fde8e8;color:#b82121;">{{ exceeded_list|length }} tinglovchi</span>
+          {% endif %}
+        </span>
+      </div>
+
+      {% if not limit %}
+        <div class="empty-state">
+          <i data-feather="settings" style="display:block;margin:0 auto 12px;"></i>
+          <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Limit belgilanmagan</div>
+          <small>Avval davomat limitini sozlang</small>
+        </div>
+      {% elif not exceeded_list %}
+        <div class="empty-state">
+          <i data-feather="check-circle" style="display:block;margin:0 auto 12px;color:#43c36f;opacity:.5;"></i>
+          <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Hech kim limitdan oshmagan</div>
+          <small>Barcha tinglovchilar {{ limit.max_missed_hours }} soatdan kam dars qoldirgan</small>
+        </div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="exc-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tinglovchi</th>
+                <th>Guruh</th>
+                <th>Yo'nalish</th>
+                <th>Qoldirilgan (para)</th>
+                <th>Qoldirilgan (soat)</th>
+                <th>Limit oshishi</th>
+                <th>Davomat %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in exceeded_list %}
+              <tr>
+                <td style="color:#aab0c0; font-size:.8rem;">{{ forloop.counter }}</td>
+                <td>
+                  <div style="font-weight:600; font-size:.88rem;">{{ row.student.full_name }}</div>
+                </td>
+                <td style="font-size:.85rem;">{{ row.group.name }}</td>
+                <td style="font-size:.85rem; color:#5a6a85;">{{ row.direction.name|default:"—" }}</td>
+                <td style="text-align:center;">
+                  <span class="hours-badge">{{ row.missed_paras }} para</span>
+                </td>
+                <td style="text-align:center;">
+                  <span class="hours-badge">{{ row.missed_hours }} soat</span>
+                </td>
+                <td style="text-align:center;">
+                  <span class="over-badge">
+                    <i data-feather="trending-up" style="width:12px;height:12px;"></i>
+                    +{{ row.over_hours }} soat
+                  </span>
+                </td>
+                <td>
+                  <div class="prog-wrap">
+                    <div class="prog-bar">
+                      <div class="prog-fill red" style="width:{{ row.pct }}%"></div>
+                    </div>
+                    <span class="prog-pct text-danger">{{ row.pct }}%</span>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.feather) feather.replace();
+});
+</script>
+{% endblock %}

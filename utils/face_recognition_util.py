@@ -1,0 +1,316 @@
+"""
+Yuz tanish utility (face identification).
+Foydalaniladi: edu_admin bot — admin rasm yuboradi, tizim tinglovchini taniydi.
+
+Usullar (prioritet bo'yicha):
+  1. face_recognition (dlib) — o'rnatilgan bo'lsa eng aniq
+  2. mediapipe FaceMesh landmark cosine similarity — o'rta aniqlik
+  3. Fallback — bo'sh ro'yxat (handler manual ro'yxat ko'rsatadi)
+
+O'rnatish (1-usul uchun, ixtiyoriy):
+  pip install face_recognition
+  # Windows uchun avval dlib kerak:
+  # pip install cmake && pip install dlib
+
+Tezlashtirish: face encoding DB da saqlanadi (face_encoding maydoni).
+  - Rasm birinchi marta saqlanganda encoding hisoblanadi va DB ga yoziladi.
+  - Keyingi so'rovlarda disk o'qish o'rniga DB dan encoding olinadi (~5ms vs ~3s).
+"""
+import json
+import logging
+import os
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# Minimal o'xshashlik chegaralari — 1:N qidirish (ko'p tinglovchi orasidan)
+FACE_REC_THRESHOLD  = 0.55   # distance <= bu → topildi  (kichikroq = aniqroq)
+MEDIAPIPE_THRESHOLD = 0.985  # cosine similarity >= bu → topildi (kattaroq = aniqroq)
+
+# 1:1 tekshiruv — student_id allaqachon ma'lum, faqat tasdiqlaymiz
+FACE_REC_THRESHOLD_1V1  = 0.68   # yumshoqroq: lighting, burchak farqi uchun
+MEDIAPIPE_THRESHOLD_1V1 = 0.965  # yumshoqroq
+
+
+# ─────────────────────────────────────────────────────────────
+# Encoding saqlash / yuklash yordamchilari
+# ─────────────────────────────────────────────────────────────
+
+def compute_face_encoding(image_path: str) -> str | None:
+    """
+    Rasmdan face encoding hisoblab, JSON string qaytaradi.
+    Natija Student.face_encoding maydoniga saqlanadi.
+    Qaytaradi: JSON string yoki None (rasm yo'q / yuz topilmadi / kutubxona yo'q).
+    """
+    try:
+        import face_recognition  # noqa
+        if not os.path.exists(image_path):
+            return None
+        img  = face_recognition.load_image_file(image_path)
+        encs = face_recognition.face_encodings(img)
+        if encs:
+            return json.dumps(encs[0].tolist())
+        logger.info(f"compute_face_encoding: rasmda yuz topilmadi — {image_path}")
+        return None
+    except ImportError:
+        logger.info("compute_face_encoding: face_recognition o'rnatilmagan")
+        return None
+    except Exception as ex:
+        logger.warning(f"compute_face_encoding xatosi: {ex}")
+        return None
+
+
+def load_face_encoding(encoding_json: str) -> np.ndarray | None:
+    """
+    JSON string → numpy array.
+    Qaytaradi: (128,) shape ndarray yoki None.
+    """
+    try:
+        return np.array(json.loads(encoding_json), dtype=np.float64)
+    except Exception:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────
+# 1-usul: face_recognition (dlib)
+# ─────────────────────────────────────────────────────────────
+
+def _face_rec_distances(
+    query_path: str,
+    candidate_paths: list[str],
+    candidate_encodings: list[np.ndarray | None] | None = None,
+) -> list[float] | None:
+    """
+    Qaytaradi: distance ro'yxati (0=mukammal, 1=umuman o'xshamas) yoki None.
+
+    candidate_encodings: oldindan hisoblangan numpy encoding lar ro'yxati.
+        None bo'lsa yoki element None bo'lsa — candidate_paths dan o'qiladi.
+        Bu parametr diskdan o'qishni ~3s dan ~5ms ga tushiradi.
+    """
+    try:
+        import face_recognition  # noqa
+
+        q_img  = face_recognition.load_image_file(query_path)
+        q_encs = face_recognition.face_encodings(q_img)
+        if not q_encs:
+            logger.info("face_recognition: so'rov rasmida yuz topilmadi")
+            return None
+
+        q_enc = q_encs[0]
+        dists = []
+        for i, cpath in enumerate(candidate_paths):
+            try:
+                # ── Oldindan hisoblangan encoding ishlatish (tez) ──────────
+                cached_enc = (
+                    candidate_encodings[i]
+                    if candidate_encodings and i < len(candidate_encodings)
+                    else None
+                )
+                if cached_enc is not None:
+                    d = float(face_recognition.face_distance([cached_enc], q_enc)[0])
+                    dists.append(d)
+                    continue
+
+                # ── Fallback: diskdan o'qish (sekin, eski ma'lumotlar uchun) ─
+                if not os.path.exists(cpath):
+                    dists.append(1.0)
+                    continue
+                c_img  = face_recognition.load_image_file(cpath)
+                c_encs = face_recognition.face_encodings(c_img)
+                if c_encs:
+                    d = float(face_recognition.face_distance([c_encs[0]], q_enc)[0])
+                    dists.append(d)
+                else:
+                    dists.append(1.0)
+            except Exception as ex:
+                logger.debug(f"face_recognition candidate xatosi: {ex}")
+                dists.append(1.0)
+        return dists
+
+    except ImportError:
+        logger.info("face_recognition o'rnatilmagan — keyingi usulga o'tiladi")
+        return None
+    except Exception as ex:
+        logger.warning(f"face_recognition xatosi: {ex}")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────
+# 2-usul: mediapipe FaceMesh cosine similarity
+# ─────────────────────────────────────────────────────────────
+
+def _get_landmark_vector(image_path: str) -> np.ndarray | None:
+    """468 ta FaceMesh landmark → normalize qilingan vektor"""
+    try:
+        import mediapipe as mp
+        from PIL import Image
+
+        img = Image.open(image_path).convert("RGB")
+        arr = np.array(img)
+
+        mp_mesh = mp.solutions.face_mesh
+        with mp_mesh.FaceMesh(
+            static_image_mode=True,
+            max_num_faces=1,
+            refine_landmarks=False,
+            min_detection_confidence=0.5,
+        ) as mesh:
+            res = mesh.process(arr)
+            if not res.multi_face_landmarks:
+                return None
+
+            lms = res.multi_face_landmarks[0].landmark
+            xs = [lm.x for lm in lms]
+            ys = [lm.y for lm in lms]
+            cx = sum(xs) / len(xs)
+            cy = sum(ys) / len(ys)
+            scale = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
+
+            vec = []
+            for lm in lms:
+                vec.extend([(lm.x - cx) / scale, (lm.y - cy) / scale])
+            return np.array(vec, dtype=np.float32)
+
+    except ImportError:
+        logger.info("mediapipe o'rnatilmagan")
+        return None
+    except Exception as ex:
+        logger.debug(f"landmark vektor xatosi: {ex}")
+        return None
+
+
+def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    na, nb = np.linalg.norm(a), np.linalg.norm(b)
+    if na == 0 or nb == 0:
+        return 0.0
+    return float(np.dot(a, b) / (na * nb))
+
+
+def _mediapipe_similarities(query_path: str, candidate_paths: list[str]) -> list[float] | None:
+    """Qaytaradi: cosine similarity ro'yxati yoki None"""
+    q_vec = _get_landmark_vector(query_path)
+    if q_vec is None:
+        return None
+
+    sims = []
+    for cpath in candidate_paths:
+        try:
+            if not os.path.exists(cpath):
+                sims.append(0.0)
+                continue
+            c_vec = _get_landmark_vector(cpath)
+            sims.append(_cosine_sim(q_vec, c_vec) if c_vec is not None else 0.0)
+        except Exception:
+            sims.append(0.0)
+    return sims if any(s > 0 for s in sims) else None
+
+
+# ─────────────────────────────────────────────────────────────
+# Asosiy funksiya
+# ─────────────────────────────────────────────────────────────
+
+def recognize_student(
+    query_path: str,
+    students: list[dict],
+    top_n: int = 3,
+    one_to_one: bool = False,
+) -> dict:
+    """
+    Rasm bo'yicha tinglovchini taniydi.
+
+    Parametrlar:
+        query_path  — so'rov rasmining absolyut yo'li
+        students    — [{'id', 'full_name', 'image_path', 'face_encoding'(ixtiyoriy), ...}, ...]
+                      'face_encoding' — DB dan olingan JSON string (ixtiyoriy, lekin tezlashtiradi)
+        top_n       — qaytariladigan nomzodlar soni
+        one_to_one  — True bo'lsa student_id allaqachon ma'lum (1:1 tasdiq),
+                      yumshoqroq threshold ishlatiladi
+
+    Qaytaradi:
+        {
+          'method':     'face_recognition' | 'mediapipe' | None,
+          'found':      True | False,
+          'best_match': {'id', 'full_name', 'score', ...} | None,
+          'candidates': [{'id', 'full_name', 'score'}, ...],  # top_n ta
+        }
+
+    Tezlashtirish:
+        students listida 'face_encoding' (JSON string) mavjud bo'lsa —
+        diskdan rasm o'qish o'tkazib yuboriladi (~3s → ~5ms).
+        Encoding yo'q bo'lgan tinglovchilar uchun fallback: diskdan o'qish.
+    """
+    if not students:
+        return {'method': None, 'found': False, 'best_match': None, 'candidates': []}
+
+    # Encoding yoki rasm yo'li bo'lgan tinglovchilarni tanlash
+    valid = [
+        s for s in students
+        if s.get('face_encoding') or (s.get('image_path') and os.path.exists(s['image_path']))
+    ]
+    if not valid:
+        return {'method': None, 'found': False, 'best_match': None, 'candidates': []}
+
+    paths = [s.get('image_path', '') for s in valid]
+
+    # ── Oldindan hisoblangan encoding larni yuklash ───────────
+    cached_encs: list[np.ndarray | None] = []
+    for s in valid:
+        enc_json = s.get('face_encoding')
+        cached_encs.append(load_face_encoding(enc_json) if enc_json else None)
+
+    # ── 1. face_recognition ──────────────────────────────────
+    method  = None
+    scores  = None   # higher = better
+
+    dists = _face_rec_distances(query_path, paths, cached_encs)
+    if dists is not None:
+        method = 'face_recognition'
+        scores = [max(0.0, 1.0 - d) * 100 for d in dists]   # → 0‒100 %
+
+    # ── 2. mediapipe ─────────────────────────────────────────
+    # (mediapipe uchun hozircha cached encoding yo'q — disk o'qish)
+    if scores is None:
+        # Faqat rasm yo'li bo'lgan elementlar uchun mediapipe ishlatiladi
+        paths_for_mp = [s.get('image_path', '') for s in valid]
+        sims = _mediapipe_similarities(query_path, paths_for_mp)
+        if sims is not None:
+            method = 'mediapipe'
+            scores = [s * 100 for s in sims]
+
+    if scores is None:
+        return {'method': None, 'found': False, 'best_match': None, 'candidates': []}
+
+    # Nomzodlarni tartiblash
+    ranked = sorted(
+        [
+            {
+                'id':        valid[i]['id'],
+                'full_name': valid[i]['full_name'],
+                'phone':     valid[i].get('phone', ''),
+                'score':     round(scores[i], 1),
+                'method':    method,
+            }
+            for i in range(len(valid))
+        ],
+        key=lambda x: x['score'],
+        reverse=True,
+    )
+    candidates = ranked[:top_n]
+
+    # Topildi hisoblanish sharti
+    best = candidates[0] if candidates else None
+    if method == 'face_recognition':
+        thr = FACE_REC_THRESHOLD_1V1 if one_to_one else FACE_REC_THRESHOLD
+        threshold = (1 - thr) * 100   # ~32% (1:1) yoki ~45% (1:N)
+    else:
+        thr = MEDIAPIPE_THRESHOLD_1V1 if one_to_one else MEDIAPIPE_THRESHOLD
+        threshold = thr * 100         # ~96.5% (1:1) yoki ~98.5% (1:N)
+    found = bool(best and best['score'] >= threshold)
+
+    return {
+        'method':     method,
+        'found':      found,
+        'best_match': best if found else None,
+        'candidates': candidates,
+    }

@@ -1,0 +1,111 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Dam olish kunlari{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+.holiday-card {
+  border-left: 4px solid #e74c3c;
+  border-radius: 8px;
+  background: #fff5f5;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.holiday-card .hdate {
+  font-weight: 700;
+  font-size: 15px;
+  color: #c0392b;
+  min-width: 110px;
+}
+.holiday-card .hname { font-size: 14px; flex: 1; }
+.holiday-card .hfilial { font-size: 12px; color: #888; }
+.year-nav a {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #f0f0f0; color: #333; text-decoration: none; font-size: 18px;
+}
+.year-nav a:hover { background: #ddd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content-header">
+    <div class="container-fluid">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h1 class="mb-0">🗓 Umumiy dam olish kunlari</h1>
+        <a href="{% url 'employees' %}" class="btn btn-outline-secondary btn-sm">← Orqaga</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row g-4">
+
+        {# ── Qo'shish formasi ── #}
+        <div class="col-lg-4">
+          <div class="card shadow-sm">
+            <div class="card-header fw-semibold">➕ Yangi bayram qo'shish</div>
+            <div class="card-body">
+              <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.errors %}
+                    <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-danger w-100">Saqlash</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {# ── Ro'yxat ── #}
+        <div class="col-lg-8">
+          <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <span class="fw-semibold">📋 {{ year }}-yil dam olish kunlari</span>
+              <div class="year-nav d-flex align-items-center gap-2">
+                <a href="?year={{ year|add:'-1' }}">‹</a>
+                <strong>{{ year }}</strong>
+                <a href="?year={{ year|add:'1' }}">›</a>
+              </div>
+            </div>
+            <div class="card-body">
+              {% if holidays %}
+                {% for h in holidays %}
+                <div class="holiday-card">
+                  <span class="hdate">{{ h.date|date:"d.m.Y" }}</span>
+                  <span class="hname">{{ h.name }}</span>
+                  <span class="hfilial">
+                    {% if h.filial %}{{ h.filial.filial_name }}{% else %}Barcha filiallar{% endif %}
+                  </span>
+                  <form method="post" action="{% url 'public_holiday_delete' h.pk %}"
+                        onsubmit="return confirm('O\'chirishni tasdiqlaysizmi?')">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">🗑</button>
+                  </form>
+                </div>
+                {% endfor %}
+              {% else %}
+                <div class="text-muted text-center py-4">{{ year }}-yil uchun dam olish kunlari kiritilmagan</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

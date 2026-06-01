@@ -1,0 +1,142 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Guruh tinglovchilari{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Tinglovchilar — {{ group.name }}</h4>
+      <p class="breadcrumb-info mb-0">
+        <a href="{% url 'groups_list' %}">Guruhlar</a> /
+        <a href="{% url 'group_detail' group.pk %}">{{ group.name }}</a> /
+        Tinglovchilar
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'group_students_export' group.pk %}" class="btn btn-success">
+        <i data-feather="download"></i> Excel yuklab olish
+      </a>
+      <a href="{% url 'group_detail' group.pk %}" class="btn btn-outline-secondary">
+        <i data-feather="arrow-left"></i> Guruhga qaytish
+      </a>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+  {% if success %}
+  <div class="alert alert-success">{{ success }}</div>
+  {% endif %}
+
+  <!-- Excel yuklash -->
+  <div class="card border-0 mb-4">
+    <div class="card-body p-4">
+      <h6 class="mb-3"><i data-feather="upload" style="width:16px;height:16px"></i> Excel orqali tinglovchi yuklash</h6>
+      <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-end flex-wrap">
+        {% csrf_token %}
+        <div>
+          <label class="form-label small text-muted mb-1">
+            .xlsx fayl (A — F.I.Sh, B — Telefon)
+          </label>
+          <input type="file" name="excel_file" accept=".xlsx,.xls" class="form-control" style="max-width:320px">
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i data-feather="upload-cloud"></i> Yuklash
+        </button>
+        <a href="{% static 'templates/students_template.xlsx' %}" class="btn btn-outline-secondary" download>
+          <i data-feather="file-text"></i> Shablon
+        </a>
+      </form>
+    </div>
+  </div>
+
+  <!-- Tinglovchilar ro'yxati -->
+  <div class="card border-0">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-3">
+      <span class="fw-semibold">Jami: <strong>{{ group.students.count }} ta</strong></span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>F.I.Sh</th>
+            <th>Telefon</th>
+            <th>Login (ID)</th>
+            <th>Parol</th>
+            <th class="text-end">Amallar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for student in page_obj %}
+          <tr>
+            <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
+            <td>{{ student.full_name }}</td>
+            <td>{{ student.phone|default:"—" }}</td>
+            <td>
+              {% if student.user %}
+                <code class="text-primary">{{ student.user.username }}</code>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if student.plain_password %}
+                <code class="text-success">{{ student.plain_password }}</code>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <form method="post" action="{% url 'group_student_remove' group.pk student.pk %}" class="d-inline"
+                    onsubmit="return confirm('{{ student.full_name }} ni guruhdan olib tashlamoqchimisiz?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  <i data-feather="user-minus" style="width:14px;height:14px"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center py-5 text-muted">
+              <i data-feather="users" style="width:40px;height:40px;opacity:0.3;display:block;margin:0 auto 8px"></i>
+              Tinglovchilar yo'q
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer bg-transparent">
+      <nav>
+        <ul class="pagination pagination-sm mb-0 justify-content-center">
+          {% if page_obj.has_previous %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a>
+          </li>
+          {% endif %}
+          {% for num in page_obj.paginator.page_range %}
+          <li class="page-item {% if num == page_obj.number %}active{% endif %}">
+            <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+          </li>
+          {% endfor %}
+          {% if page_obj.has_next %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a>
+          </li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

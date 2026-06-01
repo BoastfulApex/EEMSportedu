@@ -1,0 +1,79 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block content %}
+<h1>🕒 Ish jadvali qo‘shish</h1>
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if adminform.form.non_field_errors %}
+        <ul class="errorlist">
+            {% for error in adminform.form.non_field_errors %}
+                <li style="color:red">{{ error }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div class="form-row">
+        <label for="start_time">⏰ Boshlanish vaqti:</label><br>
+        <input
+            type="text"
+            id="start_time"
+            name="start_time"
+            class="timepicker {% if form.errors.start_time %}error-input{% endif %}"
+            placeholder="Tanlang"
+            value="{{ request.POST.start_time|default_if_none:'' }}"
+            required
+        >
+        {% if form.errors.start_time %}
+            <div class="error-text">{{ form.errors.start_time.0 }}</div>
+        {% endif %}
+    </div>
+
+    <br>
+
+    <div class="form-row">
+        <label for="end_time">⏳ Tugash vaqti:</label><br>
+        <input
+            type="text"
+            id="end_time"
+            name="end_time"
+            class="timepicker {% if form.errors.end_time %}error-input{% endif %}"
+            placeholder="Tanlang"
+            value="{{ request.POST.end_time|default_if_none:'' }}"
+            required
+        >
+        {% if form.errors.end_time %}
+            <div class="error-text">{{ form.errors.end_time.0 }}</div>
+        {% endif %}
+    </div>
+
+    <br><br>
+    <input type="submit" class="default" value="Saqlash">
+</form>
+
+<!-- flatpickr -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script>
+    flatpickr(".timepicker", {
+        enableTime: true,
+        noCalendar: true,
+        dateFormat: "H:i",
+        time_24hr: true
+    });
+</script>
+
+<!-- Styling for errors -->
+<style>
+    .error-input {
+        border: 2px solid red !important;
+        background-color: #ffe6e6;
+    }
+    .error-text {
+        color: red;
+        font-size: 0.9em;
+        margin-top: 3px;
+    }
+</style>
+{% endblock %}

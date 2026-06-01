@@ -1,0 +1,212 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Maosh sozlamalari{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<link href="{% static 'css/app.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <div class="page-header mb-4 d-flex align-items-center justify-content-between">
+      <div>
+        <h4 class="mb-1">Maosh sozlamalari</h4>
+        <p class="breadcrumb-info mb-0">Filial: <strong>{{ filial }}</strong></p>
+      </div>
+    </div>
+
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i data-feather="dollar-sign" class="me-2"></i>Xodimlar oylik maoshi
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0" id="salaryTable">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>Xodim</th>
+                <th>Oylik soat</th>
+                <th>Oylik maosh (so'm)</th>
+                <th>Soatlik stavka</th>
+                <th class="text-center">Tahrirlash</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in emp_data %}
+              <tr id="row-{{ row.employee.id }}">
+                <td>{{ forloop.counter }}</td>
+                <td>
+                  <strong>{{ row.employee.name }}</strong>
+                  <div class="text-muted small">{{ row.employee.get_employee_type_display }}</div>
+                </td>
+                <td>
+                  <span class="val-hours">
+                    {% if row.monthly_hours %}{{ row.monthly_hours }}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </span>
+                </td>
+                <td>
+                  <span class="val-salary">
+                    {% if row.monthly_salary %}{{ row.monthly_salary|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </span>
+                </td>
+                <td>
+                  <span class="val-rate">
+                    {% if row.hourly_rate %}{{ row.hourly_rate|floatformat:0 }} so'm/soat{% else %}<span class="text-muted">—</span>{% endif %}
+                  </span>
+                </td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-primary"
+                          onclick="openModal({{ row.employee.id }}, '{{ row.employee.name|escapejs }}', '{{ row.monthly_hours|default:'' }}', '{{ row.monthly_salary|default:'' }}')">
+                    <i data-feather="edit-2"></i>
+                  </button>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="6" class="text-center text-muted py-4">Xodimlar topilmadi.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+{# ── Edit Modal ── #}
+<div class="modal fade" id="salaryModal" tabindex="-1" aria-labelledby="salaryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="salaryModalLabel">Maosh tahrirlash</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3" id="modalEmpName"></p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Oylik ish soati</label>
+          <input type="number" class="form-control" id="inputHours" min="1" max="744"
+                 placeholder="Masalan: 168">
+          <div class="form-text">Oyda ishlashi kerak bo'lgan jami soat soni</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Oylik maosh (so'm)</label>
+          <input type="number" class="form-control" id="inputSalary" min="0"
+                 placeholder="Masalan: 3500000">
+          <div class="form-text">Belgilangan oylik oklad summasi</div>
+        </div>
+        <div id="ratePreview" class="alert alert-info d-none">
+          Soatlik stavka: <strong id="rateValue"></strong> so'm
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Bekor qilish</button>
+        <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveSalary()">
+          <span id="saveBtnText">Saqlash</span>
+          <span id="saveBtnSpinner" class="spinner-border spinner-border-sm d-none ms-1" role="status"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+let currentEmpId = null;
+
+function openModal(empId, empName, hours, salary) {
+  currentEmpId = empId;
+  document.getElementById('modalEmpName').textContent = empName;
+  document.getElementById('inputHours').value = hours;
+  document.getElementById('inputSalary').value = salary;
+  updateRatePreview();
+  new bootstrap.Modal(document.getElementById('salaryModal')).show();
+}
+
+function updateRatePreview() {
+  const h = parseFloat(document.getElementById('inputHours').value);
+  const s = parseFloat(document.getElementById('inputSalary').value);
+  const preview = document.getElementById('ratePreview');
+  if (h > 0 && s > 0) {
+    document.getElementById('rateValue').textContent = Math.round(s / h).toLocaleString();
+    preview.classList.remove('d-none');
+  } else {
+    preview.classList.add('d-none');
+  }
+}
+
+document.getElementById('inputHours').addEventListener('input', updateRatePreview);
+document.getElementById('inputSalary').addEventListener('input', updateRatePreview);
+
+function saveSalary() {
+  const hours = document.getElementById('inputHours').value;
+  const salary = document.getElementById('inputSalary').value;
+
+  if (!hours || !salary) {
+    alert("Iltimos, soat va maosh miqdorini kiriting.");
+    return;
+  }
+
+  const btn = document.getElementById('saveBtn');
+  const txt = document.getElementById('saveBtnText');
+  const spin = document.getElementById('saveBtnSpinner');
+  btn.disabled = true;
+  spin.classList.remove('d-none');
+  txt.textContent = 'Saqlanmoqda...';
+
+  fetch(`/home/salaries/${currentEmpId}/update/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': getCookie('csrftoken'),
+    },
+    body: `monthly_hours=${encodeURIComponent(hours)}&monthly_salary=${encodeURIComponent(salary)}`
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const row = document.getElementById(`row-${currentEmpId}`);
+      row.querySelector('.val-hours').textContent = data.monthly_hours;
+      row.querySelector('.val-salary').textContent = Number(data.monthly_salary).toLocaleString();
+      row.querySelector('.val-rate').textContent = Number(data.hourly_rate).toLocaleString() + ' so\'m/soat';
+      bootstrap.Modal.getInstance(document.getElementById('salaryModal')).hide();
+    } else {
+      alert('Xatolik: ' + JSON.stringify(data.errors || data.error));
+    }
+  })
+  .catch(() => alert('Tarmoq xatosi. Qayta urinib ko\'ring.'))
+  .finally(() => {
+    btn.disabled = false;
+    spin.classList.add('d-none');
+    txt.textContent = 'Saqlash';
+  });
+}
+
+function getCookie(name) {
+  let v = null;
+  document.cookie.split(';').forEach(c => {
+    const [k, val] = c.trim().split('=');
+    if (k === name) v = decodeURIComponent(val);
+  });
+  return v;
+}
+</script>
+{% endblock %}

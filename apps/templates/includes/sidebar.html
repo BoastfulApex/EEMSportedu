@@ -1,0 +1,367 @@
+<nav id="sidebar" class="sidebar js-sidebar">
+  <div class="sidebar-content">
+
+    {# ── Brand ── #}
+    <div class="sidebar-brand-wrap">
+      <div class="sidebar-brand-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="4 3 24 22" fill="none"
+             stroke="white" stroke-linecap="round" stroke-width="2.2">
+          <path d="M5,16 C5,9.4 9.9,4 16,4 C22.1,4 27,9.4 27,16"/>
+          <path d="M8.5,16 C8.5,11.3 11.9,7.5 16,7.5 C20.1,7.5 23.5,11.3 23.5,16 C23.5,19 22.5,22 20,24"/>
+          <path d="M12,16 C12,13.2 13.8,11 16,11 C18.2,11 20,13.2 20,16 C20,18.8 18.8,22 16,24"/>
+          <line x1="16" y1="14" x2="16" y2="24"/>
+        </svg>
+      </div>
+      <div class="sidebar-brand-info">
+        <span class="sidebar-brand-name">Sportedu Campus</span>
+        <span class="sidebar-brand-sub">Biometrik Davomat</span>
+      </div>
+    </div>
+
+    {# ── Nav ── #}
+    <ul class="sidebar-nav">
+
+      <li class="sidebar-header">Asosiy</li>
+
+      <li class="sidebar-item {% if 'dashboard' in segment %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'home' %}">
+          <i data-feather="grid"></i>
+          <span>Dashboard</span>
+        </a>
+      </li>
+
+      {# ── XODIMLAR BO'LIMI ── #}
+      {% if is_hr_admin %}
+        {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+        <li class="sidebar-header">Xodimlar</li>
+
+        <li class="sidebar-item {% if segment == 'employees' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'employees' %}">
+            <i data-feather="users"></i>
+            <span>Xodimlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'schedules' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'schedules' %}">
+            <i data-feather="calendar"></i>
+            <span>Ish jadvallari</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'public_holidays' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'public_holidays' %}">
+            <i data-feather="sun"></i>
+            <span>Dam olish kunlari</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'salary' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'salary_list' %}">
+            <i data-feather="dollar-sign"></i>
+            <span>Maosh sozlamalari</span>
+          </a>
+        </li>
+        {% endif %}
+      {% endif %}
+
+      {# ── O'QUV BO'LIMI ── #}
+      {% if is_edu_admin %}
+        {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+        <li class="sidebar-header">O'quv</li>
+
+        <li class="sidebar-item {% if segment == 'groups' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'groups_list' %}">
+            <i data-feather="users"></i>
+            <span>Guruhlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'directions' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'directions_list' %}">
+            <i data-feather="compass"></i>
+            <span>Yo'nalishlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'invites' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'invite_links' %}">
+            <i data-feather="link"></i>
+            <span>Taklif havolalari</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'smenas' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'smenas_list' %}">
+            <i data-feather="clock"></i>
+            <span>Smenalar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'locations' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'admin_locations' %}">
+            <i data-feather="map-pin"></i>
+            <span>Lokatsiyalar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'telegram_reset' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'student_telegram_reset' %}">
+            <i data-feather="user-x"></i>
+            <span>Telegram ID tozalash</span>
+          </a>
+        </li>
+
+        {% endif %}
+      {% endif %}
+
+      {# ── HISOBOT ── #}
+      {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+      {% if not is_monitoring and not is_edu_admin %}
+      <li class="sidebar-header">Tahlil</li>
+      <li class="sidebar-item {% if segment == 'report' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'home_get_dates' %}">
+          <i data-feather="bar-chart-2"></i>
+          <span>Hisobotlar</span>
+        </a>
+      </li>
+      {% endif %}
+      {% endif %}
+
+      {# ── MONITORING BO'LIMI ── #}
+      {% if is_monitoring %}
+        {% if not is_org_admin or request.session.selected_filial_id != 'super_admin' %}
+        <li class="sidebar-header">Monitoring</li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_dashboard' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_dashboard' %}">
+            <i data-feather="activity"></i>
+            <span>Dashboard</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_limit' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_limit_settings' %}">
+            <i data-feather="settings"></i>
+            <span>Limit sozlamalari</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_exceeded' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_exceeded' %}">
+            <i data-feather="alert-triangle"></i>
+            <span>Limitdan oshganlar</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_reports' %}active{% endif %}">
+          <a class="sidebar-link {% if segment != 'monitoring_reports' %}collapsed{% endif %}"
+             data-bs-toggle="collapse"
+             href="#monitoringReportsAccordion"
+             aria-expanded="{% if segment == 'monitoring_reports' %}true{% else %}false{% endif %}">
+            <i data-feather="bar-chart-2"></i>
+            <span>Hisobotlar</span>
+            <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </a>
+          <ul id="monitoringReportsAccordion"
+              class="collapse list-unstyled {% if segment == 'monitoring_reports' %}show{% endif %}">
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}?direction=&group=&year=&month=">
+                <i data-feather="list"></i>
+                <span>Barchasi</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-direction">
+                <i data-feather="compass"></i>
+                <span>Yo'nalish bo'yicha</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-group">
+                <i data-feather="users"></i>
+                <span>Guruh bo'yicha</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-year">
+                <i data-feather="calendar"></i>
+                <span>Yil bo'yicha</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="{% url 'monitoring_reports' %}#by-month">
+                <i data-feather="clock"></i>
+                <span>Oy bo'yicha</span>
+              </a>
+            </li>
+          </ul>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'student_report' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'student_report' %}">
+            <i data-feather="users"></i>
+            <span>Tinglovchilar hisoboti</span>
+          </a>
+        </li>
+
+        <li class="sidebar-item {% if segment == 'monitoring_groups' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'monitoring_groups_list' %}">
+            <i data-feather="book-open"></i>
+            <span>Guruhlar</span>
+          </a>
+        </li>
+        {% endif %}
+      {% endif %}
+
+      {# ── FILIAL ADMIN: Accordion ── #}
+      {% if is_filial_admin %}
+      <li class="sidebar-header">Boshqaruv</li>
+
+      <li class="sidebar-item {% if segment == 'tg_search' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'filial_telegram_search' %}">
+          <i data-feather="search"></i>
+          <span>Foydalanuvchi qidirish</span>
+        </a>
+      </li>
+
+      <li class="sidebar-item {% if segment == 'filial_admins' %}active{% endif %}">
+        <a class="sidebar-link {% if segment != 'filial_admins' %}collapsed{% endif %}"
+           data-bs-toggle="collapse"
+           href="#filialAdminAccordion"
+           aria-expanded="{% if segment == 'filial_admins' %}true{% else %}false{% endif %}">
+          <i data-feather="shield"></i>
+          <span>Administratorlar</span>
+          <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </a>
+        <ul id="filialAdminAccordion"
+            class="collapse list-unstyled {% if segment == 'filial_admins' %}show{% endif %}">
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'filial_admin_list' %}">
+              <i data-feather="list"></i>
+              <span>Ro'yxat</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'filial_admin_create' %}?role=hr_admin">
+              <i data-feather="user-plus"></i>
+              <span>Xodimlar admini</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'filial_admin_create' %}?role=edu_admin">
+              <i data-feather="book-open"></i>
+              <span>O'quv admini</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'filial_admin_create' %}?role=monitoring">
+              <i data-feather="activity"></i>
+              <span>Monitoring admini</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      {% endif %}
+
+      {# ── ORG ADMIN ── #}
+      {% if is_org_admin and request.session.selected_filial_id == 'super_admin' %}
+      <li class="sidebar-header">Tashkilot</li>
+
+      <li class="sidebar-item {% if segment == 'filials' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'admin_filials' %}">
+          <i data-feather="home"></i>
+          <span>Filiallar</span>
+        </a>
+      </li>
+
+      <li class="sidebar-item {% if segment == 'locations' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'admin_locations' %}">
+          <i data-feather="map-pin"></i>
+          <span>Lokatsiyalar</span>
+        </a>
+      </li>
+
+      <li class="sidebar-item {% if segment == 'referral' %}active{% endif %}">
+        <a class="sidebar-link" href="{% url 'referral_links' %}">
+          <i data-feather="link"></i>
+          <span>Taklif Havolalar</span>
+        </a>
+      </li>
+
+      <li class="sidebar-item {% if segment == 'admins' %}active{% endif %}">
+        <a class="sidebar-link {% if segment != 'admins' %}collapsed{% endif %}"
+           data-bs-toggle="collapse"
+           href="#orgAdminAccordion"
+           aria-expanded="{% if segment == 'admins' %}true{% else %}false{% endif %}">
+          <i data-feather="shield"></i>
+          <span>Administratorlar</span>
+          <svg class="chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </a>
+        <ul id="orgAdminAccordion"
+            class="collapse list-unstyled {% if segment == 'admins' %}show{% endif %}">
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'admin_adminstrators' %}">
+              <i data-feather="list"></i>
+              <span>Ro'yxat</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'admin_adminstrator_create' %}?role=filial_admin">
+              <i data-feather="user-plus"></i>
+              <span>Filial Admin</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'admin_adminstrator_create' %}?role=hr_admin">
+              <i data-feather="user-plus"></i>
+              <span>HR Admin</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'admin_adminstrator_create' %}?role=edu_admin">
+              <i data-feather="user-plus"></i>
+              <span>O'quv Admin</span>
+            </a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{% url 'admin_adminstrator_create' %}?role=monitoring">
+              <i data-feather="activity"></i>
+              <span>Monitoring</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      {% endif %}
+
+    </ul>
+
+    {# ── Footer ── #}
+    <div class="sidebar-footer">
+      <div class="role-pill">
+        {% if is_org_admin %}
+          <i data-feather="star"></i> Superadmin
+        {% elif is_filial_admin %}
+          <i data-feather="home"></i> Filial Admin
+        {% elif admin_role == 'hr_admin' %}
+          <i data-feather="users"></i> HR Admin
+        {% elif admin_role == 'edu_admin' %}
+          <i data-feather="book-open"></i> O'quv Admin
+        {% elif admin_role == 'monitoring' %}
+          <i data-feather="activity"></i> Monitoring
+        {% endif %}
+      </div>
+      <span class="sidebar-admin-name">{{ admin_user.full_name }}</span>
+    </div>
+
+  </div>
+</nav>

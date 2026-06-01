@@ -1,0 +1,2381 @@
+import json
+import calendar
+import openpyxl
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from datetime import timedelta, datetime
+
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from apps.superadmin.decorators import hr_admin_required, any_admin_required, monitoring_required
+from django.db.models import Q, OuterRef, Subquery, Count, F
+from django.db.models.functions import TruncMonth, ExtractWeekDay
+from django.http import HttpResponse
+from django.shortcuts import redirect, render, get_object_or_404
+from django.template import loader
+from django.urls import reverse_lazy, reverse
+from django.utils import timezone
+from django.views.generic.edit import DeleteView
+
+from apps.superadmin.models import Administrator, Filial, Weekday
+from apps.main.models import (
+    Employee, WorkSchedule, Attendance, Schedule, ScheduleDay,
+    ExtraSchedule, SalaryConfig, DailyAttendanceSummary,
+    PublicHoliday, EmployeeDailySchedule, EmployeeDailyExtraShift,
+    generate_employee_daily_schedules,
+)
+from apps.main.forms import (
+    EmployeeForm, ScheduleForm, AttendanceDateRangeForm, SalaryConfigForm,
+    PublicHolidayForm, DailyScheduleEditForm, AssignScheduleForm,
+    make_extra_shift_formset,
+)
+
+
+# ============================================================
+# HISOBOT YORDAMCHI FUNKSIYALARI
+# ============================================================
+
+def _parse_dates(start_date, end_date):
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date   = datetime.strptime(end_date,   '%Y-%m-%d').date()
+    return start_date, end_date
+
+
+def _lunch_overlap_minutes(check_in, check_out, lunch_start, lunch_end, date):
+    """Ish vaqti bilan tushlik oraliq kesishmasini daqiqada qaytaradi."""
+    if not (check_in and check_out and lunch_start and lunch_end):
+        return 0
+    ws = datetime.combine(date, check_in)
+    we = datetime.combine(date, check_out)
+    ls = datetime.combine(date, lunch_start)
+    le = datetime.combine(date, lunch_end)
+    overlap_start = max(ws, ls)
+    overlap_end   = min(we, le)
+    if overlap_end > overlap_start:
+        return int((overlap_end - overlap_start).total_seconds() / 60)
+    return 0
+
+
+def _total_minutes(check_in, check_out, date, lunch_start=None, lunch_end=None):
+    if not check_in or not check_out:
+        return 0
+    delta = datetime.combine(date, check_out) - datetime.combine(date, check_in)
+    total = max(0, int(delta.total_seconds() / 60))
+    total -= _lunch_overlap_minutes(check_in, check_out, lunch_start, lunch_end, date)
+    return max(0, total)
+
+
+GRACE_MINUTES = 15  # 15 daqiqagacha kechikish/erta ketish kechirilaди
+
+
+def _late_minutes(check_in, schedule_start, date):
+    """Kechikish daqiqalari. 15 daqiqagacha grace period."""
+    if not check_in:
+        return '-'
+    diff = int((datetime.combine(date, check_in) -
+                datetime.combine(date, schedule_start)).total_seconds() / 60)
+    if diff <= 0:
+        return 0
+    if diff <= GRACE_MINUTES:
+        return 0  # Grace period — kechirilaди
+    return diff
+
+
+def _early_leave_minutes(check_out, schedule_end, date):
+    """Erta ketish daqiqalari. 15 daqiqagacha grace period."""
+    if not check_out:
+        return '-'
+    diff = int((datetime.combine(date, schedule_end) -
+                datetime.combine(date, check_out)).total_seconds() / 60)
+    if diff <= 0:
+        return 0
+    if diff <= GRACE_MINUTES:
+        return 0  # Grace period — kechirilaди
+    return diff
+
+
+def _overtime_minutes(check_out, schedule_end, date):
+    """Ortiqcha ishlash daqiqalari."""
+    if not check_out:
+        return 0
+    diff = int((datetime.combine(date, check_out) -
+                datetime.combine(date, schedule_end)).total_seconds() / 60)
+    return max(0, diff)
+
+
+UZ_DAYS = {
+    0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
+    3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba',
+}
+
+
+def _build_daily_report(employees_qs, start_date, end_date):
+    """
+    Belgilangan davr uchun kunlik davomat yozuvlari.
+    Har bir ScheduleDay + Attendance = bitta qator.
+    15 daqiqa grace period qo'llaniladi.
+    """
+    start_date, end_date = _parse_dates(start_date, end_date)
+    rows = []
+    delta = timedelta(days=1)
+    idx = 1
+
+    current = start_date
+    while current <= end_date:
+        wd_name = calendar.day_name[current.weekday()]
+        try:
+            weekday_obj = Weekday.objects.get(name_en=wd_name)
+        except Weekday.DoesNotExist:
+            current += delta
+            continue
+
+        for emp in employees_qs:
+            if emp.created_at.date() > current:
+                continue
+
+            schedule_days = ScheduleDay.objects.filter(
+                schedule__employees=emp,
+                weekday=weekday_obj
+            ).select_related('schedule__location')
+
+            for sd in schedule_days:
+                att = Attendance.objects.filter(
+                    employee=emp, date=current, location=sd.schedule.location
+                ).first()
+                if att is None:
+                    att = Attendance.objects.filter(
+                        employee=emp, date=current
+                    ).first()
+
+                check_in  = att.check_in  if att else None
+                check_out = att.check_out if att else None
+                location  = sd.schedule.location.name if sd.schedule.location else '—'
+
+                worked_min = _total_minutes(
+                    check_in, check_out, current,
+                    sd.schedule.lunch_start, sd.schedule.lunch_end
+                )
+
+                late = _late_minutes(check_in, sd.start, current)
+                late_min = late if late != '-' else 0
+
+                overtime_min = _overtime_minutes(check_out, sd.end, current)
+
+                rows.append({
+                    'index':          idx,
+                    'date':           current,
+                    'weekday':        UZ_DAYS.get(current.weekday(), wd_name),
+                    'employee':       emp,
+                    'location':       location,
+                    'schedule_start': sd.start,
+                    'schedule_end':   sd.end,
+                    'status':         'Kelgan' if att else 'Kelmagan',
+                    'check_in':       check_in,
+                    'check_out':      check_out,
+                    'worked_h':       worked_min // 60,
+                    'worked_m':       worked_min % 60,
+                    'worked_total':   worked_min,
+                    'late_min':       late_min,
+                    'overtime_min':   overtime_min,
+                })
+                idx += 1
+
+        current += delta
+
+    return rows
+
+
+def _build_emp_stats_for_period(employees_qs, start_date, end_date):
+    """
+    [start_date, end_date] oralig'i uchun har bir xodim bo'yicha xulosa.
+    Qaytaradi: list of dict {employee, required_hours, worked_hours,
+    progress_pct, late_*, early_*, overtime_*}
+    """
+    start_date, end_date = _parse_dates(start_date, end_date)
+    stats = []
+    delta = timedelta(days=1)
+
+    for emp in employees_qs:
+        required_minutes = 0
+        worked_minutes = 0
+        late_total = 0
+        early_leave_total = 0
+        overtime_total = 0
+
+        current = start_date
+        while current <= end_date:
+            wd_name = calendar.day_name[current.weekday()]
+            try:
+                weekday_obj = Weekday.objects.get(name_en=wd_name)
+            except Weekday.DoesNotExist:
+                current += delta
+                continue
+
+            schedule_days = ScheduleDay.objects.filter(
+                schedule__employees=emp,
+                weekday=weekday_obj
+            ).select_related('schedule__location')
+
+            counted_att_ids = set()
+            day_late = 0
+            day_early = 0
+            day_overtime = 0
+
+            for sd in schedule_days:
+                # Jadval vaqtiga ko'ra kerakli daqiqalar (tushlik chiqarilgan)
+                req = int((
+                    datetime.combine(current, sd.end) -
+                    datetime.combine(current, sd.start)
+                ).total_seconds() / 60)
+                lunch_min = _lunch_overlap_minutes(
+                    sd.start, sd.end,
+                    sd.schedule.lunch_start, sd.schedule.lunch_end,
+                    current
+                )
+                required_minutes += max(0, req - lunch_min)
+
+                att = Attendance.objects.filter(
+                    employee=emp, date=current, location=sd.schedule.location
+                ).first()
+                if att is None:
+                    att = Attendance.objects.filter(
+                        employee=emp, date=current
+                    ).exclude(id__in=counted_att_ids).first()
+
+                if att and att.id not in counted_att_ids:
+                    counted_att_ids.add(att.id)
+                    worked_minutes += _total_minutes(
+                        att.check_in, att.check_out, current,
+                        sd.schedule.lunch_start, sd.schedule.lunch_end
+                    )
+
+                if att:
+                    late = _late_minutes(att.check_in, sd.start, current)
+                    if late != '-':
+                        day_late = max(day_late, late)
+
+                    early = _early_leave_minutes(att.check_out, sd.end, current)
+                    if early != '-':
+                        day_early = max(day_early, early)
+
+                    day_overtime += _overtime_minutes(att.check_out, sd.end, current)
+
+            late_total += day_late
+            early_leave_total += day_early
+            overtime_total += day_overtime
+            current += delta
+
+        required_hours = required_minutes / 60
+        worked_hours = worked_minutes / 60
+
+        if required_hours > 0:
+            progress_pct = min(150, round(worked_hours / required_hours * 100, 1))
+        else:
+            progress_pct = 0
+
+        stats.append({
+            'employee':    emp,
+            'required_h':  round(required_hours, 1),
+            'worked_h':    round(worked_hours, 1),
+            'progress_pct': progress_pct,
+            'late_h':      late_total // 60,
+            'late_m':      late_total % 60,
+            'late_total':  late_total,
+            'early_h':     early_leave_total // 60,
+            'early_m':     early_leave_total % 60,
+            'early_total': early_leave_total,
+            'overtime_h':  overtime_total // 60,
+            'overtime_m':  overtime_total % 60,
+            'overtime_total': overtime_total,
+        })
+
+    return stats
+
+
+def _build_day_rows(employee, current, weekday_obj, week_uz):
+    """
+    Bir xodimning bir kuniga tegishli barcha jadval qatorlarini qaytaradi.
+    Yangi Schedule M2M dan foydalanadi.
+    """
+    rows = []
+
+    # Xodimga biriktirilgan jadvallarning bugungi kunga mos ScheduleDay larini olish
+    schedule_days = ScheduleDay.objects.filter(
+        schedule__employees=employee,
+        weekday=weekday_obj
+    ).select_related('schedule__location', 'weekday')
+
+    for sd in schedule_days:
+        sch = sd.schedule
+        att = Attendance.objects.filter(
+            employee=employee, date=current, location=sch.location
+        ).first()
+        if att is None:
+            att = Attendance.objects.filter(employee=employee, date=current).first()
+
+        check_in  = att.check_in  if att else None
+        check_out = att.check_out if att else None
+        status    = "Kelgan" if att else "Kelmagan"
+        worked_min = _total_minutes(check_in, check_out, current)
+        worked_str = f"{worked_min // 60}s {worked_min % 60}d" if worked_min else "-"
+
+        rows.append({
+            'date':                current,
+            'weekday':             week_uz,
+            'employee':            employee.name,
+            'employee_type':       employee.get_employee_type_display(),
+            'schedule_type':       sch.name,
+            'location':            sch.location.name if sch.location else '-',
+            'schedule_start':      sd.start,
+            'schedule_end':        sd.end,
+            'status':              status,
+            'check_in':            check_in or '-',
+            'check_out':           check_out or '-',
+            'worked':              worked_str,
+            'late_minutes':        _late_minutes(check_in, sd.start, current),
+            'early_leave_minutes': _early_leave_minutes(check_out, sd.end, current),
+        })
+
+    return rows
+
+
+# ============================================================
+# ASOSIY HISOBOT FUNKSIYALARI
+# ============================================================
+
+def build_report(start_date, end_date, filial_id=None):
+    start_date, end_date = _parse_dates(start_date, end_date)
+    report = []
+    delta  = timedelta(days=1)
+    current = start_date
+
+    while current <= end_date:
+        weekday_name = calendar.day_name[current.weekday()]
+        try:
+            weekday_obj = Weekday.objects.get(name_en=weekday_name)
+            week_uz = weekday_obj.name
+        except Weekday.DoesNotExist:
+            current += delta
+            continue
+
+        # Shu kunda ScheduleDay yozuvi bor xodimlar
+        employees_today = Employee.objects.filter(
+            schedules__days__weekday=weekday_obj,
+            created_at__date__lte=current,
+        ).distinct()
+        if filial_id:
+            employees_today = employees_today.filter(filial_id=int(filial_id))
+
+        for employee in employees_today:
+            rows = _build_day_rows(employee, current, weekday_obj, week_uz)
+            report.extend(rows)
+
+        current += delta
+
+    for i, row in enumerate(report, 1):
+        row['index'] = i
+    return report
+
+
+def build_report_for_employee(employee_id, start_date, end_date):
+    start_date, end_date = _parse_dates(start_date, end_date)
+    employee = Employee.objects.get(id=employee_id)
+    report   = []
+    delta    = timedelta(days=1)
+    current  = start_date
+
+    while current <= end_date:
+        if employee.created_at.date() > current:
+            current += delta
+            continue
+
+        weekday_name = calendar.day_name[current.weekday()]
+        try:
+            weekday_obj = Weekday.objects.get(name_en=weekday_name)
+            week_uz = weekday_obj.name
+        except Weekday.DoesNotExist:
+            current += delta
+            continue
+
+        rows = _build_day_rows(employee, current, weekday_obj, week_uz)
+        report.extend(rows)
+        current += delta
+
+    for i, row in enumerate(report, 1):
+        row['index'] = i
+    return report
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+@any_admin_required
+def index(request):
+    admin_user = request.admin_user
+
+    # Monitoring admini to'g'ridan-to'g'ri monitoring dashboardga yo'naltiriladi
+    if admin_user.is_monitoring and not (admin_user.is_org_admin or admin_user.is_filial_admin
+                                          or admin_user.is_hr_admin or admin_user.is_edu_admin):
+        return redirect(reverse('monitoring_dashboard'))
+
+    data = {}
+    filial = ''
+    total_attendance_count = 0
+    todays_attendance_count = 0
+    early_leave_percent = 0
+    late_percent = 0
+    late_count = 0
+    early_leave_count = 0
+    chart_labels = []
+    late_values = []
+    early_values = []
+
+    tashkent_time = timezone.localtime(timezone.now())
+
+    if admin_user.is_org_admin and 'selected_filial_id' not in request.session:
+        request.session['selected_filial_id'] = 'super_admin'
+
+    selected_filial_id = request.session.get('selected_filial_id', 'super_admin')
+
+    if admin_user.is_org_admin:
+        filials = Filial.objects.filter(organization=admin_user.organization)
+        data['filials'] = filials
+        data['selected_filial_id'] = selected_filial_id
+        template = 'home/superuser/super_dashboard.html'
+        try:
+            filial = Filial.objects.get(id=int(selected_filial_id))
+        except Exception:
+            filial = ''
+    else:
+        template = 'home/user/staff_dashboard.html'
+        filial = admin_user.filial
+
+    if selected_filial_id != 'super_admin' and filial:
+        today = timezone.localdate()
+        week_start = today - timedelta(days=6)
+
+        todays_attendance_count = Attendance.objects.filter(
+            employee__filial=filial, date=today
+        ).count()
+
+        attendances = Attendance.objects.filter(
+            employee__filial=filial,
+            date__range=[week_start, today]
+        ).select_related('employee__schedules')
+
+        for att in attendances:
+            total_attendance_count += 1
+            # Xodimning bugungi ScheduleDay orqali kechikish/erta ketishni hisoblaymiz
+            today_wd = att.date.weekday()  # 0=Monday
+            emp_day = ScheduleDay.objects.filter(
+                schedule__employees=att.employee
+            ).select_related('weekday').filter(weekday__name_en__iexact=calendar.day_name[today_wd]).first()
+            if emp_day:
+                if att.check_in and att.check_in > emp_day.start:
+                    late_count += 1
+                if att.check_out and att.check_out < emp_day.end:
+                    early_leave_count += 1
+
+        if total_attendance_count > 0:
+            late_percent = late_count / total_attendance_count * 100
+            early_leave_percent = early_leave_count / total_attendance_count * 100
+
+        template = 'home/user/staff_dashboard.html'
+
+    context = {
+        'segment': 'dashboard',
+        'data': data,
+        'filial': filial,
+        'tashkent_time': tashkent_time,
+        'todays_attendance_count': todays_attendance_count,
+        'late_percent': round(late_percent, 1),
+        'early_leave_percent': round(early_leave_percent, 1),
+        'chart_labels_json': json.dumps(chart_labels),
+        'late_values_json': json.dumps(late_values),
+        'early_values_json': json.dumps(early_values),
+    }
+    return HttpResponse(loader.get_template(template).render(context, request))
+
+
+# ============================================================
+# XODIMLAR
+# ============================================================
+
+def _get_filial_id(admin_user, request):
+    if admin_user.is_org_admin:
+        selected = request.session.get('selected_filial_id', 'super_admin')
+        if selected == 'super_admin':
+            return None
+        return int(selected)
+    return admin_user.filial.id if admin_user.filial else None
+
+
+def _base_context(admin_user):
+    return {
+        'filials': Filial.objects.filter(organization=admin_user.organization)
+    }
+
+
+@hr_admin_required
+def employees(request):
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+    emps = Employee.objects.filter(filial_id=filial_id).order_by('name')
+    search_query = request.GET.get('q')
+    if search_query:
+        emps = emps.filter(Q(name__icontains=search_query))
+    paginator = Paginator(emps, 50)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    context = {
+        'page_obj': page_obj,
+        'segment': 'employees',
+        'filial': filial.filial_name,
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'data': data,
+    }
+    return HttpResponse(loader.get_template('home/user/employees/employees.html').render(context, request))
+
+
+@hr_admin_required
+def employee_create(request):
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+
+    if request.method == 'POST':
+        emp_form = EmployeeForm(request.POST, request.FILES, filial=filial)
+        if emp_form.is_valid():
+            employee = emp_form.save(commit=False)
+            employee.filial = filial
+            employee.save()
+            emp_form.save_m2m()
+            return redirect('employees')
+    else:
+        emp_form = EmployeeForm(filial=filial)
+
+    return render(request, 'home/user/employees/employee_create.html', {
+        'emp_form': emp_form,
+        'filial': filial.filial_name,
+        'segment': 'employees',
+        'data': data,
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@hr_admin_required
+def employee_detail(request, pk):
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    employee = get_object_or_404(Employee, id=pk)
+    if employee.filial_id != filial_id:
+        return redirect('home')
+
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = employee.filial
+
+    salary_cfg, _ = SalaryConfig.objects.get_or_create(employee=employee)
+
+    if request.method == 'POST':
+        form = EmployeeForm(request.POST, request.FILES, instance=employee, filial=filial)
+        salary_form = SalaryConfigForm(request.POST, instance=salary_cfg)
+        if form.is_valid() and salary_form.is_valid():
+            emp = form.save(commit=False)
+            if 'image' in request.FILES:
+                emp.image = request.FILES['image']
+            emp.save()
+            form.save_m2m()
+            salary_form.save()
+            return redirect('employees')
+    else:
+        form = EmployeeForm(instance=employee, filial=filial)
+        salary_form = SalaryConfigForm(instance=salary_cfg)
+
+    return render(request, 'home/user/employees/employee_detail.html', {
+        'form': form,
+        'salary_form': salary_form,
+        'segment': 'employees',
+        'employee': employee,
+        'filial': employee.filial.filial_name,
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'data': data,
+    })
+
+
+class EmployeeDelete(DeleteView):
+    model = Employee
+    fields = '__all__'
+    success_url = reverse_lazy('employees')
+
+
+# ============================================================
+# JADVAL SHABLONLARI (yangi)
+# ============================================================
+
+@hr_admin_required
+def schedules(request):
+    """Jadval shablonlari ro'yxati"""
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+    search_query = request.GET.get('q', '')
+
+    qs = Schedule.objects.filter(filial_id=filial_id).prefetch_related('days__weekday', 'location').order_by('name')
+    if search_query:
+        qs = qs.filter(name__icontains=search_query)
+
+    paginator = Paginator(qs, 50)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'home/user/workschedule/schedules.html', {
+        'page_obj':      page_obj,
+        'segment':       'schedules',
+        'filial':        filial.filial_name,
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'data':          data,
+        'search_query':  search_query,
+        'generated':     request.GET.get('generated'),
+        'gen_count':     request.GET.get('gen_count', 0),
+    })
+
+
+def _save_schedule_days(schedule, post_data):
+    """POST dan kun vaqtlarini o'qib ScheduleDay larni yaratadi/yangilaydi."""
+    all_weekdays = Weekday.objects.all()
+    for wd in all_weekdays:
+        key = f'day_{wd.id}'
+        start_val = post_data.get(f'{key}_start', '').strip()
+        end_val   = post_data.get(f'{key}_end', '').strip()
+        if start_val and end_val:
+            ScheduleDay.objects.update_or_create(
+                schedule=schedule, weekday=wd,
+                defaults={'start': start_val, 'end': end_val}
+            )
+        else:
+            ScheduleDay.objects.filter(schedule=schedule, weekday=wd).delete()
+
+
+@hr_admin_required
+def schedule_create(request):
+    """Yangi jadval shabloni yaratish"""
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+    weekdays = Weekday.objects.all()
+
+    if request.method == 'POST':
+        form = ScheduleForm(request.POST, filial=filial)
+        if form.is_valid():
+            sch = form.save(commit=False)
+            sch.filial = filial
+            sch.save()
+            _save_schedule_days(sch, request.POST)
+            return redirect('schedules')
+    else:
+        form = ScheduleForm(filial=filial)
+
+    return render(request, 'home/user/workschedule/schedule_create.html', {
+        'form': form,
+        'weekdays': weekdays,
+        'filial': filial.filial_name,
+        'segment': 'schedules',
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'data': data,
+    })
+
+
+@hr_admin_required
+def schedule_detail(request, pk):
+    """Jadval shablonini tahrirlash"""
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    schedule = get_object_or_404(Schedule, id=pk, filial_id=filial_id)
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+    weekdays = Weekday.objects.all()
+
+    # Mavjud kunlar dict: {weekday_id: ScheduleDay}
+    existing_days = {sd.weekday_id: sd for sd in schedule.days.select_related('weekday')}
+
+    if request.method == 'POST':
+        form = ScheduleForm(request.POST, instance=schedule, filial=filial)
+        if form.is_valid():
+            form.save()
+            _save_schedule_days(schedule, request.POST)
+            return redirect('schedules')
+    else:
+        form = ScheduleForm(instance=schedule, filial=filial)
+
+    return render(request, 'home/user/workschedule/schedule_detail.html', {
+        'form': form,
+        'schedule': schedule,
+        'weekdays': weekdays,
+        'existing_days': existing_days,
+        'filial': filial.filial_name,
+        'segment': 'schedules',
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'data': data,
+    })
+
+
+class ScheduleDelete(DeleteView):
+    model = Schedule
+    success_url = reverse_lazy('schedules')
+    template_name = 'main/schedule_confirm_delete.html'
+
+
+# ============================================================
+# HISOBOT
+# ============================================================
+
+@any_admin_required
+def get_report_date(request):
+    """
+    Yagona hisobot sahifasi.
+    ?type=monthly   → joriy oy boshi – bugun
+    ?type=weekly    → joriy hafta dushanba – bugun
+    ?type=date_range → foydalanuvchi sanani tanlaydi
+    Har bir holat uchun xodimlar bo'yicha jadval ko'rinishida xulosa.
+    """
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    data = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+    today = timezone.localdate()
+
+    report_type = request.GET.get('type', 'monthly')
+
+    UZ_MONTHS = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr',
+    }
+
+    if report_type == 'monthly':
+        start_date = today.replace(day=1)
+        end_date = today
+        period_label = f"{UZ_MONTHS[today.month]} {today.year} ({start_date} – {end_date})"
+
+    elif report_type == 'weekly':
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+        period_label = f"{start_date} – {end_date} (joriy hafta)"
+
+    else:  # date_range yoki daily — foydalanuvchi sanani tanlaydi
+        start_str = request.GET.get('start_date', '')
+        end_str   = request.GET.get('end_date', '')
+        if start_str and end_str:
+            try:
+                start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+            except ValueError:
+                start_date = today
+                end_date   = today
+        else:
+            start_date = today
+            end_date   = today
+        period_label = f"{start_date} – {end_date}"
+
+    employees_qs = Employee.objects.filter(filial_id=filial_id).order_by('name')
+
+    if report_type == 'daily':
+        daily_rows = _build_daily_report(employees_qs, start_date, end_date)
+        emp_stats  = []
+    else:
+        emp_stats  = _build_emp_stats_for_period(employees_qs, start_date, end_date)
+        daily_rows = []
+
+    return render(request, 'home/user/report/get_report_date.html', {
+        'emp_stats':    emp_stats,
+        'daily_rows':   daily_rows,
+        'report_type':  report_type,
+        'period_label': period_label,
+        'start_date':   start_date,
+        'end_date':     end_date,
+        'segment':      'report',
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'filial':       filial.filial_name,
+        'data':         data,
+        'today':        today,
+    })
+
+
+@any_admin_required
+def download_excel(request):
+    admin_user = request.admin_user
+
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    if not start_date or not end_date:
+        return redirect('home_get_dates')
+
+    report_data = build_report(start_date=start_date, end_date=end_date, filial_id=filial_id)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Davomat hisoboti"
+    headers = ['T/r', 'Sana', 'Hafta kuni', 'Xodim', 'Turi', 'Holati',
+               'Jadval', 'Lokatsiya', 'Jadval (boshlanish)', 'Jadval (tugash)',
+               'Kirish', 'Chiqish', 'Jami ish vaqti', 'Kechikdi (daqiqa)', 'Erta ketdi (daqiqa)']
+    ws.append(headers)
+    for row in report_data:
+        ws.append([
+            row['index'], str(row['date']), row['weekday'],
+            row['employee'], row['employee_type'], row['status'],
+            row['schedule_type'], row['location'],
+            str(row['schedule_start']), str(row['schedule_end']),
+            str(row['check_in']), str(row['check_out']),
+            row['worked'], row['late_minutes'], row['early_leave_minutes'],
+        ])
+    response = HttpResponse(content_type='application/ms-excel')
+    response['Content-Disposition'] = 'attachment; filename=hisobot.xlsx'
+    wb.save(response)
+    return response
+
+
+@any_admin_required
+def report_download_excel(request):
+    """
+    Hisobot turига ko'ra Excel yuklab olish.
+    ?type=monthly|weekly|date_range  → xodimlar bo'yicha xulosa
+    ?type=daily                      → kunlik davomat jadvali
+    """
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    today = timezone.localdate()
+    report_type = request.GET.get('type', 'monthly')
+    start_str   = request.GET.get('start_date', '')
+    end_str     = request.GET.get('end_date', '')
+
+    if report_type == 'monthly':
+        start_date = today.replace(day=1)
+        end_date   = today
+    elif report_type == 'weekly':
+        start_date = today - timedelta(days=today.weekday())
+        end_date   = today
+    else:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return redirect('home_get_dates')
+
+    employees_qs = Employee.objects.filter(filial_id=filial_id).order_by('name')
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    from openpyxl.styles import Font, PatternFill, Alignment
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(fill_type='solid', fgColor='1F3864')
+    center = Alignment(horizontal='center', vertical='center')
+
+    if report_type == 'daily':
+        ws.title = "Kunlik davomat"
+        headers = [
+            '#', 'Sana', 'Hafta kuni', 'Xodim', 'Turi',
+            'Lokatsiya', 'Jadval boshi', 'Jadval oxiri',
+            'Holat', 'Kirish', 'Chiqish',
+            'Ishlagan (soat)', 'Kechikish (daqiqa)', 'Ortiqcha (daqiqa)'
+        ]
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = center
+
+        rows = _build_daily_report(employees_qs, start_date, end_date)
+        for r in rows:
+            ws.append([
+                r['index'],
+                str(r['date']),
+                r['weekday'],
+                r['employee'].name,
+                r['employee'].get_employee_type_display(),
+                r['location'],
+                str(r['schedule_start']),
+                str(r['schedule_end']),
+                r['status'],
+                str(r['check_in']) if r['check_in'] else '—',
+                str(r['check_out']) if r['check_out'] else '—',
+                round((r['worked_h'] * 60 + r['worked_m']) / 60, 2),
+                r['late_min'],
+                r['overtime_min'],
+            ])
+    else:
+        ws.title = "Xodimlar xulosasi"
+        type_labels = {
+            'monthly': 'Oylik', 'weekly': 'Haftalik', 'date_range': 'Sana bo\'yicha'
+        }
+        headers = [
+            '#', 'Xodim', 'Turi',
+            'Kerakli soat', 'Ishlagan soat', 'Bajarilish %',
+            'Kechikish (daqiqa)', 'Erta ketish (daqiqa)', 'Ortiqcha (daqiqa)'
+        ]
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = center
+
+        stats = _build_emp_stats_for_period(employees_qs, start_date, end_date)
+        for i, e in enumerate(stats, 1):
+            ws.append([
+                i,
+                e['employee'].name,
+                e['employee'].get_employee_type_display(),
+                e['required_h'],
+                e['worked_h'],
+                e['progress_pct'],
+                e['late_total'],
+                e['early_total'],
+                e['overtime_total'],
+            ])
+
+    # Ustun kengligini avtomatik moslashtirish
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or '')) for cell in col), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+
+    filename = f"hisobot_{report_type}_{start_date}_{end_date}.xlsx"
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename={filename}'
+    wb.save(response)
+    return response
+
+
+@any_admin_required
+def employee_report(request, pk):
+    """
+    Xodimning shaxsiy hisobot sahifasi.
+    Doim ko'rsatiladi: Haftalik va Oylik xulosa cartlari.
+    Ixtiyoriy: ?type=date_range | daily — sana tanlash + jadval.
+    """
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    employee = get_object_or_404(Employee, id=pk)
+    data = {'filials': _base_context(admin_user)['filials']}
+    today = timezone.localdate()
+
+    # ── Haftalik va oylik avtomatik cardlar ──
+    week_start  = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    emp_qs = Employee.objects.filter(id=pk)
+
+    weekly_list  = _build_emp_stats_for_period(emp_qs, week_start, today)
+    monthly_list = _build_emp_stats_for_period(emp_qs, month_start, today)
+
+    weekly_stats  = weekly_list[0]  if weekly_list  else None
+    monthly_stats = monthly_list[0] if monthly_list else None
+
+    UZ_MONTHS = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr',
+    }
+
+    # ── Qo'shimcha hisobot (ixtiyoriy) ──
+    report_type = request.GET.get('type', '')
+    start_date = end_date = period_label = None
+    emp_stats = daily_rows = []
+
+    if report_type in ('date_range', 'daily'):
+        start_str = request.GET.get('start_date', '')
+        end_str   = request.GET.get('end_date', '')
+        if start_str and end_str:
+            try:
+                start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+            except ValueError:
+                start_date = end_date = today
+        else:
+            start_date = end_date = today
+        period_label = f"{start_date} – {end_date}"
+
+        if report_type == 'daily':
+            daily_rows = _build_daily_report(emp_qs, start_date, end_date)
+        else:
+            emp_stats = _build_emp_stats_for_period(emp_qs, start_date, end_date)
+
+    return render(request, 'home/user/report/employee_report.html', {
+        'employee':      employee,
+        'weekly_stats':  weekly_stats,
+        'monthly_stats': monthly_stats,
+        'week_start':    week_start,
+        'month_start':   month_start,
+        'month_label':   f"{UZ_MONTHS[today.month]} {today.year}",
+        'emp_stats':     emp_stats,
+        'daily_rows':    daily_rows,
+        'report_type':   report_type,
+        'period_label':  period_label,
+        'start_date':    start_date or today,
+        'end_date':      end_date or today,
+        'today':         today,
+        'segment':       'employees',
+        'data':          data,
+        'tashkent_time': timezone.localtime(timezone.now()),
+        'filial':        employee.filial.filial_name if employee.filial else '',
+    })
+
+
+@any_admin_required
+def employee_download_excel(request, pk):
+    """
+    Xodimning to'liq hisobotini bitta report.xlsx ga yozadi.
+    Varaqlar: Oylik, Haftalik, va (ixtiyoriy) Kunlik yoki Sana bo'yicha.
+    """
+    employee = get_object_or_404(Employee, id=pk)
+    today    = timezone.localdate()
+    emp_qs   = Employee.objects.filter(id=pk)
+
+    from openpyxl.styles import Font, PatternFill, Alignment
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(fill_type='solid', fgColor='1F3864')
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)  # default sheet ni o'chirish
+
+    def _style_header(ws, headers):
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = center
+
+    def _autofit(ws):
+        for col in ws.columns:
+            max_len = max((len(str(cell.value or '')) for cell in col), default=8)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 38)
+
+    def _write_summary_sheet(ws, stats_list, period_str):
+        """Xulosa varag'i: bir qator xodim uchun."""
+        _style_header(ws, [
+            'Davr', 'Xodim', 'Turi',
+            'Kerakli (soat)', 'Ishlagan (soat)', 'Bajarilish (%)',
+            'Kechikish (daqiqa)', 'Erta ketish (daqiqa)', 'Ortiqcha (daqiqa)',
+        ])
+        for e in stats_list:
+            ws.append([
+                period_str,
+                e['employee'].name,
+                e['employee'].get_employee_type_display(),
+                e['required_h'],
+                e['worked_h'],
+                e['progress_pct'],
+                e['late_total'],
+                e['early_total'],
+                e['overtime_total'],
+            ])
+        _autofit(ws)
+
+    def _write_daily_sheet(ws, rows):
+        """Kunlik davomat varag'i."""
+        _style_header(ws, [
+            '#', 'Sana', 'Hafta kuni', 'Xodim', 'Turi',
+            'Lokatsiya', 'Jadval boshi', 'Jadval oxiri',
+            'Holat', 'Kirish', 'Chiqish',
+            'Ishlagan (soat)', 'Kechikish (daqiqa)', 'Ortiqcha (daqiqa)',
+        ])
+        for r in rows:
+            ws.append([
+                r['index'],
+                str(r['date']),
+                r['weekday'],
+                r['employee'].name,
+                r['employee'].get_employee_type_display(),
+                r['location'],
+                str(r['schedule_start']),
+                str(r['schedule_end']),
+                r['status'],
+                str(r['check_in'])  if r['check_in']  else '—',
+                str(r['check_out']) if r['check_out'] else '—',
+                round((r['worked_h'] * 60 + r['worked_m']) / 60, 2),
+                r['late_min'],
+                r['overtime_min'],
+            ])
+        _autofit(ws)
+
+    # ── 1. Oylik varaq ──
+    month_start = today.replace(day=1)
+    ws_monthly  = wb.create_sheet("Oylik")
+    monthly     = _build_emp_stats_for_period(emp_qs, month_start, today)
+    _write_summary_sheet(ws_monthly, monthly, f"{month_start} – {today}")
+
+    # ── 2. Haftalik varaq ──
+    week_start = today - timedelta(days=today.weekday())
+    ws_weekly  = wb.create_sheet("Haftalik")
+    weekly     = _build_emp_stats_for_period(emp_qs, week_start, today)
+    _write_summary_sheet(ws_weekly, weekly, f"{week_start} – {today}")
+
+    # ── 3. Qo'shimcha varaq (ixtiyoriy) ──
+    report_type = request.GET.get('type', '')
+    start_str   = request.GET.get('start_date', '')
+    end_str     = request.GET.get('end_date', '')
+
+    if report_type in ('date_range', 'daily') and start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+            period_str = f"{start_date} – {end_date}"
+
+            if report_type == 'daily':
+                ws_extra = wb.create_sheet("Kunlik")
+                rows = _build_daily_report(emp_qs, start_date, end_date)
+                _write_daily_sheet(ws_extra, rows)
+            else:
+                ws_extra = wb.create_sheet("Sana bo'yicha")
+                stats = _build_emp_stats_for_period(emp_qs, start_date, end_date)
+                _write_summary_sheet(ws_extra, stats, period_str)
+        except ValueError:
+            pass
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename=report.xlsx'
+    wb.save(response)
+    return response
+
+
+# ============================================================
+# OYLIK XULOSA HISOBOTI
+# ============================================================
+
+@any_admin_required
+def monthly_summary(request):
+    """Eski URL — asosiy hisobot sahifasiga yo'naltiradi."""
+    return redirect(reverse('home_get_dates') + '?type=monthly')
+
+
+# ============================================================
+# MAOSH BOSHQARUVI
+# ============================================================
+
+@hr_admin_required
+def salary_list(request):
+    """Barcha xodimlarning oylik maosh sozlamalarini ko'rsatish."""
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    filial = Filial.objects.get(id=filial_id)
+    employees_qs = Employee.objects.filter(filial_id=filial_id).order_by('name')
+
+    salary_configs = {
+        sc.employee_id: sc
+        for sc in SalaryConfig.objects.filter(employee__in=employees_qs)
+    }
+
+    emp_data = []
+    for emp in employees_qs:
+        cfg = salary_configs.get(emp.id)
+        emp_data.append({
+            'employee'      : emp,
+            'monthly_hours'  : cfg.monthly_hours   if cfg else None,
+            'monthly_salary' : cfg.monthly_salary  if cfg else None,
+            'hourly_rate'    : cfg.hourly_rate      if cfg else None,
+        })
+
+    return render(request, 'home/user/salary/salary_list.html', {
+        'emp_data' : emp_data,
+        'filial'   : filial.filial_name,
+        'segment'  : 'salary',
+        'data'     : {'filials': _base_context(admin_user)['filials']},
+    })
+
+
+@hr_admin_required
+@require_POST
+def salary_update(request, pk):
+    """AJAX: xodim maosh konfiguratsiyasini saqlash."""
+    admin_user = request.admin_user
+    filial_id = _get_filial_id(admin_user, request)
+
+    employee = get_object_or_404(Employee, id=pk)
+    if employee.filial_id != filial_id:
+        return JsonResponse({'ok': False, 'error': "Ruxsat yo'q"}, status=403)
+
+    salary_cfg, _ = SalaryConfig.objects.get_or_create(employee=employee)
+    form = SalaryConfigForm(request.POST, instance=salary_cfg)
+    if form.is_valid():
+        cfg = form.save()
+        return JsonResponse({
+            'ok'            : True,
+            'monthly_hours'  : float(cfg.monthly_hours),
+            'monthly_salary' : float(cfg.monthly_salary),
+            'hourly_rate'    : round(cfg.hourly_rate, 0),
+        })
+    return JsonResponse({'ok': False, 'errors': form.errors}, status=400)
+
+
+# ============================================================
+# MONITORING BO'LIMI — TINGLOVCHILAR HISOBOTLARI
+# ============================================================
+
+def _get_attendance_limit(admin_user, filial_id):
+    """Filial yoki tashkilot uchun davomat limitini qaytaradi."""
+    from apps.students.models import AttendanceLimit
+    limit = None
+    if filial_id:
+        limit = AttendanceLimit.objects.filter(
+            organization=admin_user.organization, filial_id=filial_id
+        ).first()
+    if not limit:
+        limit = AttendanceLimit.objects.filter(
+            organization=admin_user.organization, filial=None
+        ).first()
+    return limit
+
+
+def _compute_student_stats(student, group, para_hours):
+    """
+    Tinglovchining davomat statistikasini hisoblaydi.
+
+    Qoidalar:
+    - Faqat BUGUNGI KUNA QADAR bo'lgan va smena belgilangan dars kunlari hisobga olinadi.
+    - Har bir para alohida tekshiriladi:
+        * check_in > para_start + 40 daq → o'sha paraga kelmagan (missed)
+        * check_in <= para_start + 40 daq → o'sha paraga kelgan
+    - Barcha paralarga 40+ daqiqa kech qolgan kun → kelmadi (absent) hisoblanadi.
+    - Davomat yozilmagan dars kunlari → kelmadi + barcha paralari missed.
+    """
+    from apps.students.models import StudentAttendance, GroupLesson
+    from django.utils import timezone
+    import datetime as _dt
+
+    today = timezone.localdate()
+    LATE_THRESHOLD = 40  # daqiqa
+
+    lessons_qs = GroupLesson.objects.filter(
+        group=group, smena__isnull=False, date__lte=today
+    ).select_related('smena')
+    lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+    scheduled_dates = set(lesson_map.keys())
+
+    att_qs = StudentAttendance.objects.filter(student=student, group=group)
+    att_by_date = {att.date: att for att in att_qs}
+
+    present      = 0
+    late         = 0
+    absent       = 0
+    excused      = 0
+    missed_paras = 0
+
+    for date, lesson in lesson_map.items():
+        smena = lesson.smena
+        para_starts = _get_smena_para_starts(smena)
+        para_count = len(para_starts)
+
+        att = att_by_date.get(date)
+
+        if att is None or not att.check_in or att.status == 'absent':
+            absent       += para_count
+            missed_paras += para_count
+            continue
+
+        if att.status == 'excused':
+            excused      += para_count
+            missed_paras += para_count
+            continue
+
+        # Har bir parani alohida tekshir (para-asosida)
+        check_in_dt  = _dt.datetime.combine(date, att.check_in)
+        check_out_dt = _dt.datetime.combine(date, att.check_out) if att.check_out else None
+
+        for p in para_starts:
+            para_dt = _dt.datetime.combine(date, p)
+            if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                # 40+ daqiqa kech → paraga kelmadi
+                absent       += 1
+                missed_paras += 1
+            elif check_out_dt and check_out_dt < para_dt:
+                # Chiqish vaqti para boshlanishidan oldin → paraga kelmadi
+                absent       += 1
+                missed_paras += 1
+            else:
+                # Paraga keldi
+                present += 1
+                if check_in_dt > para_dt:
+                    late += 1
+
+    # Total = barcha dars kunlarining paralari yig'indisi
+    total = sum(len(_get_smena_para_starts(lesson_map[d].smena)) for d in lesson_map)
+    missed_hours = round(missed_paras * para_hours, 1)
+    pct          = round(present / total * 100) if total > 0 else 0
+
+    return {
+        'total':        total,
+        'present':      present,
+        'late':         late,
+        'absent':       absent,
+        'excused':      excused,
+        'missed_paras': missed_paras,
+        'missed_hours': missed_hours,
+        'pct':          pct,
+    }
+
+
+def _build_exceeded_students(groups_qs, limit):
+    """Limitdan oshgan tinglovchilar ro'yxatini qaytaradi."""
+    if not limit:
+        return []
+
+    exceeded = []
+    seen = set()
+
+    for group in groups_qs.prefetch_related('students', 'direction'):
+        for student in group.students.all():
+            key = (student.id, group.id)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            stats = _compute_student_stats(student, group, limit.para_hours)
+
+            if stats['missed_hours'] > limit.max_missed_hours:
+                exceeded.append({
+                    'student':      student,
+                    'group':        group,
+                    'direction':    group.direction,
+                    'missed_paras': stats['missed_paras'],
+                    'missed_hours': stats['missed_hours'],
+                    'max_hours':    limit.max_missed_hours,
+                    'over_hours':   round(stats['missed_hours'] - limit.max_missed_hours, 1),
+                    'pct':          stats['pct'],
+                })
+
+    exceeded.sort(key=lambda r: r['missed_hours'], reverse=True)
+    return exceeded
+
+
+@monitoring_required
+def monitoring_dashboard(request):
+    """Monitoring dashboard: guruhlar, tinglovchilar, kechikish foizi."""
+    from apps.students.models import Group, StudentAttendance, Direction
+    from django.db.models import Count, Q
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    groups_qs = Group.objects.filter(organization=admin_user.organization)
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    groups_count = groups_qs.count()
+
+    # Noyob tinglovchilar soni
+    student_ids = set()
+    for g in groups_qs.prefetch_related('students'):
+        student_ids.update(g.students.values_list('id', flat=True))
+    students_count = len(student_ids)
+
+    # Kechikish foizi (barcha vaqt uchun)
+    att_qs    = StudentAttendance.objects.filter(group__in=groups_qs)
+    total_att = att_qs.count()
+    late_att  = att_qs.filter(Q(late_minutes__gt=0) | Q(status='late')).count()
+    late_pct  = round(late_att / total_att * 100, 1) if total_att > 0 else 0
+
+    # Limitdan oshgan tinglovchilar + jami qoldirilgan soat
+    limit          = _get_attendance_limit(admin_user, filial_id)
+    para_hours     = limit.para_hours if limit else 2.0
+    exceeded_list  = _build_exceeded_students(groups_qs, limit)
+    exceeded_count = len(exceeded_list)
+
+    # Jami qoldirilgan soat (barcha guruh tinglovchilari bo'yicha)
+    total_missed_hours = 0.0
+    seen_keys = set()
+    for group in groups_qs.prefetch_related('students'):
+        for student in group.students.all():
+            key = (student.id, group.id)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            stats = _compute_student_stats(student, group, para_hours)
+            total_missed_hours += stats['missed_hours']
+    total_missed_hours = round(total_missed_hours, 1)
+
+    # So'nggi 30 kunlik trend (kunlik davomat soni)
+    from datetime import date, timedelta
+    today      = date.today()
+    trend_data = []
+    for i in range(29, -1, -1):
+        d      = today - timedelta(days=i)
+        count  = att_qs.filter(date=d, status__in=['present', 'late']).count()
+        trend_data.append({'date': str(d), 'count': count})
+
+    return render(request, 'monitoring/dashboard.html', {
+        'segment':        'monitoring_dashboard',
+        'groups_count':   groups_count,
+        'students_count': students_count,
+        'late_pct':       late_pct,
+        'total_att':      total_att,
+        'trend_data':     json.dumps(trend_data),
+        'exceeded_count':      exceeded_count,
+        'limit':               limit,
+        'total_missed_hours':  total_missed_hours,
+        'data':                {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':  timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_reports(request):
+    """Tinglovchilar davomati hisoboti — yo'nalish, guruh, yil, oy filtrlari."""
+    from apps.students.models import Group, Direction, MONTH_CHOICES
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    # Filter uchun ma'lumotlar
+    base_filter = {'organization': admin_user.organization}
+    if filial_id:
+        base_filter['filial_id'] = filial_id
+
+    directions = Direction.objects.filter(**base_filter).order_by('name')
+    all_groups = Group.objects.filter(**base_filter).order_by('name')
+    years      = sorted(all_groups.values_list('year', flat=True).distinct())
+
+    # GET parametrlar
+    direction_id = request.GET.get('direction', '')
+    group_id     = request.GET.get('group', '')
+    year         = request.GET.get('year', '')
+    month        = request.GET.get('month', '')
+
+    # Guruhlarni filtrlash
+    filtered_groups = all_groups
+    if direction_id:
+        filtered_groups = filtered_groups.filter(direction_id=direction_id)
+    if year:
+        filtered_groups = filtered_groups.filter(year=year)
+    if month:
+        filtered_groups = filtered_groups.filter(month=month)
+    if group_id:
+        filtered_groups = filtered_groups.filter(id=group_id)
+
+    # Hisobot qatorlari
+    report_rows = []
+    any_filter  = any([direction_id, group_id, year, month])
+
+    limit = _get_attendance_limit(admin_user, filial_id)
+    para_hours = limit.para_hours if limit else 2.0
+    max_hours  = limit.max_missed_hours if limit else None
+
+    if any_filter:
+        for group in filtered_groups.prefetch_related('students', 'direction'):
+            for student in group.students.all():
+                s = _compute_student_stats(student, group, para_hours)
+                exceeded = max_hours is not None and s['missed_hours'] > max_hours
+                report_rows.append({
+                    'student':      student,
+                    'group':        group,
+                    'direction':    group.direction,
+                    'year':         group.year,
+                    'month':        group.get_month_display(),
+                    'total':        s['total'],
+                    'present':      s['present'],
+                    'late':         s['late'],
+                    'absent':       s['absent'],
+                    'excused':      s['excused'],
+                    'missed_paras': s['missed_paras'],
+                    'missed_hours': s['missed_hours'],
+                    'pct':          s['pct'],
+                    'exceeded':     exceeded,
+                })
+        report_rows.sort(key=lambda r: r['pct'])
+
+    return render(request, 'monitoring/reports.html', {
+        'segment':       'monitoring_reports',
+        'directions':    directions,
+        'all_groups':    all_groups,
+        'years':         years,
+        'months':        MONTH_CHOICES,
+        'report_rows':   report_rows,
+        'any_filter':    any_filter,
+        'f_direction':   direction_id,
+        'f_group':       group_id,
+        'f_year':        year,
+        'f_month':       month,
+        'limit':         limit,
+        'para_hours':    para_hours,
+        'max_hours':     max_hours,
+        'data':          {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_limit_settings(request):
+    """Davomat limiti sozlamalari."""
+    from apps.students.models import AttendanceLimit
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    limit, _ = AttendanceLimit.objects.get_or_create(
+        organization=admin_user.organization,
+        filial_id=filial_id if filial_id else None,
+    )
+
+    if request.method == 'POST':
+        try:
+            para_hours     = float(request.POST.get('para_hours', 2.0))
+            max_missed_hours = float(request.POST.get('max_missed_hours', 20.0))
+            if para_hours <= 0 or max_missed_hours <= 0:
+                raise ValueError
+            limit.para_hours       = para_hours
+            limit.max_missed_hours = max_missed_hours
+            limit.save()
+            return redirect(reverse('monitoring_limit_settings') + '?saved=1')
+        except (ValueError, TypeError):
+            pass
+
+    saved = request.GET.get('saved') == '1'
+    return render(request, 'monitoring/limit_settings.html', {
+        'segment':   'monitoring_limit',
+        'limit':     limit,
+        'saved':     saved,
+        'data':      {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_exceeded(request):
+    """Limitdan oshgan tinglovchilar ro'yxati."""
+    from apps.students.models import Group
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    groups_qs = Group.objects.filter(organization=admin_user.organization)
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    limit         = _get_attendance_limit(admin_user, filial_id)
+    exceeded_list = _build_exceeded_students(groups_qs, limit)
+
+    return render(request, 'monitoring/exceeded.html', {
+        'segment':        'monitoring_exceeded',
+        'exceeded_list':  exceeded_list,
+        'limit':          limit,
+        'data':           {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':  timezone.localtime(timezone.now()),
+    })
+
+
+# ============================================================
+# MONITORING — YANGI GURUHLAR BO'LIMI
+# ============================================================
+
+def _get_smena_para_starts(smena):
+    """SmenaSlot → eski para*_start fallback."""
+    slots = smena.get_slots()
+    starts = [s.start for s in slots if s.start]
+    if not starts:
+        for t in [smena.para1_start, smena.para2_start, smena.para3_start]:
+            if t:
+                starts.append(t)
+    return starts
+
+
+def _get_para_attendance(att, lesson):
+    """
+    Bir kun uchun para-davomat ma'lumotini qaytaradi.
+    Qaytaradi: {'p1': bool, 'p2': bool|None, 'p3': bool|None}
+    p2/p3 = None degani — o'sha kun uchun para mavjud emas.
+    """
+    import datetime as _dt
+    LATE_THRESHOLD = 40
+
+    smena = lesson.smena
+    date  = lesson.date
+
+    para_starts = _get_smena_para_starts(smena)
+
+    result = {'p1': None, 'p2': None, 'p3': None}
+    labels = ['p1', 'p2', 'p3']
+
+    if att is None or not att.check_in or att.status in ('absent',):
+        for i, _ in enumerate(para_starts):
+            result[labels[i]] = False
+        return result
+
+    check_in_dt  = _dt.datetime.combine(date, att.check_in)
+    check_out_dt = _dt.datetime.combine(date, att.check_out) if att.check_out else None
+
+    for i, p in enumerate(para_starts):
+        para_dt = _dt.datetime.combine(date, p)
+        lbl = labels[i]
+        if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+            # 40+ daqiqa kech keldi → paraga kelmadi
+            result[lbl] = False
+        elif check_out_dt and check_out_dt < para_dt:
+            # Chiqish vaqti para boshlanishidan oldin → paraga kelmadi
+            result[lbl] = False
+        else:
+            result[lbl] = True
+
+    return result
+
+
+@monitoring_required
+def monitoring_groups_list(request):
+    """Guruhlar ro'yxati — filtr: yil, oy, yo'nalish."""
+    from apps.students.models import Group, Direction, MONTH_CHOICES
+    import datetime as _dt
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    today = _dt.date.today()
+    base_filter = {'organization': admin_user.organization}
+    if filial_id:
+        base_filter['filial_id'] = filial_id
+
+    # Filtr parametrlari
+    sel_year      = request.GET.get('year',      str(today.year))
+    sel_month     = request.GET.get('month',     str(today.month))
+    sel_direction = request.GET.get('direction', '')
+
+    try:
+        sel_year_int  = int(sel_year)
+        sel_month_int = int(sel_month)
+    except (ValueError, TypeError):
+        sel_year_int  = today.year
+        sel_month_int = today.month
+
+    groups_qs = Group.objects.filter(**base_filter).select_related('direction', 'filial')
+    if sel_year_int:
+        groups_qs = groups_qs.filter(year=sel_year_int)
+    if sel_month_int:
+        groups_qs = groups_qs.filter(month=sel_month_int)
+    if sel_direction:
+        groups_qs = groups_qs.filter(direction_id=sel_direction)
+
+    groups_qs = groups_qs.prefetch_related('students').order_by('name')
+
+    directions = Direction.objects.filter(**base_filter)
+
+    # Yillar ro'yxati (mavjud guruhlardan)
+    years = sorted(
+        Group.objects.filter(**{'organization': admin_user.organization})
+        .values_list('year', flat=True).distinct(),
+        reverse=True
+    )
+
+    return render(request, 'monitoring/groups_list.html', {
+        'segment':        'monitoring_groups',
+        'groups':         groups_qs,
+        'directions':     directions,
+        'month_choices':  MONTH_CHOICES,
+        'years':          years,
+        'sel_year':       str(sel_year_int),
+        'sel_month':      str(sel_month_int),
+        'sel_direction':  sel_direction,
+        'data':           {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':  timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_group_report(request, pk):
+    """
+    Guruh kunlik hisoboti: sana diapazoni bo'yicha
+    har bir tinglovchi / har bir kun: check_in, p1, p2, p3, check_out.
+    """
+    from apps.students.models import Group, GroupLesson, StudentAttendance
+    import datetime as _dt
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    group = get_object_or_404(Group, pk=pk, organization=admin_user.organization)
+
+    today = _dt.date.today()
+
+    # Sana diapazoni
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to',   '')
+    try:
+        date_from = _dt.date.fromisoformat(date_from_str)
+    except ValueError:
+        date_from = today.replace(day=1)
+        date_from_str = date_from.isoformat()
+    try:
+        date_to = _dt.date.fromisoformat(date_to_str)
+    except ValueError:
+        date_to = today
+        date_to_str = date_to.isoformat()
+
+    effective_to = min(date_to, today)
+
+    # Dars kunlari (smena bor)
+    lessons_qs = GroupLesson.objects.filter(
+        group=group,
+        date__gte=date_from,
+        date__lte=effective_to,
+        smena__isnull=False,
+    ).select_related('smena').order_by('date')
+    lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+    sorted_dates = sorted(lesson_map.keys())
+
+    students = list(group.students.all().order_by('full_name'))
+
+    # Para-ustunlar sonini aniqlash (max para soni kunlar orasida)
+    max_paras = 1
+    for lesson in lesson_map.values():
+        cnt = len(_get_smena_para_starts(lesson.smena))
+        if cnt > max_paras:
+            max_paras = cnt
+
+    # Davomat yozuvlari
+    att_qs = StudentAttendance.objects.filter(
+        group=group,
+        date__gte=date_from,
+        date__lte=effective_to,
+        student__in=students,
+    ).select_related('student')
+
+    # att_map: {(student_id, date): att}
+    att_map = {}
+    for att in att_qs:
+        att_map[(att.student_id, att.date)] = att
+
+    # Jadval qatorlari
+    rows = []
+    for date in sorted_dates:
+        lesson   = lesson_map[date]
+        _para_starts = _get_smena_para_starts(lesson.smena)
+        has_p2   = len(_para_starts) >= 2
+        has_p3   = len(_para_starts) >= 3
+        day_rows = []
+        for student in students:
+            att    = att_map.get((student.id, date))
+            para   = _get_para_attendance(att, lesson)
+            day_rows.append({
+                'student':   student,
+                'check_in':  att.check_in  if att else None,
+                'check_out': att.check_out if att else None,
+                'p1':        para['p1'],
+                'p2':        para['p2'] if has_p2 else None,
+                'p3':        para['p3'] if has_p3 else None,
+            })
+        rows.append({
+            'date':    date,
+            'has_p2':  has_p2,
+            'has_p3':  has_p3,
+            'students': day_rows,
+        })
+
+    return render(request, 'monitoring/group_report.html', {
+        'segment':      'monitoring_groups',
+        'group':        group,
+        'rows':         rows,
+        'students':     students,
+        'sorted_dates': sorted_dates,
+        'date_from_str': date_from_str,
+        'date_to_str':   date_to_str,
+        'max_paras':    max_paras,
+        'data':         {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_group_students(request, pk):
+    """Guruh tinglovchilari — face ID holati bilan."""
+    from apps.students.models import Group
+
+    admin_user = request.admin_user
+    group      = get_object_or_404(Group, pk=pk, organization=admin_user.organization)
+    students   = group.students.all().order_by('full_name')
+
+    return render(request, 'monitoring/group_students.html', {
+        'segment':   'monitoring_groups',
+        'group':     group,
+        'students':  students,
+        'data':      {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@monitoring_required
+def monitoring_student_detail_report(request, student_pk):
+    """
+    Individual tinglovchi hisoboti (monitoring uchun).
+    group_id GET parametri orqali guruh tanlanadi.
+    """
+    from apps.students.models import Group, GroupLesson, StudentAttendance, Student
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+
+    student  = get_object_or_404(Student, pk=student_pk, organization=admin_user.organization)
+    group_id = request.GET.get('group_id', '')
+
+    # Tinglovchining guruhlari
+    groups_qs = student.groups.filter(organization=admin_user.organization)
+    if filial_id:
+        groups_qs = groups_qs.filter(filial_id=filial_id)
+
+    selected_group = None
+    if group_id:
+        selected_group = groups_qs.filter(pk=group_id).first()
+    if not selected_group:
+        selected_group = groups_qs.first()
+
+    import datetime as _dt
+    today = _dt.date.today()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to',   '')
+    try:
+        date_from = _dt.date.fromisoformat(date_from_str)
+    except ValueError:
+        date_from = today.replace(day=1)
+        date_from_str = date_from.isoformat()
+    try:
+        date_to = _dt.date.fromisoformat(date_to_str)
+    except ValueError:
+        date_to = today
+        date_to_str = date_to.isoformat()
+
+    effective_to = min(date_to, today)
+
+    rows = []
+    if selected_group:
+        lessons_qs = GroupLesson.objects.filter(
+            group=selected_group,
+            date__gte=date_from,
+            date__lte=effective_to,
+            smena__isnull=False,
+        ).select_related('smena').order_by('date')
+        lesson_map = {lesson.date: lesson for lesson in lessons_qs}
+
+        att_map = {
+            att.date: att
+            for att in StudentAttendance.objects.filter(
+                student=student,
+                group=selected_group,
+                date__gte=date_from,
+                date__lte=effective_to,
+            )
+        }
+
+        for date in sorted(lesson_map.keys()):
+            lesson   = lesson_map[date]
+            has_p2   = bool(lesson.smena.para2_start)
+            has_p3   = bool(lesson.smena.para3_start)
+            att      = att_map.get(date)
+            para     = _get_para_attendance(att, lesson)
+            rows.append({
+                'date':      date,
+                'check_in':  att.check_in  if att else None,
+                'check_out': att.check_out if att else None,
+                'p1':        para['p1'],
+                'p2':        para['p2'] if has_p2 else None,
+                'p3':        para['p3'] if has_p3 else None,
+            })
+
+    return render(request, 'monitoring/student_detail_report.html', {
+        'segment':         'monitoring_groups',
+        'student':         student,
+        'groups':          groups_qs,
+        'selected_group':  selected_group,
+        'rows':            rows,
+        'date_from_str':   date_from_str,
+        'date_to_str':     date_to_str,
+        'data':            {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':   timezone.localtime(timezone.now()),
+    })
+
+
+# ============================================================
+# UMUMIY DAM OLISH KUNLARI (PublicHoliday)
+# ============================================================
+
+@hr_admin_required
+def public_holidays(request):
+    """Bayram / dam olish kunlari ro'yxati va qo'shish"""
+    admin_user  = request.admin_user
+    filial_id   = _get_filial_id(admin_user, request)
+    filial      = Filial.objects.filter(id=filial_id).first() if filial_id else None
+
+    if request.method == 'POST':
+        form = PublicHolidayForm(request.POST)
+        if form.is_valid():
+            holiday = form.save(commit=False)
+            # Agar filial tanlagan bo'lmasa va admin o'z filialida bo'lsa
+            if not holiday.filial and filial:
+                holiday.filial = None  # None = barchasi uchun
+            holiday.save()
+
+            # Yangi bayram qo'shildi → shu sanada is_day_off=False bo'lgan
+            # kunlik jadvallarni is_day_off=True ga o'tkazish
+            _apply_holiday_to_daily_schedules(holiday)
+
+            return redirect('public_holidays')
+    else:
+        form = PublicHolidayForm()
+
+    from django.utils.timezone import now
+    year = int(request.GET.get('year', now().year))
+    holidays_qs = PublicHoliday.objects.filter(date__year=year).order_by('date')
+    if filial:
+        holidays_qs = holidays_qs.filter(
+            Q(filial__isnull=True) | Q(filial=filial)
+        )
+
+    return render(request, 'home/public_holidays.html', {
+        'form':     form,
+        'holidays': holidays_qs,
+        'year':     year,
+        'segment':  'public_holidays',
+        'data':     {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@hr_admin_required
+def public_holiday_delete(request, pk):
+    """Bayramni o'chirish"""
+    holiday = get_object_or_404(PublicHoliday, pk=pk)
+    if request.method == 'POST':
+        date_val = holiday.date
+        filial_val = holiday.filial
+        holiday.delete()
+        # O'chirilgan bayram kunini ish kuni qilib qayta belgilash
+        _remove_holiday_from_daily_schedules(date_val, filial_val)
+        return redirect('public_holidays')
+    return render(request, 'home/public_holiday_confirm_delete.html', {
+        'holiday': holiday,
+        'data':    {'filials': _base_context(request.admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+def _apply_holiday_to_daily_schedules(holiday):
+    """Yangi bayram kuni barcha mos xodimlarning kunlik jadvalini day_off qiladi"""
+    qs = EmployeeDailySchedule.objects.filter(
+        date=holiday.date, is_day_off=False
+    )
+    if holiday.filial:
+        qs = qs.filter(employee__filial=holiday.filial)
+    qs.update(is_day_off=True, day_off_reason=holiday.name)
+
+
+def _remove_holiday_from_daily_schedules(date_val, filial_val):
+    """Bayram o'chirilganda, shu kun ish kuni bo'lgan xodimlarni qayta tiklash"""
+    from apps.main.models import _PYTHON_WD_TO_EN
+    en_name = _PYTHON_WD_TO_EN[date_val.weekday()]
+
+    qs = EmployeeDailySchedule.objects.filter(
+        date=date_val,
+        is_day_off=True,
+        day_off_reason__isnull=False,
+        is_manually_edited=False,
+    ).exclude(day_off_reason='Dam olish kuni')
+
+    if filial_val:
+        qs = qs.filter(employee__filial=filial_val)
+
+    # Shu xodimlarni qayta ish kuniga o'tkazish (agar jadvalida shu hafta kuni bo'lsa)
+    for entry in qs.select_related('source_schedule__location').iterator():
+        sched = entry.source_schedule
+        if sched:
+            sd = sched.days.filter(weekday__name_en=en_name).first()
+            if sd:
+                entry.is_day_off    = False
+                entry.day_off_reason = None
+                entry.start          = sd.start
+                entry.end            = sd.end
+                entry.location       = sched.location
+                entry.save(update_fields=['is_day_off', 'day_off_reason', 'start', 'end', 'location'])
+            else:
+                # Jadvalda yo'q kun — dam olish qolsin
+                entry.day_off_reason = 'Dam olish kuni'
+                entry.save(update_fields=['day_off_reason'])
+        else:
+            entry.day_off_reason = 'Dam olish kuni'
+            entry.save(update_fields=['day_off_reason'])
+
+
+# ============================================================
+# XODIM KUNLIK KALENDAR
+# ============================================================
+
+@hr_admin_required
+def employee_calendar(request, pk):
+    """Xodimning kalendar ko'rinishdagi kunlik jadvali"""
+    import calendar as cal_module
+    from datetime import date
+
+    admin_user = request.admin_user
+    employee   = get_object_or_404(Employee, pk=pk)
+
+    today = date.today()
+    year  = int(request.GET.get('year',  today.year))
+    month = int(request.GET.get('month', today.month))
+
+    # Oy chegaralari
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, cal_module.monthrange(year, month)[1])
+
+    # Jadval yaratish tugmasi
+    if request.method == 'POST' and 'generate' in request.POST:
+        from datetime import date as ddate
+        count = generate_employee_daily_schedules(
+            employee,
+            from_date=ddate.today(),
+            to_date=ddate(today.year, 12, 31),
+        )
+        return redirect(f"{request.path}?year={year}&month={month}&generated={count}")
+
+    # Oy uchun kunlik jadvallar
+    entries = {
+        e.date: e
+        for e in EmployeeDailySchedule.objects.filter(
+            employee=employee,
+            date__gte=first_day,
+            date__lte=last_day,
+        ).select_related('location')
+    }
+
+    # Kalendar qatorlari
+    weeks = cal_module.monthcalendar(year, month)
+    calendar_rows = []
+    for week in weeks:
+        row = []
+        for day_num in week:
+            if day_num == 0:
+                row.append(None)
+            else:
+                d = date(year, month, day_num)
+                row.append({'date': d, 'entry': entries.get(d)})
+        calendar_rows.append(row)
+
+    # Oy navigatsiya
+    prev_month = month - 1 if month > 1 else 12
+    prev_year  = year if month > 1 else year - 1
+    next_month = month + 1 if month < 12 else 1
+    next_year  = year if month < 12 else year + 1
+
+    # Statistika
+    month_entries = list(entries.values())
+    work_days  = sum(1 for e in month_entries if not e.is_day_off)
+    day_offs   = sum(1 for e in month_entries if e.is_day_off)
+    edited     = sum(1 for e in month_entries if e.is_manually_edited)
+
+    UZ_MONTHS = ['', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+                 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
+
+    has_daily = EmployeeDailySchedule.objects.filter(employee=employee).exists()
+    generated   = request.GET.get('generated')
+    assigned    = request.GET.get('assigned')
+    gen_count   = request.GET.get('gen_count', 0)
+    bulk_added  = request.GET.get('bulk_added')
+
+    # Filial lokatsiyalari (bulk shift modal uchun)
+    from apps.main.models import Location as Loc
+    filial = employee.filial
+    org    = filial.organization if filial else None
+    if org:
+        locations = list(Loc.objects.filter(organization=org))
+    elif filial:
+        locations = list(Loc.objects.filter(filial=filial))
+    else:
+        locations = list(Loc.objects.all())
+
+    return render(request, 'home/user/employees/employee_calendar.html', {
+        'employee':      employee,
+        'calendar_rows': calendar_rows,
+        'year':          year,
+        'month':         month,
+        'month_name':    UZ_MONTHS[month],
+        'today':         today,
+        'prev_year':     prev_year,  'prev_month': prev_month,
+        'next_year':     next_year,  'next_month': next_month,
+        'work_days':     work_days,
+        'day_offs':      day_offs,
+        'edited':        edited,
+        'has_daily':     has_daily,
+        'generated':     generated,
+        'assigned':      assigned,
+        'gen_count':     gen_count,
+        'bulk_added':    bulk_added,
+        'locations':     locations,
+        'segment':       'employees',
+        'data':          {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+@hr_admin_required
+def daily_schedule_edit(request, pk):
+    """Xodimning bitta kunlik jadvalini tahrirlash (qo'shimcha shiftlar bilan)"""
+    admin_user = request.admin_user
+    entry      = get_object_or_404(EmployeeDailySchedule, pk=pk)
+    employee   = entry.employee
+    filial     = employee.filial
+    org        = filial.organization if filial else None
+
+    fs_kwargs = dict(filial=filial, organization=org)
+
+    if request.method == 'POST':
+        form = DailyScheduleEditForm(
+            request.POST, instance=entry,
+            filial=filial, organization=org
+        )
+        formset = make_extra_shift_formset(**fs_kwargs)(
+            request.POST, instance=entry
+        )
+        if form.is_valid() and formset.is_valid():
+            obj = form.save(commit=False)
+            obj.is_manually_edited = True
+            obj.save()
+            formset.save()
+            return redirect(
+                f"{reverse('employee_calendar', args=[employee.pk])}"
+                f"?year={entry.date.year}&month={entry.date.month}"
+            )
+    else:
+        form = DailyScheduleEditForm(
+            instance=entry, filial=filial, organization=org
+        )
+        formset = make_extra_shift_formset(**fs_kwargs)(instance=entry)
+
+    UZ_DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba',
+               'Juma', 'Shanba', 'Yakshanba']
+    UZ_MONTHS = ['', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+                 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
+
+    return render(request, 'home/user/employees/daily_schedule_edit.html', {
+        'form':      form,
+        'formset':   formset,
+        'entry':     entry,
+        'employee':  employee,
+        'day_name':  UZ_DAYS[entry.date.weekday()],
+        'month_name': UZ_MONTHS[entry.date.month],
+        'segment':   'employees',
+        'data':      {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time': timezone.localtime(timezone.now()),
+    })
+
+
+# ============================================================
+# BARCHA XODIMLAR UCHUN BULK GENERATSIYA
+# ============================================================
+
+@hr_admin_required
+def generate_all_daily_schedules(request):
+    """
+    Filialdagi barcha xodimlar uchun kunlik jadval generatsiya qilish.
+    Faqat POST — "Jadvallar" sahifasidagi tugmadan chaqiriladi.
+    """
+    if request.method != 'POST':
+        return redirect('schedules')
+
+    from datetime import date as ddate
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+    if not filial_id:
+        return redirect('schedules')
+
+    employees = Employee.objects.filter(
+        filial_id=filial_id
+    ).prefetch_related('schedules__days__weekday', 'schedules__location')
+
+    today    = ddate.today()
+    year_end = ddate(today.year, 12, 31)
+
+    total_entries = 0
+    emp_count     = 0
+    for emp in employees:
+        if not emp.schedules.exists():
+            continue
+        count = generate_employee_daily_schedules(
+            emp, from_date=today, to_date=year_end
+        )
+        total_entries += count
+        emp_count     += 1
+
+    return redirect(f"{reverse('schedules')}?generated=1&gen_count={emp_count}")
+
+
+# ============================================================
+# XODIMGA JADVAL BIRIKTIRISH (sana bilan)
+# ============================================================
+
+@hr_admin_required
+def bulk_add_extra_shift(request, pk):
+    """
+    Tanlangan bir nechta kunga bir zarbada qo'shimcha shift qo'shish.
+    POST: daily_ids (list), location_id, start, end, lunch_start, lunch_end, note
+    """
+    from datetime import time as dtime
+    employee = get_object_or_404(Employee, pk=pk)
+    filial   = employee.filial
+    org      = filial.organization if filial else None
+
+    if request.method != 'POST':
+        return redirect('employee_calendar', pk=pk)
+
+    # Tanlangan kunlik jadval ID lari
+    daily_ids = request.POST.getlist('daily_ids')
+    if not daily_ids:
+        return redirect('employee_calendar', pk=pk)
+
+    # Shift ma'lumotlari
+    from apps.main.models import Location as Loc
+    location_id = request.POST.get('location_id') or None
+    start_str   = request.POST.get('start', '')
+    end_str     = request.POST.get('end', '')
+    lunch_start_str = request.POST.get('lunch_start', '')
+    lunch_end_str   = request.POST.get('lunch_end', '')
+    note        = request.POST.get('note', '')
+
+    def parse_time(s):
+        try:
+            h, m = s.split(':')
+            return dtime(int(h), int(m))
+        except Exception:
+            return None
+
+    start       = parse_time(start_str)
+    end         = parse_time(end_str)
+    lunch_start = parse_time(lunch_start_str)
+    lunch_end   = parse_time(lunch_end_str)
+    location    = Loc.objects.filter(pk=location_id).first() if location_id else None
+
+    if not start or not end:
+        return redirect(request.META.get('HTTP_REFERER', 'employee_calendar'))
+
+    # Faqat ushbu xodimga tegishli kunlik jadvallar
+    dailies = EmployeeDailySchedule.objects.filter(
+        pk__in=daily_ids, employee=employee, is_day_off=False
+    )
+
+    # Har bir kunga qo'shish (mavjud bo'lmasa)
+    to_create = []
+    existing_count = 0
+    for daily in dailies:
+        # Bir xil vaqt + lokatsiya bo'lsa qayta qo'shmaymiz
+        already = EmployeeDailyExtraShift.objects.filter(
+            daily=daily, start=start, end=end,
+            location=location
+        ).exists()
+        if not already:
+            to_create.append(EmployeeDailyExtraShift(
+                daily=daily,
+                location=location,
+                start=start,
+                end=end,
+                lunch_start=lunch_start,
+                lunch_end=lunch_end,
+                note=note,
+            ))
+        else:
+            existing_count += 1
+
+    if to_create:
+        EmployeeDailyExtraShift.objects.bulk_create(to_create)
+
+    # Qaytish: xuddi shu oy-yilga
+    year  = request.POST.get('year',  '')
+    month = request.POST.get('month', '')
+    base  = reverse('employee_calendar', args=[pk])
+    return redirect(f"{base}?year={year}&month={month}&bulk_added={len(to_create)}")
+
+
+def assign_schedule(request, pk):
+    """
+    Xodimga jadval tanlash + qaysi sanadan boshlanishini belgilash.
+    Tanlangan sanadan yil oxirigacha kunlik jadval qayta generatsiya qilinadi.
+    """
+    from datetime import date as ddate
+    admin_user = request.admin_user
+    employee   = get_object_or_404(Employee, pk=pk)
+    filial     = employee.filial
+
+    if request.method == 'POST':
+        form = AssignScheduleForm(request.POST, filial=filial)
+        if form.is_valid():
+            schedule   = form.cleaned_data['schedule']
+            from_date  = form.cleaned_data['from_date']
+            year_end   = ddate(from_date.year, 12, 31)
+
+            # Xodimning jadvallar M2M ga qo'shish (agar yo'q bo'lsa)
+            employee.schedules.add(schedule)
+
+            # from_date dan boshlab qayta generatsiya
+            count = generate_employee_daily_schedules(
+                employee, from_date=from_date, to_date=year_end
+            )
+
+            return redirect(
+                f"{reverse('employee_calendar', args=[employee.pk])}"
+                f"?year={from_date.year}&month={from_date.month}"
+                f"&assigned=1&gen_count={count}"
+            )
+    else:
+        form = AssignScheduleForm(
+            filial=filial,
+            initial={'from_date': ddate.today().isoformat()}
+        )
+
+    # Xodimning hozirgi jadvallari
+    current_schedules = employee.schedules.prefetch_related('days__weekday').all()
+
+    return render(request, 'home/user/employees/assign_schedule.html', {
+        'form':              form,
+        'employee':          employee,
+        'current_schedules': current_schedules,
+        'segment':           'employees',
+        'data':              {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':     timezone.localtime(timezone.now()),
+    })
+

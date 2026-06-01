@@ -1,0 +1,170 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Guruhlar ro'yxati{% endblock %}
+
+{% block stylesheets %}
+<style>
+  .groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .group-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .group-card-name {
+    font-size: .95rem; font-weight: 700; color: #344563;
+  }
+  .group-card-meta {
+    font-size: .82rem; color: #5a6a85; display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .group-card-meta span {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .student-count {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #f4f6fb; border-radius: 20px;
+    padding: 3px 10px; font-size: .78rem; font-weight: 600; color: #344563;
+  }
+  .card-actions {
+    display: flex; gap: 8px; margin-top: 4px;
+  }
+  .filter-panel {
+    background: #fff; border-radius: 12px;
+    padding: 20px 22px; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    margin-bottom: 22px;
+  }
+  .filter-panel .filter-title {
+    font-weight: 600; font-size: .88rem; color: #344563;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .empty-state {
+    text-align: center; padding: 56px 20px; color: #aab0c0;
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+  }
+  .empty-state svg { width: 52px; height: 52px; opacity: .4; margin-bottom: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <div class="d-flex align-items-center justify-content-between mb-4">
+      <div>
+        <h1 class="h3 mb-0 fw-bold">Guruhlar ro'yxati</h1>
+        <small class="text-muted">Guruhlar bo'yicha hisobot va tinglovchilarni ko'rish</small>
+      </div>
+      <a href="{% url 'monitoring_dashboard' %}" class="btn btn-outline-secondary btn-sm px-4">
+        <i data-feather="arrow-left" style="width:14px;height:14px;margin-right:5px;"></i>
+        Dashboard
+      </a>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-panel">
+      <div class="filter-title">
+        <i data-feather="sliders" style="width:17px;height:17px;color:#3a7bd5;"></i>
+        Guruhlarni filtrlash
+      </div>
+      <form method="get" id="filterForm">
+        <div class="row g-3 align-items-end">
+          <div class="col-6 col-md-3">
+            <label class="form-label form-label-sm fw-semibold" style="font-size:.8rem;color:#5a6a85;">Yil</label>
+            <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+              {% for y in years %}
+              <option value="{{ y }}" {% if sel_year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label form-label-sm fw-semibold" style="font-size:.8rem;color:#5a6a85;">Oy</label>
+            <select name="month" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">— Barcha oylar —</option>
+              {% for val, label in month_choices %}
+              <option value="{{ val }}" {% if sel_month == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label form-label-sm fw-semibold" style="font-size:.8rem;color:#5a6a85;">Yo'nalish</label>
+            <select name="direction" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">— Barcha yo'nalishlar —</option>
+              {% for d in directions %}
+              <option value="{{ d.pk }}" {% if sel_direction == d.pk|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-2">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Ko'rish</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    {% if groups %}
+    <div class="groups-grid">
+      {% for group in groups %}
+      <div class="group-card">
+        <div>
+          <div class="group-card-name">{{ group.name }}</div>
+          <div class="group-card-meta" style="margin-top:6px;">
+            <span>
+              <i data-feather="calendar" style="width:13px;height:13px;"></i>
+              {{ group.year }} — {{ group.get_month_display }}
+            </span>
+            {% if group.direction %}
+            <span>
+              <i data-feather="compass" style="width:13px;height:13px;"></i>
+              {{ group.direction.name }}
+            </span>
+            {% endif %}
+            {% if group.filial %}
+            <span>
+              <i data-feather="home" style="width:13px;height:13px;"></i>
+              {{ group.filial.filial_name }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <span class="student-count">
+            <i data-feather="users" style="width:13px;height:13px;"></i>
+            {{ group.students.count }} tinglovchi
+          </span>
+        </div>
+        <div class="card-actions">
+          <a href="{% url 'monitoring_group_report' group.pk %}" class="btn btn-sm btn-outline-primary">
+            <i data-feather="bar-chart-2" style="width:13px;height:13px;margin-right:4px;"></i>Hisobot
+          </a>
+          <a href="{% url 'monitoring_group_students' group.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i data-feather="users" style="width:13px;height:13px;margin-right:4px;"></i>Tinglovchilar
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i data-feather="inbox" style="display:block;margin:0 auto 12px;"></i>
+      <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Guruh topilmadi</div>
+      <small>Tanlangan filtrlarga mos guruh yo'q</small>
+    </div>
+    {% endif %}
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.feather) feather.replace();
+});
+</script>
+{% endblock %}

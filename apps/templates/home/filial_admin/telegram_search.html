@@ -1,0 +1,260 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Foydalanuvchi qidirish{% endblock %}
+
+{% block stylesheets %}
+<style>
+  .search-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 22px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    margin-bottom: 22px;
+  }
+  .search-card .card-title {
+    font-weight: 600;
+    font-size: .95rem;
+    color: #344563;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .result-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    overflow: hidden;
+  }
+  .result-card .card-header {
+    padding: 14px 22px;
+    border-bottom: 1px solid #f0f0f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .result-card .card-header .title {
+    font-weight: 600;
+    color: #344563;
+    font-size: .95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .res-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  .res-table thead th {
+    background: #f4f6fb;
+    padding: 10px 16px;
+    font-weight: 600;
+    color: #5a6a85;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    white-space: nowrap;
+    border-bottom: 1px solid #e8eaf0;
+    text-align: left;
+  }
+  .res-table thead th.center { text-align: center; }
+  .res-table tbody tr { border-bottom: 1px solid #f0f2f8; transition: background .15s; }
+  .res-table tbody tr:hover { background: #f8f9fd; }
+  .res-table tbody tr:last-child { border-bottom: none; }
+  .res-table td { padding: 11px 16px; vertical-align: middle; }
+  .res-table td.center { text-align: center; }
+
+  /* Tur badge'lari */
+  .badge-employee { background: #e0edff; color: #1d4ed8; }
+  .badge-student  { background: #d1fae5; color: #065f46; }
+  .badge-admin    { background: #fef3c7; color: #92400e; }
+  .type-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: .74rem;
+    font-weight: 700;
+  }
+
+  .tg-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #e8f4fd;
+    color: #0369a1;
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: .78rem;
+    font-weight: 600;
+    font-family: monospace;
+  }
+  .tg-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #f3f4f6;
+    color: #9ca3af;
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: .78rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 56px 20px;
+    color: #aab0c0;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    <div class="d-flex align-items-center justify-content-between mb-4">
+      <div>
+        <h1 class="h3 mb-0 fw-bold">Foydalanuvchi qidirish</h1>
+        <small class="text-muted">Telegram ID yoki ism orqali xodim, tinglovchi yoki adminni toping</small>
+      </div>
+    </div>
+
+    <!-- Qidiruv -->
+    <div class="search-card">
+      <div class="card-title">
+        <i data-feather="search" style="width:17px;height:17px;color:#3a7bd5;"></i>
+        Qidirish
+      </div>
+      <form method="get">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-md-8">
+            <input
+              type="text"
+              name="q"
+              value="{{ query }}"
+              class="form-control"
+              placeholder="Telegram ID raqami yoki ism-familiya..."
+              autofocus
+              inputmode="search"
+            >
+          </div>
+          <div class="col-12 col-md-4">
+            <button type="submit" class="btn btn-primary w-100">
+              <i data-feather="search" style="width:14px;height:14px;margin-right:5px;"></i>
+              Qidirish
+            </button>
+          </div>
+        </div>
+        <div class="mt-2" style="font-size:.8rem; color:#8a94a6;">
+          <i data-feather="info" style="width:13px;height:13px;margin-right:3px;"></i>
+          Faqat raqam kiritsangiz — Telegram ID bo'yicha, matn kiritsangiz — ism bo'yicha qidiradi.
+        </div>
+      </form>
+    </div>
+
+    <!-- Natijalar -->
+    {% if searched %}
+    <div class="result-card">
+      <div class="card-header">
+        <span class="title">
+          <i data-feather="users" style="width:16px;height:16px;color:#3a7bd5;"></i>
+          Natijalar
+          {% if results %}
+            <span class="badge bg-secondary ms-1">{{ results|length }} ta</span>
+          {% endif %}
+        </span>
+        {% if query %}
+        <small style="color:#5a6a85; font-size:.82rem;">
+          «{{ query }}» bo'yicha
+        </small>
+        {% endif %}
+      </div>
+
+      {% if results %}
+      <div class="table-responsive">
+        <table class="res-table">
+          <thead>
+            <tr>
+              <th style="width:36px;">#</th>
+              <th>Ism Familiya</th>
+              <th class="center">Turi</th>
+              <th class="center">Telegram ID</th>
+              <th>Qo'shimcha</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in results %}
+            <tr>
+              <td style="color:#aab0c0; font-size:.8rem;">{{ forloop.counter }}</td>
+
+              <td>
+                <div style="font-weight:600;">{{ r.full_name }}</div>
+                {% if r.username %}
+                  <div style="font-size:.76rem; color:#9ca3af;">@{{ r.username }}</div>
+                {% endif %}
+                {% if r.phone %}
+                  <div style="font-size:.76rem; color:#9ca3af;">{{ r.phone }}</div>
+                {% endif %}
+              </td>
+
+              <td class="center">
+                {% if r.type == 'employee' %}
+                  <span class="type-badge badge-employee">Xodim</span>
+                {% elif r.type == 'student' %}
+                  <span class="type-badge badge-student">Tinglovchi</span>
+                {% else %}
+                  <span class="type-badge badge-admin">Admin</span>
+                {% endif %}
+              </td>
+
+              <td class="center">
+                {% if r.telegram_id %}
+                  <span class="tg-badge">
+                    <i data-feather="send" style="width:11px;height:11px;"></i>
+                    {{ r.telegram_id }}
+                  </span>
+                {% else %}
+                  <span class="tg-empty">
+                    <i data-feather="x" style="width:11px;height:11px;"></i>
+                    Yo'q
+                  </span>
+                {% endif %}
+              </td>
+
+              <td style="font-size:.83rem; color:#5a6a85;">
+                {{ r.extra|default:"—" }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% else %}
+      <div class="empty-state">
+        <i data-feather="search" style="display:block;margin:0 auto 12px;width:48px;height:48px;opacity:.3;"></i>
+        <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Hech narsa topilmadi</div>
+        <small>«{{ query }}» bo'yicha xodim, tinglovchi yoki admin yo'q</small>
+      </div>
+      {% endif %}
+    </div>
+
+    {% else %}
+    <div class="result-card">
+      <div class="empty-state">
+        <i data-feather="search" style="display:block;margin:0 auto 12px;width:48px;height:48px;opacity:.3;"></i>
+        <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Qidirish uchun ma'lumot kiriting</div>
+        <small>Telegram ID raqami yoki ism-familiya yozing</small>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.feather) feather.replace();
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,433 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}{{ employee.name }} — Kalendar{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+/* ── Kalendar ── */
+.cal-table { width: 100%; border-collapse: separate; border-spacing: 4px; }
+.cal-table th {
+  text-align: center; font-size: 12px; font-weight: 700;
+  color: #888; text-transform: uppercase; padding: 4px 2px;
+}
+.cal-cell {
+  width: 14.28%; vertical-align: top;
+  border-radius: 10px; padding: 6px 8px; min-height: 80px;
+  font-size: 13px; position: relative;
+  border: 1.5px solid transparent;
+  transition: border-color .15s, box-shadow .15s;
+}
+.cal-cell:hover { border-color: #adb5bd; cursor: pointer; }
+.cal-cell.today  { border-color: #3b82f6 !important; background: #eff6ff; }
+.cal-cell.work   { background: #f0fdf4; }
+.cal-cell.dayoff { background: #fef2f2; }
+.cal-cell.holiday { background: #fff7ed; }
+.cal-cell.edited  { background: #faf5ff; }
+.cal-cell.empty   { background: transparent; border: none; cursor: default; }
+.cal-cell.selected { box-shadow: 0 0 0 2.5px #0ea5e9 !important; border-color: #0ea5e9 !important; }
+
+.day-num { font-size: 15px; font-weight: 700; color: #1e293b; line-height: 1; }
+.day-num.today-num { color: #2563eb; }
+.cal-time        { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 3px; }
+.cal-lunch       { font-size: 10px; color: #b45309; margin-top: 2px; }
+.cal-loc         { font-size: 10px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-extra-shift { font-size: 10px; color: #0369a1; margin-top: 2px; border-top: 1px dashed #bae6fd; padding-top: 2px; }
+.cal-off  { font-size: 11px; color: #dc2626; margin-top: 3px; }
+.cal-edit-icon {
+  position: absolute; top: 4px; right: 5px;
+  font-size: 11px; opacity: .4;
+}
+.cal-cell:hover .cal-edit-icon { opacity: 1; }
+.badge-edit { background: #7c3aed; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 999px; position: absolute; bottom: 5px; right: 5px; }
+
+/* Checkbox tanlash rejimi */
+.sel-cb { position: absolute; top: 4px; left: 5px; display: none; z-index: 2; width: 15px; height: 15px; cursor: pointer; }
+body.select-mode .sel-cb { display: block; }
+body.select-mode .cal-cell:not(.empty):not(.dayoff) { cursor: pointer; }
+body.select-mode .cal-edit-icon { display: none; }
+
+/* Bulk panel */
+#bulk-panel {
+  position: sticky; bottom: 16px; z-index: 100;
+  display: none;
+}
+#bulk-panel.show { display: flex; }
+
+/* ── Statistika ── */
+.stat-box { border-radius: 10px; padding: 14px 18px; text-align: center; }
+.stat-box .num { font-size: 28px; font-weight: 800; line-height: 1; }
+.stat-box .lbl { font-size: 12px; color: #888; margin-top: 4px; }
+
+/* ── Navigatsiya ── */
+.month-nav { display: flex; align-items: center; gap: 12px; }
+.month-nav a {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #f0f0f0; color: #333; text-decoration: none; font-size: 18px;
+}
+.month-nav a:hover { background: #ddd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content-header">
+    <div class="container-fluid">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div>
+          <h1 class="mb-0">📅 {{ employee.name }}</h1>
+          <div class="text-muted small">Kunlik jadval kalendari</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button type="button" id="select-mode-btn"
+                  class="btn btn-outline-info btn-sm">☑️ Kunlarni tanlash</button>
+          <a href="{% url 'public_holidays' %}" class="btn btn-outline-danger btn-sm">🗓 Bayram kunlari</a>
+          <a href="{% url 'employee_update' employee.pk %}" class="btn btn-outline-secondary btn-sm">← Xodim</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="content">
+    <div class="container-fluid">
+
+      {% if generated %}
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        ✅ {{ generated }} ta kunlik jadval yaratildi (bugundan yil oxirigacha)
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endif %}
+
+      {% if assigned %}
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        ✅ Jadval biriktirildi! {{ gen_count }} ta kunlik yozuv yaratildi.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endif %}
+
+      {% if bulk_added %}
+      <div class="alert alert-info alert-dismissible fade show" role="alert">
+        ✅ {{ bulk_added }} ta kunga qo'shimcha shift qo'shildi.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endif %}
+
+      {# ── Generatsiya ── #}
+      {% if not has_daily %}
+      <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>⚠️ Ushbu xodim uchun kunlik jadval hali yaratilmagan.</span>
+        <form method="post">
+          {% csrf_token %}
+          <button name="generate" type="submit" class="btn btn-warning btn-sm fw-semibold">
+            ⚙️ Kunlik jadval yaratish
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <form method="post" class="d-inline">
+        {% csrf_token %}
+        <button name="generate" type="submit"
+                class="btn btn-outline-primary btn-sm mb-3"
+                onclick="return confirm('Bugundan yil oxirigacha jadval qayta yaratilsinmi? Qo\'lda o\'zgartirilgan kunlar saqlanib qoladi.')">
+          🔄 Qayta generatsiya (bugundan yil oxirigacha)
+        </button>
+      </form>
+      {% endif %}
+
+      {# ── Statistika ── #}
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#f0fdf4; border:1px solid #bbf7d0">
+            <div class="num text-success">{{ work_days }}</div>
+            <div class="lbl">Ish kuni</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#fef2f2; border:1px solid #fecaca">
+            <div class="num text-danger">{{ day_offs }}</div>
+            <div class="lbl">Dam olish</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#faf5ff; border:1px solid #e9d5ff">
+            <div class="num" style="color:#7c3aed">{{ edited }}</div>
+            <div class="lbl">Qo'lda o'zgartirilgan</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-box" style="background:#f0f9ff; border:1px solid #bae6fd">
+            <div class="num text-primary">{{ month_name }}</div>
+            <div class="lbl">{{ year }}</div>
+          </div>
+        </div>
+      </div>
+
+      {# ── Oy navigatsiya ── #}
+      <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="month-nav">
+            <a href="?year={{ prev_year }}&month={{ prev_month }}">‹</a>
+            <span class="fw-bold fs-5">{{ month_name }} {{ year }}</span>
+            <a href="?year={{ next_year }}&month={{ next_month }}">›</a>
+          </div>
+          <a href="?year={{ today.year }}&month={{ today.month }}"
+             class="btn btn-sm btn-outline-secondary">Bugun</a>
+        </div>
+        <div class="card-body p-2">
+          <table class="cal-table">
+            <thead>
+              <tr>
+                <th>Du</th><th>Se</th><th>Ch</th><th>Pa</th>
+                <th>Ju</th><th>Sh</th><th>Ya</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for week in calendar_rows %}
+              <tr>
+                {% for cell in week %}
+                  {% if cell == None %}
+                    <td class="cal-cell empty"></td>
+                  {% else %}
+                    {% with entry=cell.entry d=cell.date %}
+                    {% if entry %}
+                      {% if entry.is_manually_edited %}
+                        {% if d == today %}<td class="cal-cell today edited" data-id="{{ entry.pk }}" data-dayoff="0">
+                        {% else %}<td class="cal-cell edited" data-id="{{ entry.pk }}" data-dayoff="0">{% endif %}
+                      {% elif entry.is_day_off and entry.day_off_reason != "Dam olish kuni" %}
+                        {% if d == today %}<td class="cal-cell today holiday" data-id="{{ entry.pk }}" data-dayoff="1">
+                        {% else %}<td class="cal-cell holiday" data-id="{{ entry.pk }}" data-dayoff="1">{% endif %}
+                      {% elif entry.is_day_off %}
+                        {% if d == today %}<td class="cal-cell today dayoff" data-id="{{ entry.pk }}" data-dayoff="1">
+                        {% else %}<td class="cal-cell dayoff" data-id="{{ entry.pk }}" data-dayoff="1">{% endif %}
+                      {% else %}
+                        {% if d == today %}<td class="cal-cell today work" data-id="{{ entry.pk }}" data-dayoff="0">
+                        {% else %}<td class="cal-cell work" data-id="{{ entry.pk }}" data-dayoff="0">{% endif %}
+                      {% endif %}
+                        {# Checkbox (tanlash rejimida ko'rinadi) #}
+                        {% if not entry.is_day_off %}
+                        <input type="checkbox" class="sel-cb day-checkbox" value="{{ entry.pk }}"
+                               onclick="event.stopPropagation()">
+                        {% endif %}
+                        <div class="day-num {% if d == today %}today-num{% endif %}">{{ d.day }}</div>
+                        {% if entry.is_day_off %}
+                          <div class="cal-off">
+                            {% if entry.day_off_reason == "Dam olish kuni" %}🔴 Dam{% else %}🟠 {{ entry.day_off_reason|truncatechars:12 }}{% endif %}
+                          </div>
+                        {% else %}
+                          <div class="cal-time">{{ entry.start|time:"H:i" }}–{{ entry.end|time:"H:i" }}</div>
+                          {% if entry.lunch_start and entry.lunch_end %}
+                            <div class="cal-lunch">🍽 {{ entry.lunch_start|time:"H:i" }}–{{ entry.lunch_end|time:"H:i" }}</div>
+                          {% endif %}
+                          {% if entry.location %}
+                            <div class="cal-loc">📍 {{ entry.location.name }}</div>
+                          {% endif %}
+                          {% for es in entry.extra_shifts.all %}
+                            <div class="cal-extra-shift">
+                              🔁 {{ es.start|time:"H:i" }}–{{ es.end|time:"H:i" }}
+                              {% if es.location %}<span class="cal-loc d-inline">@ {{ es.location.name }}</span>{% endif %}
+                            </div>
+                          {% endfor %}
+                        {% endif %}
+                        {% if entry.is_manually_edited %}
+                          <span class="badge-edit">✏️</span>
+                        {% endif %}
+                        <span class="cal-edit-icon">✏️</span>
+                      </td>
+                    {% else %}
+                      {% if d == today %}<td class="cal-cell today">
+                      {% else %}<td class="cal-cell">{% endif %}
+                        <div class="day-num {% if d == today %}today-num{% endif %}">{{ d.day }}</div>
+                        <div class="cal-off" style="color:#ccc; font-size:10px">—</div>
+                      </td>
+                    {% endif %}
+                    {% endwith %}
+                  {% endif %}
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {# ── Ranglar izohi ── #}
+      <div class="d-flex flex-wrap gap-3 mt-3">
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#f0fdf4;border:1px solid #bbf7d0"></span> Ish kuni</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#fef2f2;border:1px solid #fecaca"></span> Dam olish</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#fff7ed;border:1px solid #fed7aa"></span> Bayram kuni</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#faf5ff;border:1px solid #e9d5ff"></span> Qo'lda o'zgartirilgan</span>
+        <span><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#eff6ff;border:2px solid #3b82f6"></span> Bugun</span>
+      </div>
+
+    </div>{# /container-fluid #}
+  </section>
+</div>
+
+{# ── Bulk panel (pastda floating) ── #}
+<div id="bulk-panel" class="align-items-center justify-content-between gap-3
+     bg-primary text-white rounded-3 shadow px-4 py-3 mx-3">
+  <span id="bulk-count-label" class="fw-semibold">0 kun tanlandi</span>
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-light btn-sm fw-semibold"
+            data-bs-toggle="modal" data-bs-target="#bulkShiftModal">
+      ➕ Shift qo'shish
+    </button>
+    <button type="button" class="btn btn-outline-light btn-sm" id="clear-sel-btn">
+      ✕ Bekor
+    </button>
+  </div>
+</div>
+
+{# ── Bulk shift modal ── #}
+<div class="modal fade" id="bulkShiftModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{% url 'bulk_add_extra_shift' employee.pk %}" id="bulk-shift-form">
+        {% csrf_token %}
+        <input type="hidden" name="year"  value="{{ year }}">
+        <input type="hidden" name="month" value="{{ month }}">
+        {# Tanlangan kunlar ID lari JS tomonidan qo'shiladi #}
+        <div id="bulk-hidden-ids"></div>
+
+        <div class="modal-header">
+          <h5 class="modal-title">➕ Qo'shimcha shift qo'shish</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Tanlangan <strong id="modal-count">0</strong> ta ish kuniga qo'shiladi.
+            Dam olish kunlari o'tkazib yuboriladi.
+          </p>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📍 Lokatsiya</label>
+            <select name="location_id" class="form-select">
+              <option value="">— Lokatsiyasiz —</option>
+              {% for loc in locations %}
+                <option value="{{ loc.pk }}">{{ loc.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold">⏰ Boshlanish <span class="text-danger">*</span></label>
+              <input type="time" name="start" class="form-control" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">⏰ Tugash <span class="text-danger">*</span></label>
+              <input type="time" name="end" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label small">🍽 Tushlik boshlanishi</label>
+              <input type="time" name="lunch_start" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">🍽 Tushlik tugashi</label>
+              <input type="time" name="lunch_end" class="form-control">
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small">Izoh (ixtiyoriy)</label>
+            <input type="text" name="note" class="form-control" placeholder="Masalan: Qo'shimcha dars, Trening...">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Bekor</button>
+          <button type="submit" class="btn btn-primary fw-semibold">✅ Qo'shish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+(function(){
+  const selectBtn  = document.getElementById('select-mode-btn');
+  const bulkPanel  = document.getElementById('bulk-panel');
+  const countLabel = document.getElementById('bulk-count-label');
+  const modalCount = document.getElementById('modal-count');
+  const hiddenIds  = document.getElementById('bulk-hidden-ids');
+  const clearBtn   = document.getElementById('clear-sel-btn');
+  let selectMode   = false;
+
+  // ── Tanlash rejimini yoqish/o'chirish ──
+  selectBtn.addEventListener('click', () => {
+    selectMode = !selectMode;
+    document.body.classList.toggle('select-mode', selectMode);
+    selectBtn.textContent = selectMode ? '✕ Rejimdan chiqish' : '☑️ Kunlarni tanlash';
+    selectBtn.classList.toggle('btn-info', selectMode);
+    selectBtn.classList.toggle('btn-outline-info', !selectMode);
+    if (!selectMode) clearSelection();
+  });
+
+  const editUrlBase = "{% url 'daily_schedule_edit' 0 %}".replace('/0/', '/');
+
+  // ── Kun katakchasiga bosish — bitta event listener ──
+  document.querySelectorAll('.cal-cell[data-id]').forEach(cell => {
+    cell.addEventListener('click', function(e) {
+      if (selectMode) {
+        // Faqat ish kunlari tanlanadi
+        const cb = this.querySelector('.day-checkbox');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        this.classList.toggle('selected', cb.checked);
+        updateBulkPanel();
+      } else {
+        // Oddiy rejim — edit sahifaga o'tish
+        window.location = editUrlBase + this.dataset.id + '/';
+      }
+    });
+  });
+
+  // Checkbox to'g'ridan-to'g'ri bosilganda (stopPropagation ishlaydi)
+  document.querySelectorAll('.day-checkbox').forEach(cb => {
+    cb.addEventListener('change', function() {
+      this.closest('.cal-cell').classList.toggle('selected', this.checked);
+      updateBulkPanel();
+    });
+  });
+
+  function updateBulkPanel() {
+    const checked = document.querySelectorAll('.day-checkbox:checked');
+    const n = checked.length;
+    countLabel.textContent = n + ' kun tanlandi';
+    if (modalCount) modalCount.textContent = n;
+    bulkPanel.classList.toggle('show', n > 0);
+  }
+
+  // Modal ochilganda hidden input larni yangilash
+  document.getElementById('bulkShiftModal').addEventListener('show.bs.modal', () => {
+    hiddenIds.innerHTML = '';
+    document.querySelectorAll('.day-checkbox:checked').forEach(cb => {
+      const inp = document.createElement('input');
+      inp.type  = 'hidden';
+      inp.name  = 'daily_ids';
+      inp.value = cb.value;
+      hiddenIds.appendChild(inp);
+    });
+    const n = document.querySelectorAll('.day-checkbox:checked').length;
+    if (modalCount) modalCount.textContent = n;
+  });
+
+  // Bekor tugmasi
+  clearBtn.addEventListener('click', clearSelection);
+
+  function clearSelection() {
+    document.querySelectorAll('.day-checkbox').forEach(cb => {
+      cb.checked = false;
+      cb.closest('.cal-cell').classList.remove('selected');
+    });
+    bulkPanel.classList.remove('show');
+    countLabel.textContent = '0 kun tanlandi';
+  }
+})();
+</script>
+{% endblock %}

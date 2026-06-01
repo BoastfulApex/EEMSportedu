@@ -1,0 +1,41 @@
+{% extends "layouts/base.html" %}
+{% block title %}Yangi yo'nalish{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Yangi yo'nalish yaratish</h4>
+      <p class="breadcrumb-info mb-0">
+        <a href="{% url 'directions_list' %}">Yo'nalishlar</a> / Yangi
+      </p>
+    </div>
+  </div>
+
+  <div class="card border-0 mx-auto" style="max-width:500px">
+    <div class="card-body p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Yo'nalish nomi <span class="text-danger">*</span></label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">
+            <i data-feather="save"></i> Saqlash
+          </button>
+          <a href="{% url 'directions_list' %}" class="btn btn-outline-secondary">
+            <i data-feather="x"></i> Bekor qilish
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

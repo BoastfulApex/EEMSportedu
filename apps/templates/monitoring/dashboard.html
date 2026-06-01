@@ -1,0 +1,204 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Monitoring Dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+  .stat-col { display: flex; flex-direction: column; }
+  .stat-card {
+    border-radius: 12px;
+    padding: 24px 20px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.12);
+    transition: transform .2s;
+    height: 100%;
+    text-decoration: none;
+  }
+  .stat-card:hover { transform: translateY(-3px); color: #fff; }
+  .stat-card .icon-wrap {
+    width: 52px; height: 52px;
+    background: rgba(255,255,255,.2);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .stat-card .icon-wrap svg { width:26px; height:26px; color:#fff; }
+  .stat-card .stat-label { font-size: .80rem; opacity: .85; margin-bottom: 4px; }
+  .stat-card .stat-val   { font-size: 1.85rem; font-weight: 700; line-height: 1; }
+  .bg-blue   { background: linear-gradient(135deg,#3a7bd5,#3a6073); }
+  .bg-green  { background: linear-gradient(135deg,#11998e,#38ef7d); }
+  .bg-orange { background: linear-gradient(135deg,#f7971e,#ffd200); }
+  .bg-red    { background: linear-gradient(135deg,#eb3349,#f45c43); }
+  .bg-purple { background: linear-gradient(135deg,#6f42c1,#a855f7); }
+
+  .chart-wrap {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.07);
+  }
+  .chart-title { font-weight: 600; font-size: 1rem; margin-bottom: 16px; color: #344563; }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="content">
+  <div class="container-fluid p-0">
+
+    {# ── Sarlavha ── #}
+    <div class="d-flex align-items-center justify-content-between mb-4">
+      <div>
+        <h1 class="h3 mb-0 fw-bold">Monitoring Dashboard</h1>
+        <small class="text-muted">Tinglovchilar davomati umumiy ko'rinishi</small>
+      </div>
+      <a href="{% url 'monitoring_reports' %}" class="btn btn-primary btn-sm px-4">
+        <i data-feather="bar-chart-2" style="width:15px;height:15px;margin-right:6px;"></i>
+        Hisobotlar
+      </a>
+    </div>
+
+    {# ── Statistik kartalar ── #}
+    <div class="row g-3 mb-4">
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card bg-blue">
+          <div class="icon-wrap"><i data-feather="users"></i></div>
+          <div>
+            <div class="stat-label">Jami guruhlar</div>
+            <div class="stat-val">{{ groups_count }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card bg-green">
+          <div class="icon-wrap"><i data-feather="user-check"></i></div>
+          <div>
+            <div class="stat-label">Jami tinglovchilar</div>
+            <div class="stat-val">{{ students_count }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card bg-orange">
+          <div class="icon-wrap"><i data-feather="clock"></i></div>
+          <div>
+            <div class="stat-label">Kechikib keluvchilar</div>
+            <div class="stat-val">{{ late_pct }}%</div>
+            <small style="opacity:.8; font-size:.75rem;">{{ total_att }} yozuv asosida</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card bg-purple">
+          <div class="icon-wrap"><i data-feather="x-circle"></i></div>
+          <div>
+            <div class="stat-label">Jami qoldirilgan soat</div>
+            <div class="stat-val">{{ total_missed_hours }}</div>
+            <small style="opacity:.8; font-size:.75rem;">barcha tinglovchilar</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <a href="{% url 'monitoring_exceeded' %}" class="stat-card bg-red">
+          <div class="icon-wrap"><i data-feather="alert-triangle"></i></div>
+          <div>
+            <div class="stat-label">Limitdan oshganlar</div>
+            <div class="stat-val">{{ exceeded_count }}</div>
+            {% if limit %}
+              <small style="opacity:.8; font-size:.75rem;">max {{ limit.max_missed_hours }} soat</small>
+            {% else %}
+              <small style="opacity:.8; font-size:.75rem;">Limit belgilanmagan</small>
+            {% endif %}
+          </div>
+        </a>
+      </div>
+    </div>
+
+    {# ── Trend grafik ── #}
+    <div class="row">
+      <div class="col-12">
+        <div class="chart-wrap">
+          <div class="chart-title">
+            <i data-feather="trending-up" style="width:16px;height:16px;margin-right:6px;color:#3a7bd5;"></i>
+            So'nggi 30 kunlik davomat (keldi + kechikdi)
+          </div>
+          <canvas id="trendChart" height="80"></canvas>
+        </div>
+      </div>
+    </div>
+
+    {# ── Tezkor havolalar ── #}
+    <div class="row g-3 mt-2">
+      <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'monitoring_reports' %}#by-direction"
+           class="text-decoration-none d-block p-3 rounded-3 border text-center"
+           style="transition:.2s;background:#f8f9fa;" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">
+          <i data-feather="compass" style="color:#3a7bd5;width:28px;height:28px;"></i>
+          <div class="mt-2 fw-semibold text-dark" style="font-size:.88rem;">Yo'nalish bo'yicha</div>
+        </a>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'monitoring_reports' %}#by-group"
+           class="text-decoration-none d-block p-3 rounded-3 border text-center"
+           style="transition:.2s;background:#f8f9fa;" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">
+          <i data-feather="users" style="color:#11998e;width:28px;height:28px;"></i>
+          <div class="mt-2 fw-semibold text-dark" style="font-size:.88rem;">Guruh bo'yicha</div>
+        </a>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'monitoring_reports' %}#by-year"
+           class="text-decoration-none d-block p-3 rounded-3 border text-center"
+           style="transition:.2s;background:#f8f9fa;" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">
+          <i data-feather="calendar" style="color:#f7971e;width:28px;height:28px;"></i>
+          <div class="mt-2 fw-semibold text-dark" style="font-size:.88rem;">Yil bo'yicha</div>
+        </a>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'monitoring_reports' %}#by-month"
+           class="text-decoration-none d-block p-3 rounded-3 border text-center"
+           style="transition:.2s;background:#f8f9fa;" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">
+          <i data-feather="clock" style="color:#6f42c1;width:28px;height:28px;"></i>
+          <div class="mt-2 fw-semibold text-dark" style="font-size:.88rem;">Oy bo'yicha</div>
+        </a>
+      </div>
+    </div>
+
+  </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  const raw = {{ trend_data|safe }};
+  const labels = raw.map(d => d.date.slice(5));   // MM-DD
+  const counts  = raw.map(d => d.count);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: "Kelgan tinglovchilar",
+        data: counts,
+        backgroundColor: 'rgba(58,123,213,.7)',
+        borderRadius: 4,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

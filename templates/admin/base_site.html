@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% load static i18n %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">KPI-bot Admin</a></h1>
+{% endblock %}
+
+{% block extrastyle %}
+<link rel="stylesheet" href="{% static 'css/admin.css' %}">
+{% endblock %}
+
+
