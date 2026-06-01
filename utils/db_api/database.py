@@ -2052,3 +2052,81 @@ def admin_mark_student_attendance(student_id: int, admin_telegram_id: int) -> di
         'check_in':     att.check_in.strftime('%H:%M'),
         'check_out':    att.check_out.strftime('%H:%M'),
     }
+
+
+# ============================================================
+# GURUH DAVOMATI (student tomonidan o'z guruh a'zolarini belgilash)
+# ============================================================
+
+@sync_to_async
+def get_student_groups_for_telegram(telegram_id: int) -> list:
+    """Tinglovchining guruhlarini qaytaradi (guruh id, nomi, student id)."""
+    from apps.students.models import Student
+    try:
+        student = Student.objects.get(telegram_id=telegram_id)
+        return [
+            {
+                'group_id':   g.id,
+                'group_name': g.name,
+                'student_id': student.id,
+            }
+            for g in student.groups.all().order_by('name')
+        ]
+    except Student.DoesNotExist:
+        return []
+
+
+@sync_to_async
+def get_registered_group_members_with_status(group_id: int, date) -> list:
+    """
+    Guruhning ro'yxatdan o'tgan (is_registered=True) a'zolari va
+    bugungi davomat statusini qaytaradi.
+    """
+    from apps.students.models import Group, StudentAttendance
+    from datetime import date as date_type
+    try:
+        group = Group.objects.get(id=group_id)
+    except Group.DoesNotExist:
+        return []
+
+    students = list(group.students.filter(is_registered=True).order_by('full_name'))
+    student_ids = [s.id for s in students]
+
+    attendances = {
+        a.student_id: a.status
+        for a in StudentAttendance.objects.filter(
+            group_id=group_id, date=date, student_id__in=student_ids
+        )
+    }
+
+    STATUS_EMOJI = {'present': '✅', 'absent': '❌', 'late': '⏰', 'excused': '📝'}
+    return [
+        {
+            'student_id':   s.id,
+            'full_name':    s.full_name,
+            'status':       attendances.get(s.id, None),
+            'status_emoji': STATUS_EMOJI.get(attendances.get(s.id, ''), '⬜'),
+        }
+        for s in students
+    ]
+
+
+@sync_to_async
+def set_group_member_attendance(student_id: int, group_id: int, date, status: str) -> bool:
+    """Guruh a'zosining bugungi davomat statusini o'rnatadi (yaratadi yoki yangilaydi)."""
+    from apps.students.models import Student, StudentAttendance
+    try:
+        student = Student.objects.get(id=student_id)
+        att, _ = StudentAttendance.objects.get_or_create(
+            student_id=student_id,
+            group_id=group_id,
+            date=date,
+            defaults={'status': status}
+        )
+        if att.status != status:
+            att.status = status
+            att.save(update_fields=['status'])
+        return True
+    except Exception as e:
+        print(f"set_group_member_attendance xatosi: {e}")
+        return False
