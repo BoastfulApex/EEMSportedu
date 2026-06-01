@@ -111,9 +111,16 @@ async def edu_show_groups(callback: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == "📋 Tinglovchi davomati", StateFilter(None))
 async def edu_show_groups_reply(message: Message, state: FSMContext):
-    """ReplyKeyboard 'Tinglovchi davomati' tugmasi."""
+    """ReplyKeyboard 'Tinglovchi davomati' tugmasi — edu_admin uchun guruhlar, tinglovchi uchun guruhdoshlar."""
     await state.clear()
-    await _send_attendance_groups(message.from_user.id, message.answer)
+    user_id = message.from_user.id
+
+    # Tinglovchi bo'lsa — o'z guruhdoshlari ro'yxatini ko'rsat (guruh tanlash yo'q)
+    if await is_user_student(user_id):
+        await _send_student_groupmates(user_id, message.answer)
+        return
+
+    await _send_attendance_groups(user_id, message.answer)
 
 
 # ─────────────────────────────────────────────────────────────
