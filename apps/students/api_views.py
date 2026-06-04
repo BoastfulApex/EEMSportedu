@@ -341,6 +341,11 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                 attendance.verified_by_face = True
                 attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
 
+            # Face ID muvaffaqiyatli o'tdi → is_registered = True
+            if not student.is_registered:
+                student.is_registered = True
+                student.save(update_fields=['is_registered'])
+
             result_data = {
                 "status": "SUCCESS",
                 "type": "check_in",
@@ -735,6 +740,11 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 attendance.late_minutes     = late_minutes
                 attendance.verified_by_face = True
                 attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
+
+            # Face ID muvaffaqiyatli o'tdi → is_registered = True
+            if not student.is_registered:
+                student.is_registered = True
+                student.save(update_fields=['is_registered'])
 
             return Response({
                 "status":         "SUCCESS",

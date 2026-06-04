@@ -68,6 +68,8 @@
             <th>Telefon</th>
             <th>Login (ID)</th>
             <th>Parol</th>
+            <th>Holat</th>
+            <th>Telegram ID</th>
             <th class="text-end">Amallar</th>
           </tr>
         </thead>
@@ -91,19 +93,46 @@
                 <span class="text-muted">—</span>
               {% endif %}
             </td>
-            <td class="text-end">
+            <td>
+              {% if student.is_registered %}
+                <span class="badge bg-success">✅ Ro'yxatdan o'tgan</span>
+              {% elif student.registration_status == 'verified' %}
+                <span class="badge bg-primary">✅ Tasdiqlangan</span>
+              {% elif student.registration_status == 'rejected' %}
+                <span class="badge bg-danger">❌ Rad etilgan</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">⏳ Kutilmoqda</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if student.telegram_id %}
+                <code class="text-info">{{ student.telegram_id }}</code>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="text-end d-flex gap-1 justify-content-end">
+              <!-- Guruhdan olib tashlash -->
               <form method="post" action="{% url 'group_student_remove' group.pk student.pk %}" class="d-inline"
                     onsubmit="return confirm('{{ student.full_name }} ni guruhdan olib tashlamoqchimisiz?')">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-danger">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Guruhdan olib tashlash">
                   <i data-feather="user-minus" style="width:14px;height:14px"></i>
+                </button>
+              </form>
+              <!-- Barcha ma'lumotlarni tozalash -->
+              <form method="post" action="{% url 'student_clear' group.pk student.pk %}" class="d-inline"
+                    onsubmit="return confirm('⚠️ {{ student.full_name }}\n\nBarcha ma\'lumotlari o\'chiriladi:\n— Telegram ID\n— Yuz rasmi\n— Davomat tarixi\n\nDavom etasizmi?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-warning" title="Ma'lumotlarni tozalash">
+                  <i data-feather="refresh-cw" style="width:14px;height:14px"></i>
                 </button>
               </form>
             </td>
           </tr>
           {% empty %}
           <tr>
-            <td colspan="6" class="text-center py-5 text-muted">
+            <td colspan="8" class="text-center py-5 text-muted">
               <i data-feather="users" style="width:40px;height:40px;opacity:0.3;display:block;margin:0 auto 8px"></i>
               Tinglovchilar yo'q
             </td>

@@ -18,7 +18,7 @@ from django.contrib.auth.models import User
 from apps.superadmin.decorators import edu_admin_required, monitoring_required
 from apps.superadmin.models import Administrator
 from apps.main.models import Location
-from .models import Group, Direction, Student, Smena, SmenaSlot, GroupLesson, GroupSchedule, MONTH_CHOICES
+from .models import Group, Direction, Student, Smena, SmenaSlot, GroupLesson, GroupSchedule, StudentAttendance, MONTH_CHOICES
 from .forms import GroupForm, DirectionForm, SmenaForm, SmenaSlotFormSet
 
 
@@ -485,6 +485,50 @@ def group_student_remove(request, pk, student_pk):
 
     if request.method == 'POST':
         group.students.remove(student_pk)
+
+    return redirect('group_students', pk=pk)
+
+
+@edu_admin_required
+def student_clear(request, pk, student_pk):
+    """
+    Tinglovchining barcha ma'lumotlarini tozalash —
+    noto'g'ri tanlangan bo'lsa, qaytadan boshlash uchun.
+    Tozalanadi: telegram_id, face_image, face_encoding,
+                face_verified, is_registered, registration_status,
+                barcha StudentAttendance yozuvlari.
+    """
+    import os
+    group      = get_object_or_404(Group, pk=pk)
+    student    = get_object_or_404(Student, pk=student_pk)
+    admin_user, _ = _get_admin_filial(request)
+
+    if group.organization != admin_user.organization:
+        return HttpResponse("Ruxsatnoma yo'q", status=403)
+
+    if request.method == 'POST':
+        # Yuz rasmini diskdan o'chirish
+        if student.face_image:
+            try:
+                if os.path.isfile(student.face_image.path):
+                    os.remove(student.face_image.path)
+            except Exception:
+                pass
+
+        # Barcha davomat yozuvlarini o'chirish
+        StudentAttendance.objects.filter(student=student).delete()
+
+        # Student maydonlarini tozalash
+        student.telegram_id         = None
+        student.face_image          = None
+        student.face_encoding       = None
+        student.face_verified       = False
+        student.is_registered       = False
+        student.registration_status = 'pending'
+        student.save(update_fields=[
+            'telegram_id', 'face_image', 'face_encoding',
+            'face_verified', 'is_registered', 'registration_status',
+        ])
 
     return redirect('group_students', pk=pk)
 

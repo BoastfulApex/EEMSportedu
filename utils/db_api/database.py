@@ -806,9 +806,16 @@ def get_all_students_in_group(group_id: int) -> list:
 
 @sync_to_async
 def link_student_telegram(student_id: int, telegram_id: int):
-    """Student ga telegram_id bog'lash"""
+    """Student ga telegram_id bog'lash.
+    Agar bu telegram_id boshqa studentda bo'lsa — avval o'sha studentdan tozalanadi
+    (noto'g'ri bog'liq bo'lgan holat).
+    """
     from apps.students.models import Student
     try:
+        # Bu telegram_id boshqa studentda bo'lsa — tozala (unique conflict oldini olish)
+        Student.objects.filter(telegram_id=telegram_id).exclude(id=student_id).update(
+            telegram_id=None
+        )
         student = Student.objects.get(id=student_id)
         student.telegram_id = telegram_id
         student.save(update_fields=['telegram_id'])

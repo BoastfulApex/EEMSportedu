@@ -23,6 +23,7 @@ urlpatterns = [
     path('groups/<int:pk>/students/', views.group_students, name='group_students'),
     path('groups/<int:pk>/students/export/', views.group_students_export, name='group_students_export'),
     path('groups/<int:pk>/students/<int:student_pk>/remove/', views.group_student_remove, name='group_student_remove'),
+    path('groups/<int:pk>/students/<int:student_pk>/clear/', views.student_clear, name='student_clear'),
 
     # Taklif havolalari
     path('invites/', views.invite_links, name='invite_links'),

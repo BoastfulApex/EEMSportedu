@@ -46,7 +46,42 @@ class EmployeeAdmin(admin.ModelAdmin):
     )
 
 
-admin.site.register(Weekday)
-admin.site.register(WorkSchedule)
-admin.site.register(ScheduleDay)
-admin.site.register(InviteToken)
+@admin.register(Weekday)
+class WeekdayAdmin(admin.ModelAdmin):
+    list_display  = ['name', 'name_en']
+    search_fields = ['name', 'name_en']
+
+
+@admin.register(WorkSchedule)
+class WorkScheduleAdmin(admin.ModelAdmin):
+    list_display  = ['employee', 'location', 'start', 'end']
+    search_fields = ['employee__name']
+    list_filter   = ['location']
+
+
+@admin.register(ScheduleDay)
+class ScheduleDayAdmin(admin.ModelAdmin):
+    list_display  = ['schedule', 'weekday', 'start', 'end']
+    search_fields = ['schedule__name']
+    list_filter   = ['weekday']
+
+
+@admin.register(InviteToken)
+class InviteTokenAdmin(admin.ModelAdmin):
+    list_display  = ['token', 'filial', 'created_at']
+    search_fields = ['token', 'filial__filial_name']
+    list_filter   = ['filial']
+
+
+@admin.register(TelegramUser)
+class TelegramUserAdmin(admin.ModelAdmin):
+    list_display  = ['user_id', 'first_name', 'last_name', 'username']
+    search_fields = ['first_name', 'last_name', 'username', 'user_id']
+
+
+@admin.register(Attendance)
+class AttendanceAdmin(admin.ModelAdmin):
+    list_display  = ['employee', 'date', 'check_in', 'check_out', 'location']
+    search_fields = ['employee__name']
+    list_filter   = ['date', 'location', 'employee__filial']
+    date_hierarchy = 'date'

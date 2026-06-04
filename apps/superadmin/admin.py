@@ -83,4 +83,8 @@ class FilialAdmin(admin.ModelAdmin):
     search_fields = ['filial_name']
 
 
-admin.site.register(Location)
+@admin.register(Location)
+class LocationAdmin(admin.ModelAdmin):
+    list_display  = ['name', 'filial', 'organization']
+    search_fields = ['name']
+    list_filter   = ['organization', 'filial']
