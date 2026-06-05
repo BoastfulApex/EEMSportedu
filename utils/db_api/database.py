@@ -214,11 +214,12 @@ def save_student_face_by_id(student_id: int, photo_path: str) -> dict | None:
             except Exception:
                 pass
         student.face_image    = photo_path
+        student.face_verified = True
         student.is_registered = True
         # Face encoding hisoblash (bir marta — keyingi so'rovlar tez bo'ladi)
         encoding = compute_face_encoding(photo_path)
         student.face_encoding = encoding  # None bo'lsa ham saqlash (keyinroq qayta hisoblash mumkin)
-        update_fields = ['face_image', 'is_registered', 'face_encoding']
+        update_fields = ['face_image', 'face_verified', 'is_registered', 'face_encoding']
         student.save(update_fields=update_fields)
         return {
             'full_name': student.full_name,

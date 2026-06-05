@@ -529,17 +529,21 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         image_base64       = data['image']
         selected_student_id = data.get('student_id')   # bot orqali tanlangan tinglovchi
 
-        # ── 1. Admin tekshirish ──────────────────────────────
+        # ── 1. Admin yoki Tinglovchi tekshirish ─────────────────
         from apps.superadmin.models import Administrator
         from apps.students.models import Student, StudentAttendance
 
-        try:
-            admin = Administrator.objects.select_related('filial').get(
-                telegram_id=admin_telegram_id,
-                role__in=['edu_admin', 'org_admin', 'filial_admin']
-            )
-        except Administrator.DoesNotExist:
-            return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
+        admin = Administrator.objects.select_related('filial').filter(
+            telegram_id=admin_telegram_id,
+            role__in=['edu_admin', 'org_admin', 'filial_admin']
+        ).first()
+
+        # Admin topilmasa — tinglovchi sifatida tekshirish (guruh a'zosi)
+        caller_student = None
+        if not admin:
+            caller_student = Student.objects.filter(telegram_id=admin_telegram_id).first()
+            if not caller_student:
+                return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
 
         # ── 2. Tinglovchi(lar)ni olish ───────────────────────
         # Bot dan student_id kelsa — faqat o'sha tinglovchi yuzi bilan solishtirish
@@ -547,12 +551,19 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             qs = Student.objects.filter(
                 id=selected_student_id,
                 face_image__isnull=False,
-                face_verified=True,
             )
+            # Tinglovchi bo'lsa — faqat o'z guruhidagilarni qaray oladi
+            if caller_student:
+                caller_group_ids = caller_student.groups.values_list('id', flat=True)
+                qs = qs.filter(groups__in=caller_group_ids)
         else:
-            qs = Student.objects.filter(face_image__isnull=False, face_verified=True)
-            if admin.filial:
+            qs = Student.objects.filter(face_image__isnull=False)
+            if admin and admin.filial:
                 qs = qs.filter(filial=admin.filial)
+            elif caller_student:
+                # Tinglovchi — faqat o'z guruhidagilar
+                caller_group_ids = caller_student.groups.values_list('id', flat=True)
+                qs = qs.filter(groups__in=caller_group_ids)
 
         students_data = []
         for s in qs.only('id', 'full_name', 'phone', 'face_image', 'face_encoding'):
@@ -628,7 +639,7 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         # ── 5. Tinglovchini DB dan topish ─────────────────────
         try:
             student_qs = Student.objects.select_related('filial__organization')
-            if admin.filial:
+            if admin and admin.filial:
                 student_qs = student_qs.filter(filial=admin.filial)
             student = student_qs.get(id=student_id)
         except Student.DoesNotExist:
