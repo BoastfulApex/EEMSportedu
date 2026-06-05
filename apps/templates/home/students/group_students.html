@@ -16,6 +16,11 @@
       </p>
     </div>
     <div class="d-flex gap-2">
+      <button type="button" id="muqobilBtn" class="btn btn-warning d-none"
+              data-bs-toggle="modal" data-bs-target="#muqobilModal">
+        <i data-feather="repeat" style="width:15px;height:15px"></i>
+        Muqobilga o'tkazish (<span id="selectedCount">0</span>)
+      </button>
       <a href="{% url 'group_students_export' group.pk %}" class="btn btn-success">
         <i data-feather="download"></i> Excel yuklab olish
       </a>
@@ -58,11 +63,16 @@
   <div class="card border-0">
     <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-3">
       <span class="fw-semibold">Jami: <strong>{{ group.students.count }} ta</strong></span>
+      <div class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="selectAll">
+        <label class="form-check-label small text-muted" for="selectAll">Hammasini tanlash</label>
+      </div>
     </div>
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
+            <th style="width:40px"></th>
             <th>#</th>
             <th>F.I.Sh</th>
             <th>Telefon</th>
@@ -75,9 +85,22 @@
         </thead>
         <tbody>
           {% for student in page_obj %}
-          <tr>
+          <tr {% if student.is_muqobil %}class="table-secondary"{% endif %}>
+            <td>
+              <input class="form-check-input student-cb" type="checkbox"
+                     value="{{ student.pk }}"
+                     {% if student.is_muqobil %}disabled title="Allaqachon muqobilda"{% endif %}>
+            </td>
             <td class="text-muted fw-semibold" style="width:48px">{{ forloop.counter }}</td>
-            <td>{{ student.full_name }}</td>
+            <td>
+              {{ student.full_name }}
+              {% if student.is_muqobil %}
+                <span class="badge bg-secondary ms-1" title="Muqobil malaka oshirish — {{ student.muqobil_from }}">
+                  🔄 Muqobil
+                  {% if student.muqobil_from %}{{ student.muqobil_from }}{% endif %}
+                </span>
+              {% endif %}
+            </td>
             <td>{{ student.phone|default:"—" }}</td>
             <td>
               {% if student.user %}
@@ -94,7 +117,9 @@
               {% endif %}
             </td>
             <td>
-              {% if student.is_registered %}
+              {% if student.is_muqobil %}
+                <span class="badge bg-secondary">🔄 Muqobil</span>
+              {% elif student.is_registered %}
                 <span class="badge bg-success">✅ Ro'yxatdan o'tgan</span>
               {% elif student.registration_status == 'verified' %}
                 <span class="badge bg-primary">✅ Tasdiqlangan</span>
@@ -132,7 +157,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="8" class="text-center py-5 text-muted">
+            <td colspan="9" class="text-center py-5 text-muted">
               <i data-feather="users" style="width:40px;height:40px;opacity:0.3;display:block;margin:0 auto 8px"></i>
               Tinglovchilar yo'q
             </td>
@@ -168,4 +193,98 @@
   </div>
 
 </div>
+
+<!-- Muqobil Modal -->
+<div class="modal fade" id="muqobilModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{% url 'mark_muqobil' group.pk %}" id="muqobilForm">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">🔄 Muqobil malaka oshirishga o'tkazish</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning py-2 mb-3">
+            <i data-feather="alert-triangle" style="width:14px;height:14px"></i>
+            Tanlangan tinglovchilar shu sanadan boshlab <strong>muqobil</strong>ga o'tadi.
+            Ularning kelmagan soatlari hisoblanmaydi.
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Muqobilga o'tgan sana</label>
+            <input type="date" name="muqobil_from" id="muqobilDate" class="form-control"
+                   value="{{ today_str }}" required>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Tanlangan tinglovchilar:</label>
+            <ul id="selectedNames" class="list-unstyled mb-0 small"></ul>
+          </div>
+
+          <!-- Hidden student_ids inputs — JS tomonidan to'ldiriladi -->
+          <div id="hiddenInputs"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Bekor qilish</button>
+          <button type="submit" class="btn btn-warning">
+            <i data-feather="check" style="width:14px;height:14px"></i>
+            Saqlash
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const checkboxes = document.querySelectorAll('.student-cb');
+  const selectAll  = document.getElementById('selectAll');
+  const muqobilBtn = document.getElementById('muqobilBtn');
+  const selectedCount = document.getElementById('selectedCount');
+  const selectedNames = document.getElementById('selectedNames');
+  const hiddenInputs  = document.getElementById('hiddenInputs');
+
+  // Tanlangan qatordan ism olish
+  function getStudentName(cb) {
+    const row = cb.closest('tr');
+    // 3-ustun (index 2) — F.I.Sh (checkbox, #, F.I.Sh)
+    const nameCell = row.querySelectorAll('td')[2];
+    // Faqat text node (badge matnisiz)
+    return nameCell ? nameCell.childNodes[0].textContent.trim() : '—';
+  }
+
+  function updateUI() {
+    const checked = [...checkboxes].filter(cb => cb.checked && !cb.disabled);
+    const n = checked.length;
+    selectedCount.textContent = n;
+
+    if (n > 0) {
+      muqobilBtn.classList.remove('d-none');
+    } else {
+      muqobilBtn.classList.add('d-none');
+    }
+
+    // Modal ichidagi ro'yxat va hidden inputlar
+    selectedNames.innerHTML = checked.map(cb =>
+      `<li>• ${getStudentName(cb)}</li>`
+    ).join('');
+
+    hiddenInputs.innerHTML = checked.map(cb =>
+      `<input type="hidden" name="student_ids" value="${cb.value}">`
+    ).join('');
+  }
+
+  checkboxes.forEach(cb => cb.addEventListener('change', updateUI));
+
+  selectAll.addEventListener('change', function() {
+    checkboxes.forEach(cb => {
+      if (!cb.disabled) cb.checked = this.checked;
+    });
+    updateUI();
+  });
+
+  // Default sana — bugun
+  document.getElementById('muqobilDate').valueAsDate = new Date();
+</script>
 {% endblock %}

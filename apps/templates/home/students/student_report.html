@@ -211,9 +211,14 @@
         <tbody>
           {% for r in rows %}
           {% if r.percent >= 80 %}{% with cls="high" %}{% endwith %}{% endif %}
-          <tr>
+          <tr {% if r.is_muqobil %}style="opacity:.7"{% endif %}>
             <td>{{ forloop.counter }}</td>
-            <td>{{ r.student.full_name }}</td>
+            <td>
+              {{ r.student.full_name }}
+              {% if r.is_muqobil %}
+                <br><span style="font-size:11px;color:#6b7280">🔄 Muqobil{% if r.muqobil_from %} — {{ r.muqobil_from }}{% endif %}</span>
+              {% endif %}
+            </td>
             <td>{{ r.total }}</td>
             <td><strong style="color:#16a34a">{{ r.present }}</strong></td>
             <td>

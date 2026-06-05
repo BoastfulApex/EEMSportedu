@@ -476,6 +476,39 @@ def group_students_export(request, pk):
 
 
 @edu_admin_required
+def mark_muqobil(request, pk):
+    """
+    POST: Guruh tinglovchilaridan bir nechtasini muqobil malaka oshirishga o'tkazish.
+    student_ids — checkbox orqali tanlangan IDlar ro'yxati
+    muqobil_from — sana (YYYY-MM-DD)
+    """
+    group = get_object_or_404(Group, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+
+    if group.organization != admin_user.organization:
+        return HttpResponse("Ruxsatnoma yo'q", status=403)
+
+    if request.method == 'POST':
+        student_ids = request.POST.getlist('student_ids')
+        muqobil_from_str = request.POST.get('muqobil_from', '')
+
+        error = None
+        try:
+            muqobil_date = dt.date.fromisoformat(muqobil_from_str) if muqobil_from_str else dt.date.today()
+        except ValueError:
+            error = "Noto'g'ri sana formati."
+            muqobil_date = dt.date.today()
+
+        if not error and student_ids:
+            Student.objects.filter(
+                id__in=student_ids,
+                groups=group,
+            ).update(is_muqobil=True, muqobil_from=muqobil_date)
+
+    return redirect('group_students', pk=pk)
+
+
+@edu_admin_required
 def group_student_remove(request, pk, student_pk):
     group      = get_object_or_404(Group, pk=pk)
     admin_user, _ = _get_admin_filial(request)
@@ -816,6 +849,17 @@ def _build_student_report(group, date_from, date_to):
     students = group.students.order_by('full_name')
     rows = []
     for student in students:
+        # Muqobil sanasidan keyingi kunlar bu tinglovchi uchun hisoblanmaydi
+        muqobil_date = student.muqobil_from if student.is_muqobil and student.muqobil_from else None
+
+        # Ushbu tinglovchi uchun hisoblash kerak bo'lgan darslar (muqobil sanasigacha)
+        if muqobil_date:
+            student_lesson_map = {d: l for d, l in lesson_map.items() if d < muqobil_date}
+        else:
+            student_lesson_map = lesson_map
+
+        student_total_paras = sum(len(l.smena.get_slots()) for l in student_lesson_map.values())
+
         atts = StudentAttendance.objects.filter(
             student=student,
             group=group,
@@ -831,7 +875,7 @@ def _build_student_report(group, date_from, date_to):
         early_count      = 0
         early_mins_total = 0
 
-        for date, lesson in lesson_map.items():
+        for date, lesson in student_lesson_map.items():
             smena  = lesson.smena
             slots  = smena.get_slots()
             para_count = len(slots)
@@ -876,18 +920,20 @@ def _build_student_report(group, date_from, date_to):
                     early_count      += 1
                     early_mins_total += int((para_end_dt - checkout_dt).total_seconds() / 60)
 
-        percent = round(present_count / total_paras * 100) if total_paras else 0
+        percent = round(present_count / student_total_paras * 100) if student_total_paras else 0
 
         rows.append({
-            'student':    student,
-            'present':    present_count,
-            'absent':     absent_count,
-            'late_count': late_count,
-            'late_mins':  late_mins_total,
-            'early_count': early_count,
-            'early_mins': early_mins_total,
-            'percent':    percent,
-            'total':      total_paras,
+            'student':      student,
+            'is_muqobil':   student.is_muqobil,
+            'muqobil_from': muqobil_date,
+            'present':      present_count,
+            'absent':       absent_count,
+            'late_count':   late_count,
+            'late_mins':    late_mins_total,
+            'early_count':  early_count,
+            'early_mins':   early_mins_total,
+            'percent':      percent,
+            'total':        student_total_paras,
         })
 
     return rows, total_paras
@@ -998,10 +1044,15 @@ def _export_student_report_xlsx(group, date_from, date_to):
         ws.column_dimensions[cell.column_letter].width = w
     ws.row_dimensions[2].height = 32
 
+    muqobil_fill = PatternFill(start_color='E5E7EB', end_color='E5E7EB', fill_type='solid')
+
     for i, r in enumerate(rows, 1):
+        name = r['student'].full_name
+        if r.get('is_muqobil') and r.get('muqobil_from'):
+            name += f"\n(Muqobil: {r['muqobil_from']})"
         row_data = [
             i,
-            r['student'].full_name,
+            name,
             r['total'],
             r['present'],
             r['absent'],
@@ -1011,13 +1062,18 @@ def _export_student_report_xlsx(group, date_from, date_to):
             r['early_mins'],
             f"{r['percent']}%",
         ]
-        fill_color = 'FFF3CD' if r['percent'] < 70 else None
+        if r.get('is_muqobil'):
+            row_fill = muqobil_fill
+        elif r['percent'] < 70:
+            row_fill = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+        else:
+            row_fill = None
         for col, val in enumerate(row_data, 1):
             cell = ws.cell(row=i + 2, column=col, value=val)
             cell.border = brd
             cell.alignment = center
-            if fill_color:
-                cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type='solid')
+            if row_fill:
+                cell.fill = row_fill
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

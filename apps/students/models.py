@@ -98,6 +98,15 @@ class Student(models.Model):
         help_text="Tinglovchi foto yuklagan va tizimga ulanganmi"
     )
 
+    is_muqobil = models.BooleanField(
+        default=False,
+        verbose_name="Muqobil malaka oshirishda",
+    )
+    muqobil_from = models.DateField(
+        null=True, blank=True,
+        verbose_name="Muqobilga o'tgan sana",
+    )
+
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
