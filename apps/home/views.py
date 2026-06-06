@@ -1394,38 +1394,56 @@ def _build_exceeded_students(groups_qs, limit):
 
 @monitoring_required
 def monitoring_dashboard(request):
-    """Monitoring dashboard: guruhlar, tinglovchilar, kechikish foizi."""
-    from apps.students.models import Group, StudentAttendance, Direction
+    """Monitoring dashboard: joriy oy guruhlar, tinglovchilar statistikasi."""
+    from apps.students.models import Group, StudentAttendance, Student
     from django.db.models import Count, Q
+    from datetime import date, timedelta
+
+    MONTH_NAMES_UZ = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr',
+    }
 
     admin_user = request.admin_user
     filial_id  = _get_filial_id(admin_user, request)
+    today      = date.today()
 
-    groups_qs = Group.objects.filter(organization=admin_user.organization)
+    # ── Joriy oy guruhlari ───────────────────────────────────
+    groups_qs = Group.objects.filter(
+        organization=admin_user.organization,
+        year=today.year,
+        month=today.month,
+    )
     if filial_id:
         groups_qs = groups_qs.filter(filial_id=filial_id)
 
     groups_count = groups_qs.count()
 
-    # Noyob tinglovchilar soni
+    # ── Joriy oy tinglovchilari (noyob) ─────────────────────
     student_ids = set()
     for g in groups_qs.prefetch_related('students'):
         student_ids.update(g.students.values_list('id', flat=True))
     students_count = len(student_ids)
 
-    # Kechikish foizi (barcha vaqt uchun)
+    # ── Yangi statistikalar ──────────────────────────────────
+    stu_qs = Student.objects.filter(id__in=student_ids)
+    face_id_count   = stu_qs.filter(is_registered=True).count()
+    muqobil_count   = stu_qs.filter(is_muqobil=True).count()
+    masofaviy_count = stu_qs.filter(is_masofaviy=True).count()
+
+    # ── Kechikish foizi (joriy oy) ───────────────────────────
     att_qs    = StudentAttendance.objects.filter(group__in=groups_qs)
     total_att = att_qs.count()
     late_att  = att_qs.filter(Q(late_minutes__gt=0) | Q(status='late')).count()
     late_pct  = round(late_att / total_att * 100, 1) if total_att > 0 else 0
 
-    # Limitdan oshgan tinglovchilar + jami qoldirilgan soat
+    # ── Limitdan oshganlar + qoldirilgan soat ────────────────
     limit          = _get_attendance_limit(admin_user, filial_id)
     para_hours     = limit.para_hours if limit else 2.0
     exceeded_list  = _build_exceeded_students(groups_qs, limit)
     exceeded_count = len(exceeded_list)
 
-    # Jami qoldirilgan soat (barcha guruh tinglovchilari bo'yicha)
     total_missed_hours = 0.0
     seen_keys = set()
     for group in groups_qs.prefetch_related('students'):
@@ -1438,27 +1456,31 @@ def monitoring_dashboard(request):
             total_missed_hours += stats['missed_hours']
     total_missed_hours = round(total_missed_hours, 1)
 
-    # So'nggi 30 kunlik trend (kunlik davomat soni)
-    from datetime import date, timedelta
-    today      = date.today()
+    # ── So'nggi 30 kunlik trend ──────────────────────────────
     trend_data = []
     for i in range(29, -1, -1):
-        d      = today - timedelta(days=i)
-        count  = att_qs.filter(date=d, status__in=['present', 'late']).count()
+        d     = today - timedelta(days=i)
+        count = att_qs.filter(date=d, status__in=['present', 'late']).count()
         trend_data.append({'date': str(d), 'count': count})
 
+    current_month_name = MONTH_NAMES_UZ[today.month]
+
     return render(request, 'monitoring/dashboard.html', {
-        'segment':        'monitoring_dashboard',
-        'groups_count':   groups_count,
-        'students_count': students_count,
-        'late_pct':       late_pct,
-        'total_att':      total_att,
-        'trend_data':     json.dumps(trend_data),
+        'segment':             'monitoring_dashboard',
+        'current_month_name':  current_month_name,
+        'groups_count':        groups_count,
+        'students_count':      students_count,
+        'face_id_count':       face_id_count,
+        'muqobil_count':       muqobil_count,
+        'masofaviy_count':     masofaviy_count,
+        'late_pct':            late_pct,
+        'total_att':           total_att,
+        'trend_data':          json.dumps(trend_data),
         'exceeded_count':      exceeded_count,
         'limit':               limit,
         'total_missed_hours':  total_missed_hours,
         'data':                {'filials': _base_context(admin_user)['filials']},
-        'tashkent_time':  timezone.localtime(timezone.now()),
+        'tashkent_time':       timezone.localtime(timezone.now()),
     })
 
 
