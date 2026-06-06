@@ -1667,15 +1667,35 @@ def _get_para_attendance(att, lesson):
     check_in_dt  = _dt.datetime.combine(date, att.check_in)
     check_out_dt = _dt.datetime.combine(date, att.check_out) if att.check_out else None
 
-    for i, p in enumerate(para_starts):
-        para_dt = _dt.datetime.combine(date, p)
-        lbl = f'p{i+1}'
-        if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
-            result[lbl] = False
-        elif check_out_dt and check_out_dt < para_dt:
-            result[lbl] = False
-        else:
-            result[lbl] = True
+    if check_out_dt:
+        # Check_out bor → oddiy mantiq
+        for i, p in enumerate(para_starts):
+            para_dt = _dt.datetime.combine(date, p)
+            lbl = f'p{i+1}'
+            if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                result[lbl] = False
+            elif check_out_dt < para_dt:
+                result[lbl] = False
+            else:
+                result[lbl] = True
+    else:
+        # Check_out yo'q → faqat kelgan para ✓, qolganlar ✗
+        arrived_idx = None
+        for i, p in enumerate(para_starts):
+            para_dt = _dt.datetime.combine(date, p)
+            if check_in_dt <= para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                arrived_idx = i
+                break
+
+        for i, p in enumerate(para_starts):
+            para_dt = _dt.datetime.combine(date, p)
+            lbl = f'p{i+1}'
+            if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
+                result[lbl] = False  # kech kelgan, bu paraga yetmagan
+            elif i == arrived_idx:
+                result[lbl] = True   # kelgan para
+            else:
+                result[lbl] = False  # check_out yo'q → keyingi paralar ✗
 
     return result
 
