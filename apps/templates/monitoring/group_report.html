@@ -140,25 +140,29 @@
                     <span class="time-na">—</span>
                   {% endif %}
                 </td>
-                <td>
-                  {% if r.p1 is None %}<span class="para-na">—</span>
-                  {% elif r.p1 %}<span class="para-yes">✓</span>
-                  {% else %}<span class="para-no">✗</span>{% endif %}
-                </td>
-                {% if day.has_p2 %}
-                <td>
-                  {% if r.p2 is None %}<span class="para-na">—</span>
-                  {% elif r.p2 %}<span class="para-yes">✓</span>
-                  {% else %}<span class="para-no">✗</span>{% endif %}
-                </td>
-                {% endif %}
-                {% if day.has_p3 %}
-                <td>
-                  {% if r.p3 is None %}<span class="para-na">—</span>
-                  {% elif r.p3 %}<span class="para-yes">✓</span>
-                  {% else %}<span class="para-no">✗</span>{% endif %}
-                </td>
-                {% endif %}
+                {% for n in day.para_range %}
+                  {% with pval=r|get_item:"p"|add:n %}
+                  <td>
+                    {% if n == 1 %}
+                      {% if r.p1 is None %}<span class="para-na">—</span>
+                      {% elif r.p1 %}<span class="para-yes">✓</span>
+                      {% else %}<span class="para-no">✗</span>{% endif %}
+                    {% elif n == 2 %}
+                      {% if r.p2 is None %}<span class="para-na">—</span>
+                      {% elif r.p2 %}<span class="para-yes">✓</span>
+                      {% else %}<span class="para-no">✗</span>{% endif %}
+                    {% elif n == 3 %}
+                      {% if r.p3 is None %}<span class="para-na">—</span>
+                      {% elif r.p3 %}<span class="para-yes">✓</span>
+                      {% else %}<span class="para-no">✗</span>{% endif %}
+                    {% elif n == 4 %}
+                      {% if r.p4 is None %}<span class="para-na">—</span>
+                      {% elif r.p4 %}<span class="para-yes">✓</span>
+                      {% else %}<span class="para-no">✗</span>{% endif %}
+                    {% endif %}
+                  </td>
+                  {% endwith %}
+                {% endfor %}
                 <td>
                   {% if r.check_out %}
                     <span class="time-val">{{ r.check_out|time:"H:i" }}</span>
