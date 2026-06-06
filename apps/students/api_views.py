@@ -545,6 +545,22 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             if not caller_student:
                 return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
 
+            # O'zi allaqachon kirgan tinglovchi boshqasini o'tkaza olmaydi
+            _today = timezone.localdate()
+            _caller_group = caller_student.groups.first()
+            if _caller_group:
+                _already_in = StudentAttendance.objects.filter(
+                    student=caller_student,
+                    group=_caller_group,
+                    date=_today,
+                    check_in__isnull=False,
+                ).exists()
+                if _already_in:
+                    return Response({
+                        "status": "FAIL",
+                        "reason": "Siz allaqachon kirgansiz. Boshqa tinglovchini ro'yxatdan o'tkaza olmaysiz."
+                    }, status=403)
+
         # ── 2. Tinglovchi(lar)ni olish ───────────────────────
         # Bot dan student_id kelsa — faqat o'sha tinglovchi yuzi bilan solishtirish
         if selected_student_id:
