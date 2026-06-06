@@ -345,8 +345,8 @@
   // Tanlangan qatordan ism olish
   function getStudentName(cb) {
     const row = cb.closest('tr');
-    // 3-ustun (index 2) — F.I.Sh (checkbox, #, F.I.Sh)
-    const nameCell = row.querySelectorAll('td')[2];
+    // index 3 — F.I.Sh (0:checkbox, 1:#, 2:Rasm, 3:F.I.Sh)
+    const nameCell = row.querySelectorAll('td')[3];
     // Faqat text node (badge matnisiz)
     return nameCell ? nameCell.childNodes[0].textContent.trim() : '—';
   }
