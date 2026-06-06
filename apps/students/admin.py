@@ -46,6 +46,31 @@ class DirectionAdmin(admin.ModelAdmin):
     list_filter   = ('organization', 'filial')
 
 
+@admin.register(StudentAttendance)
+class StudentAttendanceAdmin(admin.ModelAdmin):
+    list_display   = ('student', 'group', 'date', 'check_in', 'check_out',
+                      'status', 'late_minutes', 'early_leave_minutes', 'verified_by_face')
+    search_fields  = ('student__full_name', 'student__telegram_id')
+    list_filter    = ('status', 'date', 'group', 'verified_by_face')
+    ordering       = ('-date', '-check_in')
+    readonly_fields = ('date',)
+    date_hierarchy = 'date'
+    list_per_page  = 50
+
+    fieldsets = (
+        ('Tinglovchi', {
+            'fields': ('student', 'group', 'date')
+        }),
+        ('Davomat', {
+            'fields': ('check_in', 'check_out', 'status', 'verified_by_face')
+        }),
+        ('Kechikish / Erta ketish', {
+            'fields': ('late_minutes', 'early_leave_minutes'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
 class SmenaSlotInline(admin.TabularInline):
     model  = SmenaSlot
     extra  = 0
