@@ -481,7 +481,9 @@ def mark_muqobil(request, pk):
     POST: Guruh tinglovchilaridan bir nechtasini muqobil malaka oshirishga o'tkazish.
     student_ids — checkbox orqali tanlangan IDlar ro'yxati
     muqobil_from — sana (YYYY-MM-DD)
+    muqobil_to — avtomatik: guruh oyi oxirgi kuni
     """
+    import calendar as _cal
     group = get_object_or_404(Group, pk=pk)
     admin_user, _ = _get_admin_filial(request)
 
@@ -500,10 +502,60 @@ def mark_muqobil(request, pk):
             muqobil_date = dt.date.today()
 
         if not error and student_ids:
+            # Muqobil tugash sanasi: guruh oyi + yilining oxirgi kuni
+            last_day = _cal.monthrange(group.year, group.month)[1]
+            muqobil_to_date = dt.date(group.year, group.month, last_day)
+
             Student.objects.filter(
                 id__in=student_ids,
                 groups=group,
-            ).update(is_muqobil=True, muqobil_from=muqobil_date)
+            ).update(
+                is_muqobil=True,
+                muqobil_from=muqobil_date,
+                muqobil_to=muqobil_to_date,
+            )
+
+    return redirect('group_students', pk=pk)
+
+
+@edu_admin_required
+def mark_masofaviy(request, pk):
+    """
+    POST: Guruh tinglovchilaridan bir nechtasini masofaviy ta'limga o'tkazish.
+    student_ids  — checkbox orqali tanlangan IDlar
+    masofaviy_from — boshlanish sanasi (YYYY-MM-DD)
+    masofaviy_to   — tugash sanasi (YYYY-MM-DD), ixtiyoriy
+    """
+    group = get_object_or_404(Group, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+
+    if group.organization != admin_user.organization:
+        return HttpResponse("Ruxsatnoma yo'q", status=403)
+
+    if request.method == 'POST':
+        student_ids       = request.POST.getlist('student_ids')
+        from_str          = request.POST.get('masofaviy_from', '')
+        to_str            = request.POST.get('masofaviy_to', '')
+
+        try:
+            from_date = dt.date.fromisoformat(from_str) if from_str else dt.date.today()
+        except ValueError:
+            from_date = dt.date.today()
+
+        try:
+            to_date = dt.date.fromisoformat(to_str) if to_str else None
+        except ValueError:
+            to_date = None
+
+        if student_ids:
+            Student.objects.filter(
+                id__in=student_ids,
+                groups=group,
+            ).update(
+                is_masofaviy=True,
+                masofaviy_from=from_date,
+                masofaviy_to=to_date,
+            )
 
     return redirect('group_students', pk=pk)
 
