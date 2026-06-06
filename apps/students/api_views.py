@@ -529,7 +529,7 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         image_base64       = data['image']
         selected_student_id = data.get('student_id')   # bot orqali tanlangan tinglovchi
 
-        # ── 1. Admin yoki Tinglovchi tekshirish ─────────────────
+        # ── 1. Admin tekshirish (filial filtr uchun) ────────────
         from apps.superadmin.models import Administrator
         from apps.students.models import Student, StudentAttendance
 
@@ -538,19 +538,6 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             role__in=['edu_admin', 'org_admin', 'filial_admin']
         ).first()
 
-        # Admin topilmasa — tinglovchi sifatida tekshirish (guruh a'zosi)
-        caller_student = None
-        if not admin:
-            caller_student = Student.objects.filter(telegram_id=admin_telegram_id).first()
-            if not caller_student:
-                return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
-            # Tinglovchi bo'lsa — student_id majburiy (aniq kishi ko'rsatilishi shart)
-            if not selected_student_id:
-                return Response({
-                    "status": "FAIL",
-                    "reason": "Tinglovchi IDsi ko'rsatilmagan. Iltimos tinglovchini ro'yxatdan tanlang."
-                }, status=400)
-
         # ── 2. Tinglovchi(lar)ni olish ───────────────────────
         if selected_student_id:
             # student_id berilgan — faqat o'sha 1 ta tinglovchi, 1:1 tekshiruv
@@ -558,10 +545,6 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 id=selected_student_id,
                 face_image__isnull=False,
             )
-            # Tinglovchi bo'lsa — faqat o'z guruhidagilarni qaray oladi
-            if caller_student:
-                caller_group_ids = caller_student.groups.values_list('id', flat=True)
-                qs = qs.filter(groups__in=caller_group_ids)
         else:
             # Admin uchun — filialdagi barcha tinglovchilar qidiruvi
             qs = Student.objects.filter(face_image__isnull=False)
