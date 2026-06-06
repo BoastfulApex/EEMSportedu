@@ -51,6 +51,7 @@ urlpatterns = [
     path('monitoring/exceeded/', views.monitoring_exceeded, name='monitoring_exceeded'),
     path('monitoring/groups/', views.monitoring_groups_list, name='monitoring_groups_list'),
     path('monitoring/groups/<int:pk>/report/', views.monitoring_group_report, name='monitoring_group_report'),
+    path('monitoring/groups/<int:pk>/report/export/', views.monitoring_group_report_export, name='monitoring_group_report_export'),
     path('monitoring/groups/<int:pk>/students/', views.monitoring_group_students, name='monitoring_group_students'),
     path('monitoring/students/<int:student_pk>/report/', views.monitoring_student_detail_report, name='monitoring_student_detail_report'),
 
