@@ -1927,19 +1927,21 @@ def monitoring_student_detail_report(request, student_pk):
         }
 
         for date in sorted(lesson_map.keys()):
-            lesson   = lesson_map[date]
-            has_p2   = bool(lesson.smena.para2_start)
-            has_p3   = bool(lesson.smena.para3_start)
-            att      = att_map.get(date)
-            para     = _get_para_attendance(att, lesson)
-            rows.append({
-                'date':      date,
-                'check_in':  att.check_in  if att else None,
-                'check_out': att.check_out if att else None,
-                'p1':        para['p1'],
-                'p2':        para['p2'] if has_p2 else None,
-                'p3':        para['p3'] if has_p3 else None,
-            })
+            lesson       = lesson_map[date]
+            _para_starts = _get_smena_para_starts(lesson.smena)
+            para_count   = len(_para_starts)
+            att          = att_map.get(date)
+            para         = _get_para_attendance(att, lesson)
+            row = {
+                'date':       date,
+                'check_in':   att.check_in  if att else None,
+                'check_out':  att.check_out if att else None,
+                'para_count': para_count,
+                'para_range': list(range(1, para_count + 1)),
+            }
+            for n in range(1, para_count + 1):
+                row[f'p{n}'] = para.get(f'p{n}')
+            rows.append(row)
 
     return render(request, 'monitoring/student_detail_report.html', {
         'segment':         'monitoring_groups',
