@@ -97,7 +97,10 @@
               {% if student.face_image %}
                 <img src="{{ student.face_image.url }}"
                      alt="{{ student.full_name }}"
-                     style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid #dee2e6;"
+                     style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid #dee2e6;cursor:pointer;transition:opacity .15s;"
+                     onmouseover="this.style.opacity='.8'"
+                     onmouseout="this.style.opacity='1'"
+                     onclick="openPhoto('{{ student.face_image.url }}','{{ student.full_name }}')"
                      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                 <div style="display:none;width:38px;height:38px;border-radius:50%;background:#e9ecef;align-items:center;justify-content:center;font-size:16px;">👤</div>
               {% else %}
