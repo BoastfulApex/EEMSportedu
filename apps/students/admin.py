@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Student, Group, Direction, Smena, SmenaSlot
+from .models import Student, Group, Direction, Smena, SmenaSlot, StudentAttendance
 
 
 @admin.register(Student)
