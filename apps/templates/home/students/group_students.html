@@ -351,23 +351,38 @@
     return nameCell ? nameCell.childNodes[0].textContent.trim() : '—';
   }
 
+  const masofaviyBtn   = document.getElementById('masofaviyBtn');
+  const selectedCount2 = document.getElementById('selectedCount2');
+  const selectedNamesMasofaviy = document.getElementById('selectedNamesMasofaviy');
+  const hiddenInputsMasofaviy  = document.getElementById('hiddenInputsMasofaviy');
+
   function updateUI() {
     const checked = [...checkboxes].filter(cb => cb.checked && !cb.disabled);
     const n = checked.length;
-    selectedCount.textContent = n;
+    selectedCount.textContent  = n;
+    selectedCount2.textContent = n;
 
     if (n > 0) {
       muqobilBtn.classList.remove('d-none');
+      masofaviyBtn.classList.remove('d-none');
     } else {
       muqobilBtn.classList.add('d-none');
+      masofaviyBtn.classList.add('d-none');
     }
 
-    // Modal ichidagi ro'yxat va hidden inputlar
+    // Muqobil modal
     selectedNames.innerHTML = checked.map(cb =>
       `<li>• ${getStudentName(cb)}</li>`
     ).join('');
-
     hiddenInputs.innerHTML = checked.map(cb =>
+      `<input type="hidden" name="student_ids" value="${cb.value}">`
+    ).join('');
+
+    // Masofaviy modal
+    selectedNamesMasofaviy.innerHTML = checked.map(cb =>
+      `<li>• ${getStudentName(cb)}</li>`
+    ).join('');
+    hiddenInputsMasofaviy.innerHTML = checked.map(cb =>
       `<input type="hidden" name="student_ids" value="${cb.value}">`
     ).join('');
   }
