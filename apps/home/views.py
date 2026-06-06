@@ -1784,27 +1784,29 @@ def monitoring_group_report(request, pk):
     # Jadval qatorlari
     rows = []
     for date in sorted_dates:
-        lesson   = lesson_map[date]
+        lesson       = lesson_map[date]
         _para_starts = _get_smena_para_starts(lesson.smena)
-        has_p2   = len(_para_starts) >= 2
-        has_p3   = len(_para_starts) >= 3
+        para_count   = len(_para_starts)
         day_rows = []
         for student in students:
-            att    = att_map.get((student.id, date))
-            para   = _get_para_attendance(att, lesson)
-            day_rows.append({
+            att  = att_map.get((student.id, date))
+            para = _get_para_attendance(att, lesson)
+            row  = {
                 'student':   student,
                 'check_in':  att.check_in  if att else None,
                 'check_out': att.check_out if att else None,
-                'p1':        para['p1'],
-                'p2':        para['p2'] if has_p2 else None,
-                'p3':        para['p3'] if has_p3 else None,
-            })
+            }
+            for n in range(1, para_count + 1):
+                row[f'p{n}'] = para.get(f'p{n}')
+            day_rows.append(row)
         rows.append({
-            'date':    date,
-            'has_p2':  has_p2,
-            'has_p3':  has_p3,
-            'students': day_rows,
+            'date':       date,
+            'para_count': para_count,
+            'para_range': list(range(1, para_count + 1)),
+            'has_p2':     para_count >= 2,
+            'has_p3':     para_count >= 3,
+            'has_p4':     para_count >= 4,
+            'students':   day_rows,
         })
 
     return render(request, 'monitoring/group_report.html', {
