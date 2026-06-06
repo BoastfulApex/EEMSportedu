@@ -1943,12 +1943,16 @@ def monitoring_student_detail_report(request, student_pk):
                 row[f'p{n}'] = para.get(f'p{n}')
             rows.append(row)
 
+    max_paras = max((r['para_count'] for r in rows), default=1)
+    max_para_range = list(range(1, max_paras + 1))
+
     return render(request, 'monitoring/student_detail_report.html', {
         'segment':         'monitoring_groups',
         'student':         student,
         'groups':          groups_qs,
         'selected_group':  selected_group,
         'rows':            rows,
+        'max_para_range':  max_para_range,
         'date_from_str':   date_from_str,
         'date_to_str':     date_to_str,
         'data':            {'filials': _base_context(admin_user)['filials']},
