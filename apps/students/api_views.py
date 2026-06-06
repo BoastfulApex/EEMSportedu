@@ -544,26 +544,16 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             caller_student = Student.objects.filter(telegram_id=admin_telegram_id).first()
             if not caller_student:
                 return Response({"status": "FAIL", "reason": "Admin topilmadi yoki ruxsat yo'q"}, status=403)
-
-            # O'zi allaqachon kirgan tinglovchi boshqasini o'tkaza olmaydi
-            _today = timezone.localdate()
-            _caller_group = caller_student.groups.first()
-            if _caller_group:
-                _already_in = StudentAttendance.objects.filter(
-                    student=caller_student,
-                    group=_caller_group,
-                    date=_today,
-                    check_in__isnull=False,
-                ).exists()
-                if _already_in:
-                    return Response({
-                        "status": "FAIL",
-                        "reason": "Siz allaqachon kirgansiz. Boshqa tinglovchini ro'yxatdan o'tkaza olmaysiz."
-                    }, status=403)
+            # Tinglovchi bo'lsa — student_id majburiy (aniq kishi ko'rsatilishi shart)
+            if not selected_student_id:
+                return Response({
+                    "status": "FAIL",
+                    "reason": "Tinglovchi IDsi ko'rsatilmagan. Iltimos tinglovchini ro'yxatdan tanlang."
+                }, status=400)
 
         # ── 2. Tinglovchi(lar)ni olish ───────────────────────
-        # Bot dan student_id kelsa — faqat o'sha tinglovchi yuzi bilan solishtirish
         if selected_student_id:
+            # student_id berilgan — faqat o'sha 1 ta tinglovchi, 1:1 tekshiruv
             qs = Student.objects.filter(
                 id=selected_student_id,
                 face_image__isnull=False,
@@ -573,13 +563,10 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 caller_group_ids = caller_student.groups.values_list('id', flat=True)
                 qs = qs.filter(groups__in=caller_group_ids)
         else:
+            # Admin uchun — filialdagi barcha tinglovchilar qidiruvi
             qs = Student.objects.filter(face_image__isnull=False)
             if admin and admin.filial:
                 qs = qs.filter(filial=admin.filial)
-            elif caller_student:
-                # Tinglovchi — faqat o'z guruhidagilar
-                caller_group_ids = caller_student.groups.values_list('id', flat=True)
-                qs = qs.filter(groups__in=caller_group_ids)
 
         students_data = []
         for s in qs.only('id', 'full_name', 'phone', 'face_image', 'face_encoding'):
