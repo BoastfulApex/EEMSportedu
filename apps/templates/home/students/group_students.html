@@ -222,6 +222,52 @@
 
 </div>
 
+<!-- Masofaviy Modal -->
+<div class="modal fade" id="masofaviyModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{% url 'mark_masofaviy' group.pk %}" id="masofaviyForm">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">🌐 Masofaviy ta'limga o'tkazish</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 mb-3">
+            <i data-feather="wifi" style="width:14px;height:14px"></i>
+            Tanlangan tinglovchilar masofaviy ta'lim shakliga o'tkaziladi.
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold">Boshlanish sanasi</label>
+              <input type="date" name="masofaviy_from" id="masofaviyFromDate"
+                     class="form-control" value="{{ today_str }}" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">Tugash sanasi <small class="text-muted">(ixtiyoriy)</small></label>
+              <input type="date" name="masofaviy_to" id="masofaviyToDate" class="form-control">
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Tanlangan tinglovchilar:</label>
+            <ul id="selectedNamesMasofaviy" class="list-unstyled mb-0 small"></ul>
+          </div>
+          <div id="hiddenInputsMasofaviy"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Bekor qilish</button>
+          <button type="submit" class="btn btn-info text-white">
+            <i data-feather="check" style="width:14px;height:14px"></i>
+            Saqlash
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Rasm kattalashtirish Modal -->
 <div id="photoModal" onclick="closePhoto()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;
