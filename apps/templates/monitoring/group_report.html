@@ -123,9 +123,7 @@
                 <th style="width:36px;">#</th>
                 <th>Tinglovchi</th>
                 <th>Keldi</th>
-                <th>1-para</th>
-                {% if day.has_p2 %}<th>2-para</th>{% endif %}
-                {% if day.has_p3 %}<th>3-para</th>{% endif %}
+                {% for n in day.para_range %}<th>{{ n }}-para</th>{% endfor %}
                 <th>Ketdi</th>
                 <th style="width:32px;"></th>
               </tr>
