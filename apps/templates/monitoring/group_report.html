@@ -74,6 +74,10 @@
         </small>
       </div>
       <div class="d-flex gap-2">
+        <a href="{% url 'monitoring_group_report_export' group.pk %}?date_from={{ date_from_str }}&date_to={{ date_to_str }}"
+           class="btn btn-success btn-sm px-3">
+          <i data-feather="download" style="width:14px;height:14px;margin-right:5px;"></i>Excel
+        </a>
         <a href="{% url 'monitoring_group_students' group.pk %}" class="btn btn-outline-secondary btn-sm px-3">
           <i data-feather="users" style="width:14px;height:14px;margin-right:5px;"></i>Tinglovchilar
         </a>
