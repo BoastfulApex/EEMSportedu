@@ -113,7 +113,7 @@
           <i data-feather="calendar"></i>
           {{ day.date|date:"d.m.Y" }}
           <span style="color:#5a6a85; font-weight:400; font-size:.82rem; margin-left:4px;">
-            ({% if day.has_p2 and day.has_p3 %}3 para{% elif day.has_p2 %}2 para{% else %}1 para{% endif %})
+            ({{ day.para_count }} para)
           </span>
         </div>
         <div class="table-responsive">
