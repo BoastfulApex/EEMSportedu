@@ -52,7 +52,10 @@
     <div class="d-flex align-items-center justify-content-between mb-4">
       <div>
         <h1 class="h3 mb-0 fw-bold">Monitoring Dashboard</h1>
-        <small class="text-muted">Tinglovchilar davomati umumiy ko'rinishi</small>
+        <small class="text-muted">
+          <span class="fw-semibold text-primary">{{ current_month_name }} oyi</span>
+          Tinglovchilar davomati umumiy ko'rinishi
+        </small>
       </div>
       <a href="{% url 'monitoring_reports' %}" class="btn btn-primary btn-sm px-4">
         <i data-feather="bar-chart-2" style="width:15px;height:15px;margin-right:6px;"></i>
@@ -60,26 +63,64 @@
       </a>
     </div>
 
-    {# ── Statistik kartalar ── #}
-    <div class="row g-3 mb-4">
+    {# ── 1-qator: Guruh + Tinglovchi statistikasi ── #}
+    <div class="row g-3 mb-3">
       <div class="col-sm-6 col-xl stat-col">
-        <div class="stat-card bg-blue">
-          <div class="icon-wrap"><i data-feather="users"></i></div>
+        <a href="{% url 'monitoring_groups_list' %}" class="stat-card bg-blue">
+          <div class="icon-wrap"><i data-feather="book-open"></i></div>
           <div>
-            <div class="stat-label">Jami guruhlar</div>
+            <div class="stat-label">Guruhlar (joriy oy)</div>
             <div class="stat-val">{{ groups_count }}</div>
+            <small style="opacity:.8; font-size:.75rem;">{{ current_month_name }}</small>
           </div>
-        </div>
+        </a>
       </div>
       <div class="col-sm-6 col-xl stat-col">
         <div class="stat-card bg-green">
-          <div class="icon-wrap"><i data-feather="user-check"></i></div>
+          <div class="icon-wrap"><i data-feather="users"></i></div>
           <div>
             <div class="stat-label">Jami tinglovchilar</div>
             <div class="stat-val">{{ students_count }}</div>
+            <small style="opacity:.8; font-size:.75rem;">joriy oy guruhlari</small>
           </div>
         </div>
       </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card" style="background:linear-gradient(135deg,#0ea5e9,#2563eb);">
+          <div class="icon-wrap"><i data-feather="camera"></i></div>
+          <div>
+            <div class="stat-label">Face ID ro'yxatdan o'tgan</div>
+            <div class="stat-val">{{ face_id_count }}</div>
+            <small style="opacity:.8; font-size:.75rem;">
+              {% if students_count %}{{ face_id_count|floatformat:0 }}/{{ students_count }}{% endif %}
+            </small>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card bg-purple">
+          <div class="icon-wrap"><i data-feather="repeat"></i></div>
+          <div>
+            <div class="stat-label">Muqobil ta'lim</div>
+            <div class="stat-val">{{ muqobil_count }}</div>
+            <small style="opacity:.8; font-size:.75rem;">tinglovchi</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl stat-col">
+        <div class="stat-card" style="background:linear-gradient(135deg,#06b6d4,#0891b2);">
+          <div class="icon-wrap"><i data-feather="wifi"></i></div>
+          <div>
+            <div class="stat-label">Masofaviy ta'lim</div>
+            <div class="stat-val">{{ masofaviy_count }}</div>
+            <small style="opacity:.8; font-size:.75rem;">tinglovchi</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── 2-qator: Davomat statistikasi ── #}
+    <div class="row g-3 mb-4">
       <div class="col-sm-6 col-xl stat-col">
         <div class="stat-card bg-orange">
           <div class="icon-wrap"><i data-feather="clock"></i></div>
