@@ -1625,8 +1625,7 @@ def _get_smena_para_starts(smena):
 def _get_para_attendance(att, lesson):
     """
     Bir kun uchun para-davomat ma'lumotini qaytaradi.
-    Qaytaradi: {'p1': bool, 'p2': bool|None, 'p3': bool|None}
-    p2/p3 = None degani — o'sha kun uchun para mavjud emas.
+    Qaytaradi: {'p1': bool|None, 'p2': bool|None, ...} — smena para soniga qarab dinamik.
     """
     import datetime as _dt
     LATE_THRESHOLD = 40
@@ -1636,12 +1635,11 @@ def _get_para_attendance(att, lesson):
 
     para_starts = _get_smena_para_starts(smena)
 
-    result = {'p1': None, 'p2': None, 'p3': None}
-    labels = ['p1', 'p2', 'p3']
+    result = {f'p{i+1}': None for i in range(len(para_starts))}
 
     if att is None or not att.check_in or att.status in ('absent',):
-        for i, _ in enumerate(para_starts):
-            result[labels[i]] = False
+        for i in range(len(para_starts)):
+            result[f'p{i+1}'] = False
         return result
 
     check_in_dt  = _dt.datetime.combine(date, att.check_in)
@@ -1649,12 +1647,10 @@ def _get_para_attendance(att, lesson):
 
     for i, p in enumerate(para_starts):
         para_dt = _dt.datetime.combine(date, p)
-        lbl = labels[i]
+        lbl = f'p{i+1}'
         if check_in_dt > para_dt + _dt.timedelta(minutes=LATE_THRESHOLD):
-            # 40+ daqiqa kech keldi → paraga kelmadi
             result[lbl] = False
         elif check_out_dt and check_out_dt < para_dt:
-            # Chiqish vaqti para boshlanishidan oldin → paraga kelmadi
             result[lbl] = False
         else:
             result[lbl] = True
