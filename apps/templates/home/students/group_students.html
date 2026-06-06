@@ -21,6 +21,11 @@
         <i data-feather="repeat" style="width:15px;height:15px"></i>
         Muqobilga o'tkazish (<span id="selectedCount">0</span>)
       </button>
+      <button type="button" id="masofaviyBtn" class="btn btn-info d-none"
+              data-bs-toggle="modal" data-bs-target="#masofaviyModal">
+        <i data-feather="wifi" style="width:15px;height:15px"></i>
+        Masofaviyga o'tkazish (<span id="selectedCount2">0</span>)
+      </button>
       <a href="{% url 'group_students_export' group.pk %}" class="btn btn-success">
         <i data-feather="download"></i> Excel yuklab olish
       </a>
