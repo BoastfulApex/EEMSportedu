@@ -263,6 +263,19 @@
 </div>
 
 <script>
+  // ── Rasm kattalashtirish ──────────────────────────────────
+  const photoModal = document.getElementById('photoModal');
+  function openPhoto(url, name) {
+    document.getElementById('photoModalImg').src  = url;
+    document.getElementById('photoModalName').textContent = name;
+    photoModal.style.display = 'flex';
+  }
+  function closePhoto() {
+    photoModal.style.display = 'none';
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePhoto(); });
+
+  // ── Muqobil checkbox ─────────────────────────────────────
   const checkboxes = document.querySelectorAll('.student-cb');
   const selectAll  = document.getElementById('selectAll');
   const muqobilBtn = document.getElementById('muqobilBtn');
