@@ -106,6 +106,23 @@ class Student(models.Model):
         null=True, blank=True,
         verbose_name="Muqobilga o'tgan sana",
     )
+    muqobil_to = models.DateField(
+        null=True, blank=True,
+        verbose_name="Muqobil tugash sanasi",
+    )
+
+    is_masofaviy = models.BooleanField(
+        default=False,
+        verbose_name="Masofaviy ta'limda",
+    )
+    masofaviy_from = models.DateField(
+        null=True, blank=True,
+        verbose_name="Masofaviyga o'tgan sana",
+    )
+    masofaviy_to = models.DateField(
+        null=True, blank=True,
+        verbose_name="Masofaviy tugash sanasi",
+    )
 
     organization = models.ForeignKey(
         Organization,
