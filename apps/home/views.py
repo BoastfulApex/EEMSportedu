@@ -1866,6 +1866,147 @@ def monitoring_group_report(request, pk):
 
 
 @monitoring_required
+def monitoring_group_report_export(request, pk):
+    """Guruh hisobotini Excel formatida yuklab olish."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from apps.students.models import Group, GroupLesson, StudentAttendance
+    import datetime as _dt
+
+    admin_user = request.admin_user
+    group = get_object_or_404(Group, pk=pk, organization=admin_user.organization)
+    today = _dt.date.today()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to', '')
+    try:
+        date_from = _dt.date.fromisoformat(date_from_str)
+    except ValueError:
+        date_from = today.replace(day=1)
+    try:
+        date_to = _dt.date.fromisoformat(date_to_str)
+    except ValueError:
+        date_to = today
+    effective_to = min(date_to, today)
+
+    lessons_qs = GroupLesson.objects.filter(
+        group=group, date__gte=date_from, date__lte=effective_to, smena__isnull=False,
+    ).select_related('smena').order_by('date')
+    lesson_map  = {l.date: l for l in lessons_qs}
+    sorted_dates = sorted(lesson_map.keys())
+    students = list(group.students.all().order_by('full_name'))
+
+    att_qs = StudentAttendance.objects.filter(
+        group=group, date__gte=date_from, date__lte=effective_to, student__in=students,
+    ).select_related('student')
+    att_map = {(a.student_id, a.date): a for a in att_qs}
+
+    # max para soni
+    max_paras = max(
+        (len(_get_smena_para_starts(lesson_map[d].smena)) for d in sorted_dates),
+        default=1
+    )
+
+    # ── Excel yaratish ─────────────────────────────────────
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Davomat"
+
+    # Styles
+    hdr_font  = Font(bold=True, color='FFFFFF', size=10)
+    hdr_fill  = PatternFill(start_color='1E40AF', end_color='1E40AF', fill_type='solid')
+    day_font  = Font(bold=True, color='FFFFFF', size=10)
+    day_fill  = PatternFill(start_color='3B82F6', end_color='3B82F6', fill_type='solid')
+    yes_font  = Font(bold=True, color='166534')
+    no_font   = Font(bold=True, color='991B1B')
+    na_font   = Font(color='9CA3AF')
+    ctr       = Alignment(horizontal='center', vertical='center')
+    thin      = Side(style='thin', color='E5E7EB')
+    brd       = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    para_headers = [f'{n}-para' for n in range(1, max_paras + 1)]
+    headers = ['#', 'Tinglovchi', 'Keldi'] + para_headers + ['Ketdi']
+    col_widths = [4, 32, 10] + [9] * max_paras + [10]
+
+    # Sarlavha qatori
+    for col, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font      = hdr_font
+        cell.fill      = hdr_fill
+        cell.alignment = ctr
+        cell.border    = brd
+        ws.column_dimensions[cell.column_letter].width = w
+    ws.row_dimensions[1].height = 20
+    ws.freeze_panes = 'A2'
+
+    current_row = 2
+    for date in sorted_dates:
+        lesson       = lesson_map[date]
+        _para_starts = _get_smena_para_starts(lesson.smena)
+        para_count   = len(_para_starts)
+
+        # Kun sarlavhasi
+        day_label = f"{date.strftime('%d.%m.%Y')}  ({para_count} para)"
+        ws.merge_cells(start_row=current_row, start_column=1,
+                       end_row=current_row, end_column=len(headers))
+        cell = ws.cell(row=current_row, column=1, value=day_label)
+        cell.font      = day_font
+        cell.fill      = day_fill
+        cell.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws.row_dimensions[current_row].height = 18
+        current_row += 1
+
+        for idx, student in enumerate(students, 1):
+            att  = att_map.get((student.id, date))
+            para = _get_para_attendance(att, lesson)
+
+            row_data = [
+                idx,
+                student.full_name,
+                att.check_in.strftime('%H:%M') if att and att.check_in else '—',
+            ]
+            para_values = []
+            for n in range(1, max_paras + 1):
+                if n <= para_count:
+                    para_values.append(para.get(f'p{n}'))
+                else:
+                    para_values.append(None)
+            row_data += para_values
+            row_data.append(att.check_out.strftime('%H:%M') if att and att.check_out else '—')
+
+            for col, val in enumerate(row_data, 1):
+                cell = ws.cell(row=current_row, column=col)
+                cell.border = brd
+                cell.alignment = ctr
+
+                if isinstance(val, bool) or val is None:
+                    if val is True:
+                        cell.value = '✓'
+                        cell.font  = yes_font
+                    elif val is False:
+                        cell.value = '✗'
+                        cell.font  = no_font
+                    else:
+                        cell.value = '—'
+                        cell.font  = na_font
+                else:
+                    cell.value = val
+                    if col == 2:  # ism
+                        cell.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+
+            ws.row_dimensions[current_row].height = 16
+            current_row += 1
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    fname = f"{group.name}_davomat_{date_from}_{effective_to}.xlsx"
+    response['Content-Disposition'] = f'attachment; filename="{fname}"'
+    wb.save(response)
+    return response
+
+
+@monitoring_required
 def monitoring_group_students(request, pk):
     """Guruh tinglovchilari — face ID holati bilan."""
     from apps.students.models import Group
