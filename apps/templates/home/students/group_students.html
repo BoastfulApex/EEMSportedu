@@ -143,7 +143,9 @@
               {% endif %}
             </td>
             <td>
-              {% if student.is_muqobil %}
+              {% if student.is_masofaviy %}
+                <span class="badge bg-info">🌐 Masofaviy</span>
+              {% elif student.is_muqobil %}
                 <span class="badge bg-secondary">🔄 Muqobil</span>
               {% elif student.is_registered %}
                 <span class="badge bg-success">✅ Ro'yxatdan o'tgan</span>
