@@ -115,9 +115,15 @@
             <td>
               {{ student.full_name }}
               {% if student.is_muqobil %}
-                <span class="badge bg-secondary ms-1" title="Muqobil malaka oshirish — {{ student.muqobil_from }}">
+                <span class="badge bg-secondary ms-1"
+                      title="Muqobil: {{ student.muqobil_from }}{% if student.muqobil_to %} — {{ student.muqobil_to }}{% endif %}">
                   🔄 Muqobil
-                  {% if student.muqobil_from %}{{ student.muqobil_from }}{% endif %}
+                </span>
+              {% endif %}
+              {% if student.is_masofaviy %}
+                <span class="badge bg-info ms-1"
+                      title="Masofaviy: {{ student.masofaviy_from }}{% if student.masofaviy_to %} — {{ student.masofaviy_to }}{% endif %}">
+                  🌐 Masofaviy
                 </span>
               {% endif %}
             </td>
