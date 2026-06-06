@@ -141,27 +141,25 @@
                   {% endif %}
                 </td>
                 {% for n in day.para_range %}
-                  {% with pval=r|get_item:"p"|add:n %}
-                  <td>
-                    {% if n == 1 %}
-                      {% if r.p1 is None %}<span class="para-na">—</span>
-                      {% elif r.p1 %}<span class="para-yes">✓</span>
-                      {% else %}<span class="para-no">✗</span>{% endif %}
-                    {% elif n == 2 %}
-                      {% if r.p2 is None %}<span class="para-na">—</span>
-                      {% elif r.p2 %}<span class="para-yes">✓</span>
-                      {% else %}<span class="para-no">✗</span>{% endif %}
-                    {% elif n == 3 %}
-                      {% if r.p3 is None %}<span class="para-na">—</span>
-                      {% elif r.p3 %}<span class="para-yes">✓</span>
-                      {% else %}<span class="para-no">✗</span>{% endif %}
-                    {% elif n == 4 %}
-                      {% if r.p4 is None %}<span class="para-na">—</span>
-                      {% elif r.p4 %}<span class="para-yes">✓</span>
-                      {% else %}<span class="para-no">✗</span>{% endif %}
-                    {% endif %}
-                  </td>
-                  {% endwith %}
+                <td>
+                  {% if n == 1 %}
+                    {% if r.p1 is None %}<span class="para-na">—</span>
+                    {% elif r.p1 %}<span class="para-yes">✓</span>
+                    {% else %}<span class="para-no">✗</span>{% endif %}
+                  {% elif n == 2 %}
+                    {% if r.p2 is None %}<span class="para-na">—</span>
+                    {% elif r.p2 %}<span class="para-yes">✓</span>
+                    {% else %}<span class="para-no">✗</span>{% endif %}
+                  {% elif n == 3 %}
+                    {% if r.p3 is None %}<span class="para-na">—</span>
+                    {% elif r.p3 %}<span class="para-yes">✓</span>
+                    {% else %}<span class="para-no">✗</span>{% endif %}
+                  {% elif n == 4 %}
+                    {% if r.p4 is None %}<span class="para-na">—</span>
+                    {% elif r.p4 %}<span class="para-yes">✓</span>
+                    {% else %}<span class="para-no">✗</span>{% endif %}
+                  {% endif %}
+                </td>
                 {% endfor %}
                 <td>
                   {% if r.check_out %}
