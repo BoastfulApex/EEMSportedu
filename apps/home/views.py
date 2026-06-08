@@ -1474,6 +1474,9 @@ def monitoring_dashboard(request):
     exceeded_list  = _build_exceeded_students(groups_qs, limit)
     exceeded_count = len(exceeded_list)
 
+    # Joriy oy boshidan hisoblash
+    month_start = today.replace(day=1)
+
     total_missed_hours = 0.0
     seen_keys = set()
     for group in groups_qs.prefetch_related('students'):
@@ -1482,7 +1485,7 @@ def monitoring_dashboard(request):
             if key in seen_keys:
                 continue
             seen_keys.add(key)
-            stats = _compute_student_stats(student, group, para_hours)
+            stats = _compute_student_stats(student, group, para_hours, date_from=month_start)
             total_missed_hours += stats['missed_hours']
     total_missed_hours = round(total_missed_hours, 1)
 
