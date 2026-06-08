@@ -798,6 +798,34 @@ def delete_group_lesson(request, pk, date_str):
     return JsonResponse({'ok': True})
 
 
+@edu_admin_required
+def set_group_limit_date(request, pk):
+    """AJAX: Guruh uchun limit hisoblash boshlanish sanasini belgilash yoki tozalash."""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    group = get_object_or_404(Group, pk=pk)
+    admin_user, _ = _get_admin_filial(request)
+    if group.organization != admin_user.organization:
+        return JsonResponse({'ok': False, 'error': "Ruxsat yo'q"}, status=403)
+
+    import json as _json
+    data = _json.loads(request.body)
+    date_str = data.get('date')  # None → tozalash
+
+    if date_str:
+        try:
+            date = dt.date.fromisoformat(date_str)
+        except ValueError:
+            return JsonResponse({'ok': False, 'error': "Noto'g'ri sana formati"})
+        group.limit_start_date = date
+    else:
+        group.limit_start_date = None
+
+    group.save(update_fields=['limit_start_date'])
+    return JsonResponse({'ok': True, 'date': date_str or None})
+
+
 # ============================================================
 # TINGLOVCHI TELEGRAM ID TOZALASH
 # ============================================================
