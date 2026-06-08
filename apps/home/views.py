@@ -1609,25 +1609,41 @@ def monitoring_limit_settings(request):
 
 @monitoring_required
 def monitoring_exceeded(request):
-    """Limitdan oshgan tinglovchilar ro'yxati."""
+    """Limitdan oshgan tinglovchilar ro'yxati — faqat joriy oy guruhlari."""
     from apps.students.models import Group
+    import datetime as _dt
+
+    MONTH_NAMES_UZ = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr',
+    }
 
     admin_user = request.admin_user
     filial_id  = _get_filial_id(admin_user, request)
+    today      = _dt.date.today()
 
-    groups_qs = Group.objects.filter(organization=admin_user.organization)
+    # Faqat joriy oy guruhlari
+    groups_qs = Group.objects.filter(
+        organization=admin_user.organization,
+        year=today.year,
+        month=today.month,
+    )
     if filial_id:
         groups_qs = groups_qs.filter(filial_id=filial_id)
 
     limit         = _get_attendance_limit(admin_user, filial_id)
     exceeded_list = _build_exceeded_students(groups_qs, limit)
 
+    current_month_name = MONTH_NAMES_UZ[today.month]
+
     return render(request, 'monitoring/exceeded.html', {
-        'segment':        'monitoring_exceeded',
-        'exceeded_list':  exceeded_list,
-        'limit':          limit,
-        'data':           {'filials': _base_context(admin_user)['filials']},
-        'tashkent_time':  timezone.localtime(timezone.now()),
+        'segment':             'monitoring_exceeded',
+        'exceeded_list':       exceeded_list,
+        'limit':               limit,
+        'current_month_name':  current_month_name,
+        'data':                {'filials': _base_context(admin_user)['filials']},
+        'tashkent_time':       timezone.localtime(timezone.now()),
     })
 
 
