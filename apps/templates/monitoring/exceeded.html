@@ -128,54 +128,29 @@
           <small>Barcha tinglovchilar {{ limit.max_missed_hours }} soatdan kam dars qoldirgan</small>
         </div>
       {% else %}
-        <div class="table-responsive">
-          <table class="exc-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Tinglovchi</th>
-                <th>Guruh</th>
-                <th>Yo'nalish</th>
-                <th>Qoldirilgan (para)</th>
-                <th>Qoldirilgan (soat)</th>
-                <th>Limit oshishi</th>
-                <th>Davomat %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in exceeded_list %}
-              <tr>
-                <td style="color:#aab0c0; font-size:.8rem;">{{ forloop.counter }}</td>
-                <td>
-                  <div style="font-weight:600; font-size:.88rem;">{{ row.student.full_name }}</div>
-                </td>
-                <td style="font-size:.85rem;">{{ row.group.name }}</td>
-                <td style="font-size:.85rem; color:#5a6a85;">{{ row.direction.name|default:"—" }}</td>
-                <td style="text-align:center;">
-                  <span class="hours-badge">{{ row.missed_paras }} para</span>
-                </td>
-                <td style="text-align:center;">
-                  <span class="hours-badge">{{ row.missed_hours }} soat</span>
-                </td>
-                <td style="text-align:center;">
-                  <span class="over-badge">
-                    <i data-feather="trending-up" style="width:12px;height:12px;"></i>
-                    +{{ row.over_hours }} soat
-                  </span>
-                </td>
-                <td>
-                  <div class="prog-wrap">
-                    <div class="prog-bar">
-                      <div class="prog-fill red" style="width:{{ row.pct }}%"></div>
-                    </div>
-                    <span class="prog-pct text-danger">{{ row.pct }}%</span>
-                  </div>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        {% include "monitoring/_missed_table.html" with rows=exceeded_list table_style="danger" show_over=True %}
+      {% endif %}
+    </div>
+
+    <!-- ── Hali limitga yetmaganlar ────────────────────────── -->
+    <div class="exceeded-card mt-4">
+      <div class="card-header">
+        <span class="title">
+          <i data-feather="alert-circle" style="width:16px;height:16px;margin-right:6px;color:#f7c948;"></i>
+          Dars qoldirganlar (limitga yetmaganlar)
+          {% if below_list %}
+            <span class="badge ms-2" style="background:#fff3cd;color:#856404;">{{ below_list|length }} tinglovchi</span>
+          {% endif %}
+        </span>
+        <small style="color:#9ca3af; font-size:.78rem;">Eng ko'p qoldirganlar yuqorida</small>
+      </div>
+      {% if not below_list %}
+        <div class="empty-state">
+          <i data-feather="check-circle" style="display:block;margin:0 auto 12px;color:#43c36f;opacity:.5;"></i>
+          <div style="font-size:.95rem; font-weight:500; color:#5a6a85;">Hech kim dars qoldirmagan</div>
         </div>
+      {% else %}
+        {% include "monitoring/_missed_table.html" with rows=below_list table_style="warning" show_over=False %}
       {% endif %}
     </div>
 
