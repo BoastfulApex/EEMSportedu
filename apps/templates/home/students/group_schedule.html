@@ -414,6 +414,55 @@
 }
 .cal-add-hint svg { width: 16px; height: 16px; }
 
+/* ─── Limit banner ────────────────────────── */
+.limit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff7ed;
+  border: 1.5px solid #fed7aa;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: #92400e;
+  margin-bottom: 14px;
+}
+
+/* ─── Before-limit cell ───────────────────── */
+.cal-cell.is-before-limit {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.cal-cell.is-before-limit .cal-day-num { color: #b45309; }
+.cal-cell.is-before-limit:not(.is-past):hover {
+  border-color: #fbbf24;
+  background: #fef3c7;
+}
+
+/* ─── Limit-start cell ────────────────────── */
+.cal-cell.is-limit-date {
+  background: #fff7ed !important;
+  border-color: #f97316 !important;
+  border-width: 2px !important;
+}
+.cal-cell.is-limit-date .cal-day-num { color: #c2410c; }
+
+/* ─── Limit flag button ───────────────────── */
+.btn-set-limit {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 1px;
+  opacity: .55;
+  transition: opacity .15s;
+  flex-shrink: 0;
+}
+.cal-cell:hover .btn-set-limit { display: inline-block; }
+.btn-set-limit:hover { opacity: 1; }
+
 /* ─── Hint text ───────────────────────────── */
 .sch-hint {
   font-size: 11px;
