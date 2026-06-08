@@ -1692,12 +1692,22 @@ def monitoring_exceeded(request):
 
     current_month_name = MONTH_NAMES_UZ[today.month]
 
+    # Student detail linka uzatiladigan sana oralig'i (joriy oy)
+    import calendar as _cal
+    month_start   = today.replace(day=1)
+    last_day      = _cal.monthrange(today.year, today.month)[1]
+    month_end     = today.replace(day=last_day)
+    date_from_str = month_start.isoformat()
+    date_to_str   = month_end.isoformat()
+
     return render(request, 'monitoring/exceeded.html', {
         'segment':             'monitoring_exceeded',
         'exceeded_list':       exceeded_list,
         'below_list':          below_list,
         'limit':               limit,
         'current_month_name':  current_month_name,
+        'date_from_str':       date_from_str,
+        'date_to_str':         date_to_str,
         'data':                {'filials': _base_context(admin_user)['filials']},
         'tashkent_time':       timezone.localtime(timezone.now()),
     })
