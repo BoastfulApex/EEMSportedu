@@ -1632,14 +1632,52 @@ def monitoring_exceeded(request):
     if filial_id:
         groups_qs = groups_qs.filter(filial_id=filial_id)
 
-    limit         = _get_attendance_limit(admin_user, filial_id)
-    exceeded_list = _build_exceeded_students(groups_qs, limit)
+    limit      = _get_attendance_limit(admin_user, filial_id)
+    para_hours = limit.para_hours if limit else 2.0
+    max_hours  = limit.max_missed_hours if limit else None
+
+    # Barcha tinglovchilar (joriy oy guruhlari) statistikasini yig'amiz
+    exceeded_list = []   # limitdan oshganlar
+    below_list    = []   # hali limitga yetmaganlar, lekin dars qoldirganlar
+    seen = set()
+
+    for group in groups_qs.prefetch_related('students', 'direction'):
+        for student in group.students.all():
+            key = (student.id, group.id)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            stats = _compute_student_stats(student, group, para_hours)
+            if stats['missed_paras'] == 0:
+                continue  # hech narsa qoldirmagan — ro'yxatga kirmasin
+
+            row = {
+                'student':      student,
+                'group':        group,
+                'direction':    group.direction,
+                'missed_paras': stats['missed_paras'],
+                'missed_hours': stats['missed_hours'],
+                'max_hours':    max_hours,
+                'over_hours':   round(stats['missed_hours'] - max_hours, 1) if max_hours else None,
+                'pct':          stats['pct'],
+            }
+
+            if max_hours and stats['missed_hours'] > max_hours:
+                exceeded_list.append(row)
+            else:
+                below_list.append(row)
+
+    # Eng ko'p qoldirganlar birinchi
+    exceeded_list.sort(key=lambda r: r['missed_paras'], reverse=True)
+    below_list.sort(key=lambda r: r['missed_paras'], reverse=True)
 
     current_month_name = MONTH_NAMES_UZ[today.month]
 
     return render(request, 'monitoring/exceeded.html', {
         'segment':             'monitoring_exceeded',
         'exceeded_list':       exceeded_list,
+        'below_list':          below_list,
         'limit':               limit,
         'current_month_name':  current_month_name,
         'data':                {'filials': _base_context(admin_user)['filials']},
