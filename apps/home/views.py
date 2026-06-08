@@ -1290,9 +1290,11 @@ def _compute_student_stats(student, group, para_hours):
     today = timezone.localdate()
     LATE_THRESHOLD = 40  # daqiqa
 
-    lessons_qs = GroupLesson.objects.filter(
-        group=group, smena__isnull=False, date__lte=today
-    ).select_related('smena')
+    lessons_filter = {'group': group, 'smena__isnull': False, 'date__lte': today}
+    # Limit sanasidan oldingi darslar "sinov" — limitga hisoblanmaydi
+    if group.limit_start_date:
+        lessons_filter['date__gte'] = group.limit_start_date
+    lessons_qs = GroupLesson.objects.filter(**lessons_filter).select_related('smena')
     lesson_map = {lesson.date: lesson for lesson in lessons_qs}
     scheduled_dates = set(lesson_map.keys())
 
