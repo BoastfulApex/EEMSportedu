@@ -530,9 +530,10 @@
 
 <!-- ── Script ─────────────────────────────── -->
 <script>
-const GROUP_PK = {{ group.pk }};
-const SAVE_URL = "{% url 'save_group_lessons' group.pk %}";
-const CSRF = "{{ csrf_token }}";
+const GROUP_PK   = {{ group.pk }};
+const SAVE_URL   = "{% url 'save_group_lessons' group.pk %}";
+const LIMIT_URL  = "{% url 'set_group_limit_date' group.pk %}";
+const CSRF       = "{{ csrf_token }}";
 
 let activeDate = null;
 let selectedDates = new Set();
