@@ -41,6 +41,7 @@ urlpatterns = [
     path('groups/<int:pk>/schedule/', views.group_schedule, name='group_schedule'),
     path('groups/<int:pk>/schedule/save/', views.save_group_lessons, name='save_group_lessons'),
     path('groups/<int:pk>/schedule/<str:date_str>/delete/', views.delete_group_lesson, name='delete_group_lesson'),
+    path('groups/<int:pk>/schedule/limit-date/', views.set_group_limit_date, name='set_group_limit_date'),
 
     # Hisobot
     path('reports/', views.student_report, name='student_report'),
