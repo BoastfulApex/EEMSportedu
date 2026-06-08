@@ -73,7 +73,9 @@
     <div class="d-flex align-items-center justify-content-between mb-4">
       <div>
         <h1 class="h3 mb-0 fw-bold">Limitdan Oshgan Tinglovchilar</h1>
-        <small class="text-muted">Ruxsat etilgan soatdan ko'p dars qoldirganlar</small>
+        <small class="text-muted">
+          {{ current_month_name }} oyi — ruxsat etilgan soatdan ko'p dars qoldirganlar
+        </small>
       </div>
       <div class="d-flex gap-2">
         <a href="{% url 'monitoring_limit_settings' %}" class="btn btn-outline-primary btn-sm px-3">
