@@ -99,17 +99,20 @@
         {% if cell is None %}
           <div class="cal-cell cal-empty"></div>
         {% else %}
-          <div class="cal-cell {% if cell.lesson %}has-lesson{% endif %} {% if cell.is_past %}is-past{% endif %}"
+          <div class="cal-cell {% if cell.lesson %}has-lesson{% endif %} {% if cell.is_past %}is-past{% endif %} {% if cell.is_before_limit %}is-before-limit{% endif %} {% if cell.is_limit_date %}is-limit-date{% endif %}"
                data-date="{{ cell.date }}"
                data-smena="{{ cell.lesson.smena.pk|default:'' }}"
                data-location="{{ cell.lesson.location.pk|default:'' }}">
 
-            <!-- Top row: checkbox + day number -->
+            <!-- Top row: checkbox + day number + limit button -->
             <div class="cal-top">
               {% if not cell.is_past %}
               <input type="checkbox" class="day-check" data-date="{{ cell.date }}">
               {% endif %}
               <span class="cal-day-num {% if cell.lesson %}has-data{% endif %}">{{ cell.day }}</span>
+              <button class="btn-set-limit" data-date="{{ cell.date }}"
+                      title="Limit sanasini shu kundan belgilash"
+                      onclick="event.stopPropagation();setLimitDate('{{ cell.date }}')">🚩</button>
             </div>
 
             <!-- Lesson info badges -->
