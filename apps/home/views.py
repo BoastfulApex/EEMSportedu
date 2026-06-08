@@ -1378,7 +1378,7 @@ def _build_exceeded_students(groups_qs, limit):
 
             stats = _compute_student_stats(student, group, limit.para_hours)
 
-            if stats['missed_hours'] > limit.max_missed_hours:
+            if stats['missed_hours'] >= limit.max_missed_hours:
                 exceeded.append({
                     'student':      student,
                     'group':        group,
