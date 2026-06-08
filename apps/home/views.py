@@ -1271,7 +1271,7 @@ def _get_attendance_limit(admin_user, filial_id):
     return limit
 
 
-def _compute_student_stats(student, group, para_hours):
+def _compute_student_stats(student, group, para_hours, date_from=None):
     """
     Tinglovchining davomat statistikasini hisoblaydi.
 
@@ -1280,8 +1280,11 @@ def _compute_student_stats(student, group, para_hours):
     - Har bir para alohida tekshiriladi:
         * check_in > para_start + 40 daq → o'sha paraga kelmagan (missed)
         * check_in <= para_start + 40 daq → o'sha paraga kelgan
-    - Barcha paralarga 40+ daqiqa kech qolgan kun → kelmadi (absent) hisoblanadi.
+    - check_out yo'q → faqat kelgan birinchi para ✓, keyingilari ✗
     - Davomat yozilmagan dars kunlari → kelmadi + barcha paralari missed.
+
+    date_from: ixtiyoriy, shu sanadan boshlab hisoblaydi.
+               limit_start_date bilan birgalikda ikkalasining max qiymati ishlatiladi.
     """
     from apps.students.models import StudentAttendance, GroupLesson
     from django.utils import timezone
@@ -1290,10 +1293,17 @@ def _compute_student_stats(student, group, para_hours):
     today = timezone.localdate()
     LATE_THRESHOLD = 40  # daqiqa
 
-    lessons_filter = {'group': group, 'smena__isnull': False, 'date__lte': today}
-    # Limit sanasidan oldingi darslar "sinov" — limitga hisoblanmaydi
+    # Hisoblash boshlanish sanasini aniqlash
+    effective_from = date_from
     if group.limit_start_date:
-        lessons_filter['date__gte'] = group.limit_start_date
+        if effective_from:
+            effective_from = max(effective_from, group.limit_start_date)
+        else:
+            effective_from = group.limit_start_date
+
+    lessons_filter = {'group': group, 'smena__isnull': False, 'date__lte': today}
+    if effective_from:
+        lessons_filter['date__gte'] = effective_from
     lessons_qs = GroupLesson.objects.filter(**lessons_filter).select_related('smena')
     lesson_map = {lesson.date: lesson for lesson in lessons_qs}
     scheduled_dates = set(lesson_map.keys())
