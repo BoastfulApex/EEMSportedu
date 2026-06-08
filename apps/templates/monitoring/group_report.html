@@ -113,12 +113,18 @@
     {% if rows %}
       {% for day in rows %}
       <div class="day-block">
-        <div class="day-header">
+        <div class="day-header {% if day.is_test_day %}day-header-test{% endif %}">
           <i data-feather="calendar"></i>
           {{ day.date|date:"d.m.Y" }}
           <span style="color:#5a6a85; font-weight:400; font-size:.82rem; margin-left:4px;">
             ({{ day.para_count }} para)
           </span>
+          {% if day.is_test_day %}
+          <span style="background:#fde68a;color:#92400e;font-size:.72rem;font-weight:700;
+                       border-radius:5px;padding:1px 7px;margin-left:6px;">
+            🧪 sinov
+          </span>
+          {% endif %}
         </div>
         <div class="table-responsive">
           <table class="day-table">
