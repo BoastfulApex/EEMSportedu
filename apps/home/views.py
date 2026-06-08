@@ -1843,14 +1843,18 @@ def monitoring_group_report(request, pk):
             for n in range(1, para_count + 1):
                 row[f'p{n}'] = para.get(f'p{n}')
             day_rows.append(row)
+        is_test_day = (
+            group.limit_start_date is not None and date < group.limit_start_date
+        )
         rows.append({
-            'date':       date,
-            'para_count': para_count,
-            'para_range': list(range(1, para_count + 1)),
-            'has_p2':     para_count >= 2,
-            'has_p3':     para_count >= 3,
-            'has_p4':     para_count >= 4,
-            'students':   day_rows,
+            'date':        date,
+            'para_count':  para_count,
+            'para_range':  list(range(1, para_count + 1)),
+            'has_p2':      para_count >= 2,
+            'has_p3':      para_count >= 3,
+            'has_p4':      para_count >= 4,
+            'students':    day_rows,
+            'is_test_day': is_test_day,   # sinov kuni — limitga hisoblanmaydi
         })
 
     return render(request, 'monitoring/group_report.html', {
