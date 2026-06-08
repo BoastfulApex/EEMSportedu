@@ -701,6 +701,8 @@ def group_schedule(request, pk):
     lessons_qs = GroupLesson.objects.filter(group=group).select_related('location', 'smena')
     lesson_map = {lesson.date: lesson for lesson in lessons_qs}
 
+    limit_start = group.limit_start_date
+
     # Build calendar data structure
     weeks = []
     for week in cal_weeks:
@@ -710,11 +712,15 @@ def group_schedule(request, pk):
                 week_days.append(None)
             else:
                 date = dt.date(group.year, group.month, day)
+                is_before_limit = limit_start is not None and date < limit_start
+                is_limit_date   = limit_start is not None and date == limit_start
                 week_days.append({
                     'day': day,
                     'date': date.isoformat(),
                     'lesson': lesson_map.get(date),
                     'is_past': date < dt.date.today(),
+                    'is_before_limit': is_before_limit,
+                    'is_limit_date':   is_limit_date,
                 })
         weeks.append(week_days)
 
@@ -728,6 +734,8 @@ def group_schedule(request, pk):
         'locations': locations,
         'segment': 'groups',
         'weekday_names': ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya'],
+        'limit_start_date':     limit_start,
+        'limit_start_date_str': limit_start.isoformat() if limit_start else '',
     })
 
 
