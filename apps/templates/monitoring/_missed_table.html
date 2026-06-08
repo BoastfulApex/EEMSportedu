@@ -1,0 +1,100 @@
+{% comment %}
+Shared partial: dars qoldirganlar jadvali.
+  rows        — tinglovchilar ro'yxati
+  table_style — "danger" (qizil) | "warning" (sariq)
+  show_over   — True → "Limit oshishi" ustunini ko'rsat
+{% endcomment %}
+
+{% if table_style == "danger" %}
+  {% with hdr_bg="#fff5f5" hdr_color="#b82121" hdr_border="#fde8e8" badge_bg="#fde8e8" badge_color="#b82121" %}
+  <div class="table-responsive">
+    <table class="exc-table" style="--hdr-bg:{{ hdr_bg }};--hdr-color:{{ hdr_color }};--hdr-border:{{ hdr_border }};">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tinglovchi</th>
+          <th>Guruh</th>
+          <th>Yo'nalish</th>
+          <th>Qoldirilgan (para)</th>
+          <th>Qoldirilgan (soat)</th>
+          {% if show_over %}<th>Limit oshishi</th>{% endif %}
+          <th>Davomat %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="color:#aab0c0;font-size:.8rem;">{{ forloop.counter }}</td>
+          <td><div style="font-weight:600;font-size:.88rem;">{{ row.student.full_name }}</div></td>
+          <td style="font-size:.85rem;">{{ row.group.name }}</td>
+          <td style="font-size:.85rem;color:#5a6a85;">{{ row.direction.name|default:"—" }}</td>
+          <td style="text-align:center;">
+            <span class="hours-badge" style="background:#fde8e8;color:#b82121;">{{ row.missed_paras }} para</span>
+          </td>
+          <td style="text-align:center;">
+            <span class="hours-badge" style="background:#fde8e8;color:#b82121;">{{ row.missed_hours }} soat</span>
+          </td>
+          {% if show_over %}
+          <td style="text-align:center;">
+            <span class="over-badge">
+              <i data-feather="trending-up" style="width:12px;height:12px;"></i>
+              +{{ row.over_hours }} soat
+            </span>
+          </td>
+          {% endif %}
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar">
+                <div class="prog-fill red" style="width:{{ row.pct }}%"></div>
+              </div>
+              <span class="prog-pct text-danger">{{ row.pct }}%</span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endwith %}
+{% else %}
+  {# warning style — sariq #}
+  <div class="table-responsive">
+    <table class="exc-table exc-table-warn">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tinglovchi</th>
+          <th>Guruh</th>
+          <th>Yo'nalish</th>
+          <th>Qoldirilgan (para)</th>
+          <th>Qoldirilgan (soat)</th>
+          <th>Davomat %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="color:#aab0c0;font-size:.8rem;">{{ forloop.counter }}</td>
+          <td><div style="font-weight:600;font-size:.88rem;">{{ row.student.full_name }}</div></td>
+          <td style="font-size:.85rem;">{{ row.group.name }}</td>
+          <td style="font-size:.85rem;color:#5a6a85;">{{ row.direction.name|default:"—" }}</td>
+          <td style="text-align:center;">
+            <span class="hours-badge" style="background:#fff3cd;color:#856404;">{{ row.missed_paras }} para</span>
+          </td>
+          <td style="text-align:center;">
+            <span class="hours-badge" style="background:#fff3cd;color:#856404;">{{ row.missed_hours }} soat</span>
+          </td>
+          <td>
+            <div class="prog-wrap">
+              <div class="prog-bar">
+                <div class="prog-fill" style="width:{{ row.pct }}%;background:linear-gradient(90deg,#f7c948,#f59e0b);"></div>
+              </div>
+              <span class="prog-pct" style="color:#856404;">{{ row.pct }}%</span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
