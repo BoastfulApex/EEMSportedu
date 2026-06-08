@@ -181,6 +181,14 @@ class Group(models.Model):
 
     invite_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
+    # Limit hisoblash boshlanish sanasi
+    # Bu sanadan oldingi darslar "sinov" deb qaraladi va limitga hisoblanmaydi
+    limit_start_date = models.DateField(
+        null=True, blank=True,
+        verbose_name="Limit hisoblash boshlanish sanasi",
+        help_text="Bu sanadan oldingi darslar 'sinov' deb qaraladi va limitga hisoblanmaydi",
+    )
+
     # O'quv bo'limi tasdiqlashi
     is_confirmed = models.BooleanField(default=False)
     confirmed_by = models.ForeignKey(
