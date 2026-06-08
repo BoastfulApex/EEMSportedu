@@ -1663,7 +1663,7 @@ def monitoring_exceeded(request):
                 'pct':          stats['pct'],
             }
 
-            if max_hours and stats['missed_hours'] > max_hours:
+            if max_hours and stats['missed_hours'] >= max_hours:
                 exceeded_list.append(row)
             else:
                 below_list.append(row)
