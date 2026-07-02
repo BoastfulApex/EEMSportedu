@@ -35,6 +35,27 @@ def base64_to_pil(base64_image):
     return Image.open(io.BytesIO(base64.b64decode(data))).convert("RGB")
 
 
+def save_event_photo(image_base64, filename_prefix):
+    """base64 rasmni ContentFile ga aylantiradi — ImageField.save() bilan ishlatish uchun."""
+    if not image_base64:
+        return None
+    try:
+        raw = image_base64.split(",", 1)[1] if "," in image_base64 else image_base64
+        img_bytes = base64.b64decode(raw)
+        filename = f"{filename_prefix}_{_uuid.uuid4().hex[:10]}.jpg"
+        return ContentFile(img_bytes, name=filename)
+    except Exception:
+        return None
+
+
+def save_event_photo_from_bytes(img_bytes, filename_prefix):
+    """Allaqachon decode qilingan baytlardan ContentFile yaratadi (qayta decode qilmasdan)."""
+    if not img_bytes:
+        return None
+    filename = f"{filename_prefix}_{_uuid.uuid4().hex[:10]}.jpg"
+    return ContentFile(img_bytes, name=filename)
+
+
 def verify_face(employee, base64_image):
     if not employee.image:
         return True  # Rasm yo'q — o'tkazib yuborish
