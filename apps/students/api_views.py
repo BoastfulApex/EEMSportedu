@@ -698,10 +698,7 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         expected_start, expected_end = get_lesson_schedule_times(group, today, lesson)
 
         # ── 8. Davomat holati → action (check_in / check_out) ──
-        action   = data.get('action', 'check_in')
-        existing = StudentAttendance.objects.filter(
-            student=student, group=group, date=today
-        ).first()
+        action = data.get('action', 'check_in')
 
         if action == 'check_out':
             # ── check_out ──────────────────────────────────
