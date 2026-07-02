@@ -406,35 +406,16 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
             return Response(result_data, status=200)
 
         else:  # check_out
-            attendance = StudentAttendance.objects.filter(
-                student=student, group=group, date=today, check_in__isnull=False
-            ).first()
-            if not attendance:
-                return Response({
-                    "status": "FAIL",
-                    "reason": "Avval kirish belgisini qo'ying."
-                }, status=400)
-
-            # Erta ketishni hisoblash — oxirgi para tugash vaqtiga nisbatan
-            early_leave_minutes = 0
-            if lesson and lesson.smena:
-                slots = lesson.smena.get_slots()
-                now_dt = datetime.combine(today, now_time)
-                if slots:
-                    last = slots[-1]
-                    last_end = (
-                        datetime.combine(today, last.end) if last.end
-                        else datetime.combine(today, last.start) + timedelta(minutes=PARA_DURATION_MINUTES)
-                    )
-                    if now_dt < last_end:
-                        early_leave_minutes = int((last_end - now_dt).total_seconds() / 60)
-            elif expected_end:
-                now_dt = datetime.combine(today, now_time)
-                exp_end_dt = datetime.combine(today, expected_end)
-                if now_dt < exp_end_dt:
-                    early_leave_minutes = int((exp_end_dt - now_dt).total_seconds() / 60)
-
-            attendance.check_out = now_time
+            # Kirishsiz ham chiqish qayd qilinadi. Eng KECH chiqish saqlanadi,
+            # erta ketish shu vaqtdan qayta hisoblanadi.
+            attendance, _ = StudentAttendance.objects.get_or_create(
+                student=student, group=group, date=today,
+            )
+            if attendance.check_out is None or now_time > attendance.check_out:
+                attendance.check_out = now_time
+            early_leave_minutes = _compute_student_early_leave(
+                attendance.check_out, today, lesson, expected_end
+            )
             attendance.early_leave_minutes = early_leave_minutes
             attendance.save(update_fields=['check_out', 'early_leave_minutes'])
 
