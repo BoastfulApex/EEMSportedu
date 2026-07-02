@@ -705,36 +705,23 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
 
         if action == 'check_out':
             # ── check_out ──────────────────────────────────
-            if not existing or not existing.check_in:
-                return Response({
-                    "status": "FAIL",
-                    "reason": f"✅ {student.full_name}\n⚠️ Avval kirish qayd qilinmagan, chiqish mumkin emas."
-                }, status=400)
-
-            if existing.check_out:
-                return Response({
-                    "status": "FAIL",
-                    "reason": (
-                        f"✅ {student.full_name}\n"
-                        f"ℹ️ Chiqish allaqachon qayd qilingan: {existing.check_out.strftime('%H:%M')}"
-                    )
-                }, status=400)
-
-            early_leave_minutes = 0
-            if expected_end:
-                now_dt     = datetime.combine(today, now_time)
-                exp_end_dt = datetime.combine(today, expected_end)
-                if now_dt < exp_end_dt:
-                    early_leave_minutes = int((exp_end_dt - now_dt).total_seconds() / 60)
-
-            existing.check_out           = now_time
-            existing.early_leave_minutes = early_leave_minutes
-            existing.save(update_fields=['check_out', 'early_leave_minutes'])
+            # Kirishsiz ham chiqish qayd qilinadi. Eng KECH chiqish saqlanadi,
+            # erta ketish shu vaqtdan qayta hisoblanadi.
+            attendance, _ = StudentAttendance.objects.get_or_create(
+                student=student, group=group, date=today,
+            )
+            if attendance.check_out is None or now_time > attendance.check_out:
+                attendance.check_out = now_time
+            early_leave_minutes = _compute_student_early_leave(
+                attendance.check_out, today, lesson, expected_end
+            )
+            attendance.early_leave_minutes = early_leave_minutes
+            attendance.save(update_fields=['check_out', 'early_leave_minutes'])
 
             # Alohida hodisa yozuvi — rasm (allaqachon decode qilingan) va lokatsiya bilan
             from apps.main.models import AttendanceEvent
             event = AttendanceEvent.objects.create(
-                person_type='student', student=student, student_attendance=existing,
+                person_type='student', student=student, student_attendance=attendance,
                 event_type='check_out', date=today, time=now_time,
                 location_name=loc_name, latitude=latitude, longitude=longitude,
                 distance_meters=distance_m, verified_by='edu_admin',
@@ -749,7 +736,7 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 "type":                 "check_out",
                 "student_name":         student.full_name,
                 "time":                 now_time.strftime('%H:%M'),
-                "check_in":             existing.check_in.strftime('%H:%M'),
+                "check_in":             attendance.check_in.strftime('%H:%M') if attendance.check_in else None,
                 "location":             loc_name,
                 "distance_meters":      distance_m,
                 "early_leave_minutes":  early_leave_minutes,
