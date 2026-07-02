@@ -473,6 +473,17 @@ class HrAdminCheckAPIView(generics.CreateAPIView):
 
         attendance.save()
 
+        # Alohida hodisa yozuvi — rasm (allaqachon decode qilingan) va lokatsiya bilan
+        event = AttendanceEvent.objects.create(
+            person_type='employee', employee=employee, attendance=attendance,
+            event_type=action, date=today, time=now_time, location=location,
+            latitude=latitude, longitude=longitude, distance_meters=distance_m,
+            verified_by='hr_admin',
+        )
+        photo_file = save_event_photo_from_bytes(img_bytes, f"emp{employee.id}_{action}_hr")
+        if photo_file:
+            event.photo.save(photo_file.name, photo_file, save=True)
+
         return Response({
             "status":         "SUCCESS",
             "type":           action,
