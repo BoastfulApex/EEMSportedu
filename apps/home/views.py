@@ -546,6 +546,65 @@ def employees(request):
 
 
 @hr_admin_required
+def employee_attendance_events(request):
+    """
+    Xodimlar kirish-chiqish hodisalari nazorati — HR admin uchun.
+    Har bir kirish/chiqish alohida yozuv: rasm, lokatsiya, GPS, masofa.
+    Filtrlar: sana (default bugun) va ixtiyoriy xodim.
+    """
+    from apps.main.models import AttendanceEvent
+    import datetime as _dt
+
+    admin_user = request.admin_user
+    filial_id  = _get_filial_id(admin_user, request)
+    if filial_id is None:
+        return redirect('/home/')
+
+    data   = {'filials': _base_context(admin_user)['filials']}
+    filial = Filial.objects.get(id=filial_id)
+    today  = timezone.localdate()
+
+    # ── Sana filtri (default bugun) ──
+    date_str = request.GET.get('date', '')
+    try:
+        sel_date = _dt.date.fromisoformat(date_str)
+    except ValueError:
+        sel_date = today
+        date_str = sel_date.isoformat()
+
+    # ── Xodim filtri (ixtiyoriy) ──
+    emp_id = request.GET.get('employee', '')
+
+    events = AttendanceEvent.objects.filter(
+        person_type='employee',
+        employee__filial_id=filial_id,
+        date=sel_date,
+    ).select_related('employee', 'location').order_by('-time')
+
+    if emp_id:
+        try:
+            events = events.filter(employee_id=int(emp_id))
+        except ValueError:
+            pass
+
+    employees_list = Employee.objects.filter(filial_id=filial_id).order_by('name')
+
+    context = {
+        'segment':       'attendance_events',
+        'events':        events,
+        'employees':     employees_list,
+        'sel_date':      sel_date,
+        'date_str':      date_str,
+        'sel_employee':  emp_id,
+        'filial':        filial.filial_name,
+        'today':         today,
+        'data':          data,
+        'tashkent_time': timezone.localtime(timezone.now()),
+    }
+    return render(request, 'home/user/attendance_events.html', context)
+
+
+@hr_admin_required
 def employee_create(request):
     admin_user = request.admin_user
 
