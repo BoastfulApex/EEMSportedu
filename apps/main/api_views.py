@@ -110,6 +110,25 @@ def send_telegram_message(chat_id, text):
         pass
 
 
+def send_telegram_photo(chat_id, photo_path, caption=""):
+    """Telegram'ga rasm bilan xabar yuboradi. Rasm ochilmasa/xato bo'lsa
+    matnli xabarga tushib qoladi."""
+    url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/sendPhoto"
+    try:
+        with open(photo_path, "rb") as f:
+            resp = requests.post(
+                url,
+                data={"chat_id": chat_id, "caption": caption},
+                files={"photo": f},
+                timeout=10,
+            )
+        if resp.status_code != 200:
+            send_telegram_message(chat_id, caption)
+    except Exception:
+        # Rasm yuborib bo'lmasa — hech bo'lmaganda matn yetib borsin
+        send_telegram_message(chat_id, caption)
+
+
 def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
     """
     Xodimning hozirgi vaqt va joylashuviga mos lokatsiyani topadi.
