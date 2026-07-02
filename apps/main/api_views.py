@@ -296,6 +296,17 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
 
         attendance.save()
 
+        # Alohida hodisa yozuvi — rasm va lokatsiya bilan
+        event = AttendanceEvent.objects.create(
+            person_type='employee', employee=employee, attendance=attendance,
+            event_type=check_type, date=today, time=now_time, location=location,
+            latitude=latitude, longitude=longitude, distance_meters=distance_m,
+            verified_by='self',
+        )
+        photo_file = save_event_photo(image_base64, f"emp{employee.id}_{check_type}")
+        if photo_file:
+            event.photo.save(photo_file.name, photo_file, save=True)
+
         # Adminlarga xabar — faqat kadr (hr_admin) ga
         admins = Administrator.objects.filter(
             filial=employee.filial,
