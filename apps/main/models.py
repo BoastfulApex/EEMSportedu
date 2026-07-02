@@ -184,6 +184,87 @@ class Attendance(models.Model):
         return f"{self.employee.name} - {self.date}"
 
 
+class AttendanceEvent(models.Model):
+    """
+    Har bir kirish/chiqish holati uchun ALOHIDA yozuv — rasm va lokatsiya bilan.
+    Xodim va tinglovchi uchun BITTA umumiy jadval (person_type bilan ajratiladi).
+    Attendance / StudentAttendance (kunlik xulosa qatorlari) o'zgarishsiz qoladi;
+    bu model faqat audit/tarix uchun parallel event log.
+    """
+    PERSON_TYPE_CHOICES = [
+        ('employee', 'Xodim'),
+        ('student', 'Tinglovchi'),
+    ]
+    EVENT_TYPE_CHOICES = [
+        ('check_in', 'Kirish'),
+        ('check_out', 'Chiqish'),
+    ]
+    VERIFIED_BY_CHOICES = [
+        ('self', "O'zi (bot orqali)"),
+        ('hr_admin', 'HR admin'),
+        ('edu_admin', "O'quv admin"),
+    ]
+
+    person_type = models.CharField(max_length=10, choices=PERSON_TYPE_CHOICES)
+
+    # Faqat bittasi to'ldiriladi — person_type ga qarab
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='attendance_events'
+    )
+    student = models.ForeignKey(
+        'students.Student', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='attendance_events'
+    )
+
+    # Kunlik xulosa qatoriga bog'lanish — faqat bittasi to'ldiriladi
+    attendance = models.ForeignKey(
+        Attendance, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='events'
+    )
+    student_attendance = models.ForeignKey(
+        'students.StudentAttendance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='events'
+    )
+
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+    date = models.DateField()
+    time = models.TimeField()
+
+    # Xodim uchun — haqiqiy Location obyekti (find_matching_location doim shuni qaytaradi)
+    location = models.ForeignKey(
+        Location, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='attendance_events'
+    )
+    # Tinglovchi uchun — nom (find_student_location Location YOKI Building dan nom qaytaradi)
+    location_name = models.CharField(max_length=200, null=True, blank=True)
+
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    distance_meters = models.FloatField(null=True, blank=True)
+
+    photo = models.ImageField(upload_to='attendance_photos/%Y/%m/%d/', null=True, blank=True)
+    verified_by = models.CharField(max_length=20, choices=VERIFIED_BY_CHOICES, default='self')
+    face_match_score = models.FloatField(
+        null=True, blank=True,
+        help_text="Yuz o'xshashlik foizi (0-100), faqat admin orqali kelganda mavjud"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-time']
+        verbose_name = "Kirish-chiqish hodisasi"
+        verbose_name_plural = "Kirish-chiqish hodisalari"
+
+    def __str__(self):
+        person = self.employee.name if self.employee else (self.student.full_name if self.student else '—')
+        return f"{person} - {self.get_event_type_display()} - {self.date} {self.time}"
+
+    @property
+    def person_name(self):
+        return self.employee.name if self.employee else (self.student.full_name if self.student else '—')
+
+
 class ExtraSchedule(models.Model):
     """
     ESKI model — yangi Schedule + Employee.schedules M2M bilan almashtirildi.
