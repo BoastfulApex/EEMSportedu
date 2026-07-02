@@ -86,3 +86,42 @@ class AttendanceAdmin(admin.ModelAdmin):
     search_fields = ['employee__name']
     list_filter   = ['date', 'location', 'employee__filial']
     date_hierarchy = 'date'
+
+
+@admin.register(AttendanceEvent)
+class AttendanceEventAdmin(admin.ModelAdmin):
+    list_display   = ('person_name_display', 'person_type', 'event_type', 'date', 'time',
+                      'location_display', 'distance_meters', 'verified_by', 'photo_thumb')
+    search_fields  = ('employee__name', 'student__full_name')
+    list_filter    = ('person_type', 'event_type', 'date', 'verified_by')
+    date_hierarchy = 'date'
+    readonly_fields = ('created_at', 'photo_preview')
+    list_per_page  = 50
+
+    fieldsets = (
+        ('Kim', {'fields': ('person_type', 'employee', 'student')}),
+        ("Bog'liq yozuv", {'fields': ('attendance', 'student_attendance', 'event_type', 'date', 'time')}),
+        ('Lokatsiya', {'fields': ('location', 'location_name', 'latitude', 'longitude', 'distance_meters')}),
+        ('Rasm', {'fields': ('photo', 'photo_preview')}),
+        ('Tekshiruv', {'fields': ('verified_by', 'face_match_score', 'created_at')}),
+    )
+
+    def person_name_display(self, obj):
+        return obj.person_name
+    person_name_display.short_description = 'Kim'
+
+    def location_display(self, obj):
+        return obj.location.name if obj.location else (obj.location_name or '—')
+    location_display.short_description = 'Lokatsiya'
+
+    def photo_thumb(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="height:40px;border-radius:4px;" />', obj.photo.url)
+        return '—'
+    photo_thumb.short_description = 'Rasm'
+
+    def photo_preview(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="max-height:300px;border-radius:6px;" />', obj.photo.url)
+        return '—'
+    photo_preview.short_description = "Rasm ko'rinishi"
