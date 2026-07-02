@@ -2,7 +2,9 @@ from rest_framework.response import Response
 from rest_framework import serializers, generics
 from rest_framework.renderers import JSONRenderer
 from rest_framework.permissions import AllowAny
-from .models import Location, Attendance, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay, TelegramUser, EmployeeDailySchedule, EmployeeDailyExtraShift
+from .models import Location, Attendance, AttendanceEvent, Employee, WorkSchedule, ExtraSchedule, Schedule, ScheduleDay, TelegramUser, EmployeeDailySchedule, EmployeeDailyExtraShift
+from django.core.files.base import ContentFile
+import uuid as _uuid
 from django.utils import timezone
 from apps.superadmin.models import Administrator
 from datetime import datetime
