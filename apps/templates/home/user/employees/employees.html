@@ -109,6 +109,10 @@
                    class="btn btn-sm btn-outline-secondary" title="Hisobot">
                   <i data-feather="bar-chart-2"></i>
                 </a>
+                <a href="{% url 'employee_attendance_events' %}?employee={{ employee.id }}"
+                   class="btn btn-sm btn-outline-info" title="Kirish-chiqish (rasm)">
+                  <i data-feather="camera"></i>
+                </a>
                 <a href="{% url 'employee_delete' employee.id %}"
                    class="btn btn-sm btn-outline-danger" title="O'chirish">
                   <i data-feather="trash-2"></i>
