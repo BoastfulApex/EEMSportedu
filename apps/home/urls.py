@@ -10,6 +10,7 @@ urlpatterns = [
     # path('administrators/<int:pk>', views.admin_detail, name='admin_update'),
     # path('admin_delete/<int:pk>', views.AdminDelete.as_view(), name='admin_delete'),
     path('employees/', views.employees, name='employees'),
+    path('attendance-events/', views.employee_attendance_events, name='employee_attendance_events'),
     path('employees_create/', views.employee_create, name='employees_create'),
     path('employees/<int:pk>', views.employee_detail, name='employee_update'),
     path('employee_delete/<int:pk>', views.EmployeeDelete.as_view(), name='employee_delete'),
