@@ -371,6 +371,18 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                 student.is_registered = True
                 student.save(update_fields=['is_registered'])
 
+            # Alohida hodisa yozuvi — rasm va lokatsiya bilan
+            from apps.main.models import AttendanceEvent
+            event = AttendanceEvent.objects.create(
+                person_type='student', student=student, student_attendance=attendance,
+                event_type='check_in', date=today, time=now_time,
+                location_name=loc_name, latitude=latitude, longitude=longitude,
+                distance_meters=distance_m, verified_by='self',
+            )
+            photo_file = save_event_photo(image_base64, f"stu{student.id}_in")
+            if photo_file:
+                event.photo.save(photo_file.name, photo_file, save=True)
+
             result_data = {
                 "status": "SUCCESS",
                 "type": "check_in",
