@@ -361,63 +361,21 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
                     reason = face_result[1] if isinstance(face_result, tuple) else "FaceID mos kelmadi"
                     return Response({"status": "FAIL", "reason": reason}, status=403)
 
-            existing = StudentAttendance.objects.filter(
-                student=student, group=group, date=today, check_in__isnull=False
-            ).first()
-            if existing:
-                return Response({
-                    "status": "FAIL",
-                    "reason": f"Siz bugun allaqachon {existing.check_in.strftime('%H:%M')} da kirgansiz."
-                }, status=400)
-
-            # Kechikishni hisoblash — hozirgi vaqtga mos keladigan paraga nisbatan
-            late_minutes = 0
-            status_val = 'present'
-            if lesson and lesson.smena:
-                slots = lesson.smena.get_slots()
-                now_dt = datetime.combine(today, now_time)
-                # Hozirgi vaqtda qaysi para bo'lishi kerak ekanligini topamiz
-                target_slot = None
-                for slot in slots:
-                    slot_start = datetime.combine(today, slot.start)
-                    slot_end = (
-                        datetime.combine(today, slot.end) if slot.end
-                        else slot_start + timedelta(minutes=PARA_DURATION_MINUTES)
-                    )
-                    if now_dt <= slot_end:
-                        target_slot = slot
-                        break
-                # Agar barcha paralar o'tib ketgan bo'lsa — oxirgisini olamiz
-                if target_slot is None and slots:
-                    target_slot = slots[-1]
-
-                if target_slot:
-                    exp_dt = datetime.combine(today, target_slot.start)
-                    if now_dt > exp_dt:
-                        late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
-                        status_val = 'late'
-            elif expected_start:
-                now_dt = datetime.combine(today, now_time)
-                exp_dt = datetime.combine(today, expected_start)
-                if now_dt > exp_dt:
-                    late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
-                    status_val = 'late'
-
+            # Kunga bitta xulosa qatori — takror kirish bloklanmaydi.
+            # Eng ERTA kirish saqlanadi, kechikish shu vaqtdan qayta hisoblanadi.
             attendance, created = StudentAttendance.objects.get_or_create(
                 student=student, group=group, date=today,
-                defaults={
-                    'check_in': now_time,
-                    'status': status_val,
-                    'late_minutes': late_minutes,
-                    'verified_by_face': True,
-                }
+                defaults={'check_in': now_time, 'verified_by_face': True},
             )
-            if not created:
+            if attendance.check_in is None or now_time < attendance.check_in:
                 attendance.check_in = now_time
-                attendance.status = status_val
-                attendance.late_minutes = late_minutes
-                attendance.verified_by_face = True
-                attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
+            late_minutes, status_val = _compute_student_late(
+                attendance.check_in, today, lesson, expected_start
+            )
+            attendance.status = status_val
+            attendance.late_minutes = late_minutes
+            attendance.verified_by_face = True
+            attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
 
             # Face ID muvaffaqiyatli o'tdi → is_registered = True
             if not student.is_registered:
