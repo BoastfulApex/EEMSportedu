@@ -42,6 +42,13 @@
           </a>
         </li>
 
+        <li class="sidebar-item {% if segment == 'attendance_events' %}active{% endif %}">
+          <a class="sidebar-link" href="{% url 'employee_attendance_events' %}">
+            <i data-feather="camera"></i>
+            <span>Kirish-chiqish nazorati</span>
+          </a>
+        </li>
+
         <li class="sidebar-item {% if segment == 'schedules' %}active{% endif %}">
           <a class="sidebar-link" href="{% url 'schedules' %}">
             <i data-feather="calendar"></i>
