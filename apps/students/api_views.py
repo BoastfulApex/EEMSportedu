@@ -805,6 +805,19 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 student.is_registered = True
                 student.save(update_fields=['is_registered'])
 
+            # Alohida hodisa yozuvi — rasm (allaqachon decode qilingan) va lokatsiya bilan
+            from apps.main.models import AttendanceEvent
+            event = AttendanceEvent.objects.create(
+                person_type='student', student=student, student_attendance=attendance,
+                event_type='check_in', date=today, time=now_time,
+                location_name=loc_name, latitude=latitude, longitude=longitude,
+                distance_meters=distance_m, verified_by='edu_admin',
+                face_match_score=result['best_match'].get('score'),
+            )
+            photo_file = save_event_photo_from_bytes(img_bytes, f"stu{student.id}_in_edu")
+            if photo_file:
+                event.photo.save(photo_file.name, photo_file, save=True)
+
             return Response({
                 "status":         "SUCCESS",
                 "type":           "check_in",
