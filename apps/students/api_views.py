@@ -745,39 +745,21 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
 
         else:
             # ── check_in ───────────────────────────────────
-            if existing and existing.check_in:
-                return Response({
-                    "status": "FAIL",
-                    "reason": (
-                        f"✅ {student.full_name}\n"
-                        f"ℹ️ Kirish allaqachon qayd qilingan: {existing.check_in.strftime('%H:%M')}"
-                    )
-                }, status=400)
-
-            late_minutes = 0
-            status_val   = 'present'
-            if expected_start:
-                now_dt = datetime.combine(today, now_time)
-                exp_dt = datetime.combine(today, expected_start)
-                if now_dt > exp_dt:
-                    late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
-                    status_val   = 'late'
-
+            # Takror kirish bloklanmaydi. Eng ERTA kirish saqlanadi,
+            # kechikish shu vaqtdan qayta hisoblanadi.
             attendance, created = StudentAttendance.objects.get_or_create(
                 student=student, group=group, date=today,
-                defaults={
-                    'check_in':         now_time,
-                    'status':           status_val,
-                    'late_minutes':     late_minutes,
-                    'verified_by_face': True,
-                }
+                defaults={'check_in': now_time, 'verified_by_face': True},
             )
-            if not created:
-                attendance.check_in         = now_time
-                attendance.status           = status_val
-                attendance.late_minutes     = late_minutes
-                attendance.verified_by_face = True
-                attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
+            if attendance.check_in is None or now_time < attendance.check_in:
+                attendance.check_in = now_time
+            late_minutes, status_val = _compute_student_late(
+                attendance.check_in, today, lesson, expected_start
+            )
+            attendance.status           = status_val
+            attendance.late_minutes     = late_minutes
+            attendance.verified_by_face = True
+            attendance.save(update_fields=['check_in', 'status', 'late_minutes', 'verified_by_face'])
 
             # Face ID muvaffaqiyatli o'tdi → is_registered = True
             if not student.is_registered:
