@@ -353,6 +353,8 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
                                   else f"🔵 Kech ketdi: {min_diff} daqiqa"
 
             loc_label = f"\n📍 {location.name}" if location.name else ""
+            if distance_m is not None:
+                loc_label += f" ({distance_m} m)"
             msg_lines = [
                 f"👤 {employee.name}",
                 f"{'✅ Keldi' if check_type == 'check_in' else '🚪 Ketdi'}: {now_time.strftime('%H:%M')}",
@@ -360,11 +362,18 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
             ]
             if status_text:
                 msg_lines.append(status_text)
+            caption = "\n".join(msg_lines)
 
-            if check_type == 'check_in' and attendance.check_number == 1:
-                send_telegram_message(admin.telegram_id, "\n".join(msg_lines))
-            elif check_type == 'check_out':
-                send_telegram_message(admin.telegram_id, "\n".join(msg_lines))
+            should_send = (
+                (check_type == 'check_in' and attendance.check_number == 1)
+                or check_type == 'check_out'
+            )
+            if should_send:
+                # Rasm bo'lsa — rasm bilan, aks holda matn
+                if event.photo:
+                    send_telegram_photo(admin.telegram_id, event.photo.path, caption)
+                else:
+                    send_telegram_message(admin.telegram_id, caption)
 
         return Response({
             "status": "SUCCESS",
