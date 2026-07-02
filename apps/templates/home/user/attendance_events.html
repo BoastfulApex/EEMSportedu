@@ -1,0 +1,188 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Kirish-chiqish nazorati{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block stylesheets %}
+<style>
+  .ev-avatar {
+    width: 46px; height: 46px; border-radius: 8px;
+    object-fit: cover; cursor: pointer;
+    border: 1.5px solid #e5e7eb; transition: transform .12s;
+  }
+  .ev-avatar:hover { transform: scale(1.08); border-color: #3a7bd5; }
+  .ev-noimg {
+    width: 46px; height: 46px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f3f4f6; color: #b0b6c3;
+  }
+  .ev-type-in  { background: #e6f7ee; color: #0a7c50; }
+  .ev-type-out { background: #fdeaea; color: #b82121; }
+  .ev-type-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 20px; padding: 3px 11px; font-size: .78rem; font-weight: 700;
+  }
+  .ev-loc { font-size: .85rem; color: #344563; font-weight: 600; }
+  .ev-dist { font-size: .76rem; color: #8a92a5; }
+  .ev-time { font-size: .95rem; font-weight: 700; color: #344563; }
+  .ev-verify {
+    font-size: .72rem; border-radius: 5px; padding: 2px 7px; font-weight: 600;
+  }
+  .ev-verify-self { background: #eef2ff; color: #4338ca; }
+  .ev-verify-hr   { background: #fff3cd; color: #856404; }
+
+  /* Modal */
+  #photoModal {
+    display: none; position: fixed; inset: 0; z-index: 1080;
+    background: rgba(0,0,0,.82); align-items: center; justify-content: center;
+  }
+  #photoModal.open { display: flex; }
+  #photoModal img { max-width: 92vw; max-height: 88vh; border-radius: 10px; }
+  #photoModal .pm-close {
+    position: absolute; top: 22px; right: 28px; color: #fff;
+    font-size: 34px; cursor: pointer; line-height: 1; font-weight: 300;
+  }
+  #photoModal .pm-name {
+    position: absolute; bottom: 26px; left: 0; right: 0; text-align: center;
+    color: #fff; font-size: .95rem; font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>Kirish-chiqish nazorati</h4>
+      <p class="breadcrumb-info mb-0">Filial: <strong>{{ filial }}</strong> &middot; har bir kirish/chiqish rasm va lokatsiya bilan</p>
+    </div>
+    <a href="{% url 'employees' %}" class="btn btn-outline-secondary">
+      <i data-feather="arrow-left"></i> Xodimlar
+    </a>
+  </div>
+
+  {# ── Filtrlar ── #}
+  <div class="filter-bar">
+    <form class="d-flex gap-2 w-100 flex-wrap align-items-end" method="get">
+      <div>
+        <label class="form-label form-label-sm mb-1" style="font-size:.78rem;color:#5a6a85;">Sana</label>
+        <input type="date" name="date" value="{{ date_str }}" class="form-control form-control-sm">
+      </div>
+      <div style="min-width:220px">
+        <label class="form-label form-label-sm mb-1" style="font-size:.78rem;color:#5a6a85;">Xodim</label>
+        <select name="employee" class="form-select form-select-sm">
+          <option value="">— Barchasi —</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}" {% if sel_employee == e.id|stringformat:'s' %}selected{% endif %}>{{ e.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">
+        <i data-feather="filter"></i> Ko'rish
+      </button>
+      <a href="{% url 'employee_attendance_events' %}" class="btn btn-outline-secondary btn-sm">
+        <i data-feather="x"></i> Tozalash
+      </a>
+    </form>
+  </div>
+
+  {# ── Jadval ── #}
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:48px">#</th>
+            <th style="width:64px">Rasm</th>
+            <th>Xodim</th>
+            <th>Holat</th>
+            <th>Vaqt</th>
+            <th>Lokatsiya</th>
+            <th>Tekshiruvchi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in events %}
+          <tr>
+            <td class="text-muted fw-semibold">{{ forloop.counter }}</td>
+            <td>
+              {% if ev.photo %}
+                <img src="{{ ev.photo.url }}" class="ev-avatar"
+                     onclick="openPhoto('{{ ev.photo.url }}', '{{ ev.employee.name|escapejs }}')"
+                     alt="{{ ev.employee.name }}">
+              {% else %}
+                <div class="ev-noimg"><i data-feather="image" style="width:18px;height:18px"></i></div>
+              {% endif %}
+            </td>
+            <td><div class="emp-name">{{ ev.employee.name }}</div></td>
+            <td>
+              {% if ev.event_type == 'check_in' %}
+                <span class="ev-type-badge ev-type-in"><i data-feather="log-in" style="width:12px;height:12px"></i> Kirish</span>
+              {% else %}
+                <span class="ev-type-badge ev-type-out"><i data-feather="log-out" style="width:12px;height:12px"></i> Chiqish</span>
+              {% endif %}
+            </td>
+            <td><span class="ev-time">{{ ev.time|time:"H:i" }}</span></td>
+            <td>
+              <div class="ev-loc">
+                {% if ev.location %}{{ ev.location.name }}{% elif ev.location_name %}{{ ev.location_name }}{% else %}—{% endif %}
+              </div>
+              {% if ev.distance_meters is not None %}
+                <div class="ev-dist">📍 {{ ev.distance_meters|floatformat:0 }} m</div>
+              {% endif %}
+            </td>
+            <td>
+              {% if ev.verified_by == 'self' %}
+                <span class="ev-verify ev-verify-self">O'zi</span>
+              {% else %}
+                <span class="ev-verify ev-verify-hr">HR admin</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7" class="text-center py-5">
+              <div style="color:var(--text-muted)">
+                <i data-feather="camera-off" style="width:40px;height:40px;opacity:.3;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto"></i>
+                <p class="mb-0">{{ sel_date|date:"d.m.Y" }} uchun kirish-chiqish yozuvi topilmadi</p>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if events %}
+    <div class="card-footer">
+      <small class="text-muted">Jami: <strong>{{ events|length }}</strong> ta hodisa &middot; {{ sel_date|date:"d.m.Y" }}</small>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Rasm kattalashtirish modali ── #}
+<div id="photoModal" onclick="closePhoto()">
+  <span class="pm-close" onclick="closePhoto()">&times;</span>
+  <img id="pmImg" src="" alt="">
+  <div class="pm-name" id="pmName"></div>
+</div>
+{% endblock content %}
+
+{% block javascripts %}
+<script src="{% static 'js/app.js' %}"></script>
+<script>
+  function openPhoto(url, name) {
+    document.getElementById('pmImg').src = url;
+    document.getElementById('pmName').textContent = name || '';
+    document.getElementById('photoModal').classList.add('open');
+  }
+  function closePhoto() {
+    document.getElementById('photoModal').classList.remove('open');
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closePhoto();
+  });
+</script>
+{% endblock %}
