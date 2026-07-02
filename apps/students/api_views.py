@@ -229,6 +229,59 @@ def get_lesson_schedule_times(group, today, lesson=None):
     return None, None
 
 
+def _compute_student_late(check_in_time, today, lesson, expected_start):
+    """Berilgan kirish vaqti uchun kechikish (daqiqa) va status ni qaytaradi."""
+    late_minutes = 0
+    status_val   = 'present'
+    now_dt = datetime.combine(today, check_in_time)
+    if lesson and lesson.smena:
+        slots = lesson.smena.get_slots()
+        target_slot = None
+        for slot in slots:
+            slot_start = datetime.combine(today, slot.start)
+            slot_end = (
+                datetime.combine(today, slot.end) if slot.end
+                else slot_start + timedelta(minutes=PARA_DURATION_MINUTES)
+            )
+            if now_dt <= slot_end:
+                target_slot = slot
+                break
+        if target_slot is None and slots:
+            target_slot = slots[-1]
+        if target_slot:
+            exp_dt = datetime.combine(today, target_slot.start)
+            if now_dt > exp_dt:
+                late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+                status_val   = 'late'
+    elif expected_start:
+        exp_dt = datetime.combine(today, expected_start)
+        if now_dt > exp_dt:
+            late_minutes = int((now_dt - exp_dt).total_seconds() / 60)
+            status_val   = 'late'
+    return late_minutes, status_val
+
+
+def _compute_student_early_leave(check_out_time, today, lesson, expected_end):
+    """Berilgan chiqish vaqti uchun erta ketish (daqiqa) ni qaytaradi."""
+    early = 0
+    now_dt = datetime.combine(today, check_out_time)
+    if lesson and lesson.smena:
+        slots = lesson.smena.get_slots()
+        if slots:
+            last = slots[-1]
+            last_end = (
+                datetime.combine(today, last.end) if last.end
+                else datetime.combine(today, last.start) + timedelta(minutes=PARA_DURATION_MINUTES)
+            )
+            if now_dt < last_end:
+                early = int((last_end - now_dt).total_seconds() / 60)
+    elif expected_end:
+        exp_end_dt = datetime.combine(today, expected_end)
+        if now_dt < exp_end_dt:
+            early = int((exp_end_dt - now_dt).total_seconds() / 60)
+    return early
+
+
 # ============================================================
 # SERIALIZER
 # ============================================================
