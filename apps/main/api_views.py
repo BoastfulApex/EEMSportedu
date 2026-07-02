@@ -253,7 +253,9 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
             attendance.check_in = attendance.check_in or now_time
 
         elif check_type == 'check_out':
-            attendance.check_out = now_time
+            # Eng KECH chiqish saqlanadi (ertaroq bosilса qayta yozilmaydi)
+            if attendance.check_out is None or now_time > attendance.check_out:
+                attendance.check_out = now_time
             if attendance.check_in:
                 # Xodimning jadvalidagi tushlik vaqtini aniqlaymiz
                 lunch_start = lunch_end = None
