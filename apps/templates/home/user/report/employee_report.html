@@ -386,10 +386,40 @@
               {% endif %}
             </td>
             <td class="text-center">
-              {% if r.check_in %}{{ r.check_in|time:"H:i" }}{% else %}<span class="val-zero">—</span>{% endif %}
+              {% if r.check_in %}
+                <div class="ev-cell">
+                  {% if r.check_in_event and r.check_in_event.photo %}
+                    <img src="{{ r.check_in_event.photo.url }}" class="ev-thumb"
+                         onclick="openEventPhoto('{{ r.check_in_event.photo.url }}', '{{ r.employee.name|escapejs }}', 'Kirish', '{{ r.date }}', '{{ r.check_in|time:'H:i' }}', '{{ r.check_in_event.location.name|default:''|escapejs }}', {{ r.check_in_event.distance_meters|default:'null' }})">
+                  {% else %}
+                    <div class="ev-thumb ev-noimg"><i data-feather="user" style="width:14px;height:14px"></i></div>
+                  {% endif %}
+                  <div class="ev-cell-text">
+                    <div>{{ r.check_in|time:"H:i" }}</div>
+                    {% if r.check_in_event.location %}
+                      <small class="ev-loc-sm" title="{{ r.check_in_event.location.name }}">📍 {{ r.check_in_event.location.name|truncatechars:14 }}</small>
+                    {% endif %}
+                  </div>
+                </div>
+              {% else %}<span class="val-zero">—</span>{% endif %}
             </td>
             <td class="text-center">
-              {% if r.check_out %}{{ r.check_out|time:"H:i" }}{% else %}<span class="val-zero">—</span>{% endif %}
+              {% if r.check_out %}
+                <div class="ev-cell">
+                  {% if r.check_out_event and r.check_out_event.photo %}
+                    <img src="{{ r.check_out_event.photo.url }}" class="ev-thumb"
+                         onclick="openEventPhoto('{{ r.check_out_event.photo.url }}', '{{ r.employee.name|escapejs }}', 'Chiqish', '{{ r.date }}', '{{ r.check_out|time:'H:i' }}', '{{ r.check_out_event.location.name|default:''|escapejs }}', {{ r.check_out_event.distance_meters|default:'null' }})">
+                  {% else %}
+                    <div class="ev-thumb ev-noimg"><i data-feather="user" style="width:14px;height:14px"></i></div>
+                  {% endif %}
+                  <div class="ev-cell-text">
+                    <div>{{ r.check_out|time:"H:i" }}</div>
+                    {% if r.check_out_event.location %}
+                      <small class="ev-loc-sm" title="{{ r.check_out_event.location.name }}">📍 {{ r.check_out_event.location.name|truncatechars:14 }}</small>
+                    {% endif %}
+                  </div>
+                </div>
+              {% else %}<span class="val-zero">—</span>{% endif %}
             </td>
             <td class="text-center fw-semibold" style="color:#059669">
               {% if r.worked_total %}{{ r.worked_h }}s {{ r.worked_m }}d{% else %}<span class="val-zero">—</span>{% endif %}
