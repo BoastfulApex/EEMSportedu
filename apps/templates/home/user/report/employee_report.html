@@ -480,11 +480,38 @@
   {% endif %}{# end report_type check #}
 
 </div>
+
+{# ── Kirish/chiqish rasm kattalashtirish modali ── #}
+<div id="evPhotoModal" onclick="closeEventPhoto()">
+  <span class="epm-close" onclick="closeEventPhoto()">&times;</span>
+  <img id="epmImg" src="" alt="">
+  <div class="epm-info">
+    <div class="epm-name" id="epmName"></div>
+    <div class="epm-meta" id="epmMeta"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block javascripts %}
 <script src="{% static 'js/app.js' %}"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  function openEventPhoto(url, empName, type, date, time, location, distance) {
+    document.getElementById('epmImg').src = url;
+    document.getElementById('epmName').textContent = empName + ' — ' + type;
+    var metaParts = [date + ' ' + time];
+    if (location) metaParts.push('📍 ' + location);
+    if (distance !== null && distance !== undefined) metaParts.push(Math.round(distance) + ' m');
+    document.getElementById('epmMeta').textContent = metaParts.join('  ·  ');
+    document.getElementById('evPhotoModal').classList.add('open');
+  }
+  function closeEventPhoto() {
+    document.getElementById('evPhotoModal').classList.remove('open');
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeEventPhoto();
+  });
+</script>
 <script>
   flatpickr(".datepicker", {
     dateFormat: "Y-m-d",
