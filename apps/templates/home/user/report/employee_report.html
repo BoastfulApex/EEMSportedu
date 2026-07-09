@@ -122,6 +122,39 @@
 
 .prog-bg-sm { height:6px; border-radius:99px; background:#e5e7eb; overflow:hidden; min-width:60px; flex:1; }
 .prog-fill-sm { height:100%; border-radius:99px; }
+
+/* ── Kirish/chiqish rasm + lokatsiya ── */
+.ev-cell { display:flex; align-items:center; gap:6px; justify-content:center; }
+.ev-thumb {
+  width: 30px; height: 30px; border-radius: 6px; object-fit: cover;
+  cursor: pointer; border: 1.5px solid #e5e7eb; transition: transform .12s;
+  flex-shrink: 0;
+}
+.ev-thumb:hover { transform: scale(1.12); border-color: #3b82f6; }
+.ev-noimg {
+  display: flex; align-items: center; justify-content: center;
+  background: #f3f4f6; color: #b0b6c3; cursor: default;
+}
+.ev-cell-text { text-align: left; line-height: 1.25; }
+.ev-loc-sm { display:block; color:#9ca3af; font-size:10px; white-space:nowrap; }
+
+/* ── Rasm modal ── */
+#evPhotoModal {
+  display: none; position: fixed; inset: 0; z-index: 1080;
+  background: rgba(0,0,0,.82); align-items: center; justify-content: center;
+}
+#evPhotoModal.open { display: flex; }
+#evPhotoModal img { max-width: 92vw; max-height: 82vh; border-radius: 10px; }
+#evPhotoModal .epm-close {
+  position: absolute; top: 22px; right: 28px; color: #fff;
+  font-size: 34px; cursor: pointer; line-height: 1; font-weight: 300;
+}
+#evPhotoModal .epm-info {
+  position: absolute; bottom: 26px; left: 0; right: 0; text-align: center;
+  color: #fff; font-size: .92rem;
+}
+#evPhotoModal .epm-info .epm-name { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+#evPhotoModal .epm-info .epm-meta { color: #d1d5db; font-size: .82rem; }
 </style>
 {% endblock %}
 
