@@ -116,10 +116,13 @@ def _build_daily_report(employees_qs, start_date, end_date):
     Har bir ScheduleDay + Attendance = bitta qator.
     15 daqiqa grace period qo'llaniladi.
     """
+    from apps.main.models import AttendanceEvent
+
     start_date, end_date = _parse_dates(start_date, end_date)
     rows = []
     delta = timedelta(days=1)
     idx = 1
+    att_ids_used = []
 
     current = start_date
     while current <= end_date:
@@ -162,6 +165,9 @@ def _build_daily_report(employees_qs, start_date, end_date):
 
                 overtime_min = _overtime_minutes(check_out, sd.end, current)
 
+                if att:
+                    att_ids_used.append(att.id)
+
                 rows.append({
                     'index':          idx,
                     'date':           current,
@@ -178,10 +184,34 @@ def _build_daily_report(employees_qs, start_date, end_date):
                     'worked_total':   worked_min,
                     'late_min':       late_min,
                     'overtime_min':   overtime_min,
+                    'attendance_id':  att.id if att else None,
+                    'check_in_event':  None,
+                    'check_out_event': None,
                 })
                 idx += 1
 
         current += delta
+
+    # ── Kirish/chiqish hodisalarini (rasm + lokatsiya) bitta so'rovda olib, biriktirish ──
+    if att_ids_used:
+        events = AttendanceEvent.objects.filter(
+            person_type='employee', attendance_id__in=set(att_ids_used)
+        ).select_related('location').order_by('time')
+
+        earliest_in  = {}
+        latest_out   = {}
+        for ev in events:
+            if ev.event_type == 'check_in':
+                if ev.attendance_id not in earliest_in:
+                    earliest_in[ev.attendance_id] = ev
+            else:
+                latest_out[ev.attendance_id] = ev  # order_by time — oxirgisi eng kech qoladi
+
+        for row in rows:
+            att_id = row.pop('attendance_id')
+            if att_id:
+                row['check_in_event']  = earliest_in.get(att_id)
+                row['check_out_event'] = latest_out.get(att_id)
 
     return rows
 
