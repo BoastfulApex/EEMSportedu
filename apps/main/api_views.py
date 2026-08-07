@@ -205,7 +205,7 @@ def find_matching_location(employee, latitude, longitude, weekday_id, now_time):
 # ============================================================
 
 class CheckRequestSerializer(serializers.Serializer):
-    user_id = serializers.IntegerField()
+    init_data = serializers.CharField()
     type = serializers.ChoiceField(choices=['check_in', 'check_out'])
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
