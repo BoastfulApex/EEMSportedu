@@ -396,7 +396,7 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
 # ════════════════════════════════════════════════════════════════
 
 class HrAdminCheckSerializer(serializers.Serializer):
-    admin_telegram_id    = serializers.IntegerField()
+    init_data            = serializers.CharField()
     employee_telegram_id = serializers.IntegerField()
     latitude             = serializers.FloatField()
     longitude            = serializers.FloatField()
