@@ -562,7 +562,8 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
     serializer_class       = EduAdminCheckSerializer
     renderer_classes       = [JSONRenderer]
     authentication_classes = []
-    permission_classes     = [AllowAny]
+    permission_classes     = [AllowAny]  # himoya initData imzosi orqali
+    throttle_scope         = 'webapp'
 
     def create(self, request):
         import os
@@ -573,13 +574,18 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        admin_telegram_id  = data['admin_telegram_id']
+        # Admin telegram id FAQAT imzolangan initData dan olinadi
+        try:
+            admin_telegram_id = get_telegram_user_id(data['init_data'])
+        except InitDataError as e:
+            return Response({"status": "FAIL", "reason": str(e)}, status=401)
+
         latitude           = data['latitude']
         longitude          = data['longitude']
         image_base64       = data['image']
         selected_student_id = data.get('student_id')   # bot orqali tanlangan tinglovchi
 
-        # ── 1. Admin tekshirish (filial filtr uchun) ────────────
+        # ── 1. Admin tekshirish — roli yo'q bo'lsa umuman o'tkazilmaydi ────
         from apps.superadmin.models import Administrator
         from apps.students.models import Student, StudentAttendance
 
@@ -587,6 +593,11 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
             telegram_id=admin_telegram_id,
             role__in=['edu_admin', 'org_admin', 'filial_admin']
         ).first()
+        if not admin:
+            return Response(
+                {"status": "FAIL", "reason": "Sizda tinglovchi davomatini qayd qilish huquqi yo'q."},
+                status=403,
+            )
 
         # ── 2. Tinglovchi(lar)ni olish ───────────────────────
         if selected_student_id:
