@@ -414,7 +414,8 @@ class HrAdminCheckAPIView(generics.CreateAPIView):
     serializer_class       = HrAdminCheckSerializer
     renderer_classes       = [JSONRenderer]
     authentication_classes = []
-    permission_classes     = [AllowAny]
+    permission_classes     = [AllowAny]  # himoya initData imzosi orqali
+    throttle_scope         = 'webapp'
 
     def create(self, request):
         import os
@@ -426,7 +427,23 @@ class HrAdminCheckAPIView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        admin_telegram_id    = data['admin_telegram_id']
+        # Admin telegram id FAQAT imzolangan initData dan olinadi
+        try:
+            admin_telegram_id = get_telegram_user_id(data['init_data'])
+        except InitDataError as e:
+            return Response({"status": "FAIL", "reason": str(e)}, status=401)
+
+        # Roli yo'q bo'lsa umuman o'tkazilmaydi
+        admin = Administrator.objects.filter(
+            telegram_id=admin_telegram_id,
+            role__in=['hr_admin', 'org_admin', 'filial_admin']
+        ).first()
+        if not admin:
+            return Response(
+                {"status": "FAIL", "reason": "Sizda xodim davomatini qayd qilish huquqi yo'q."},
+                status=403,
+            )
+
         employee_telegram_id = data['employee_telegram_id']
         latitude             = data['latitude']
         longitude            = data['longitude']
