@@ -180,3 +180,13 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Cloudflare IP laridan keladigan so'rovlarda USE_X_FORWARDED_HOST
 USE_X_FORWARDED_HOST = True
+
+# ScopedRateThrottle faqat `throttle_scope` belgilangan view'larga qo'llanadi —
+# qolgan view'lar cheklovsiz qoladi
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.ScopedRateThrottle'],
+    'DEFAULT_THROTTLE_RATES': {
+        'webapp': '120/min',
+        'integration': '60/min',
+    },
+}
