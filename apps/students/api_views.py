@@ -609,7 +609,7 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         else:
             # Admin uchun — filialdagi barcha tinglovchilar qidiruvi
             qs = Student.objects.filter(face_image__isnull=False)
-            if admin and admin.filial:
+            if admin.filial:
                 qs = qs.filter(filial=admin.filial)
 
         students_data = []
