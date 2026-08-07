@@ -31,6 +31,8 @@ from rest_framework.authentication import BasicAuthentication
 from rest_framework.permissions import AllowAny
 from PIL import Image
 
+from utils.telegram_auth import get_telegram_user_id, InitDataError
+
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
