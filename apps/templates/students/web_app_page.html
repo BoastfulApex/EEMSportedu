@@ -490,7 +490,7 @@ console.log("[face-embed] fetch override OK");
         const res = await fetch("/students/api/check/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id, type: actionType, latitude, longitude, image: photo })
+          body: JSON.stringify({ init_data: initData, type: actionType, latitude, longitude, image: photo })
         });
 
         const data = await res.json().catch(() => ({}));
