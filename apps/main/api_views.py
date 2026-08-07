@@ -220,7 +220,8 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
     serializer_class       = CheckRequestSerializer
     renderer_classes       = [JSONRenderer]
     authentication_classes = []
-    permission_classes     = [AllowAny]
+    permission_classes     = [AllowAny]  # himoya initData imzosi orqali
+    throttle_scope         = 'webapp'
 
     def get_queryset(self):
         return []
@@ -230,7 +231,12 @@ class SimpleCheckAPIView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        user_id      = data['user_id']
+        # Telegram user id FAQAT imzolangan initData dan olinadi
+        try:
+            user_id = get_telegram_user_id(data['init_data'])
+        except InitDataError as e:
+            return Response({"status": "FAIL", "reason": str(e)}, status=401)
+
         check_type   = data['type']
         latitude     = data['latitude']
         longitude    = data['longitude']
