@@ -686,7 +686,7 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
         # ── 5. Tinglovchini DB dan topish ─────────────────────
         try:
             student_qs = Student.objects.select_related('filial__organization')
-            if admin and admin.filial:
+            if admin.filial:
                 student_qs = student_qs.filter(filial=admin.filial)
             student = student_qs.get(id=student_id)
         except Student.DoesNotExist:
