@@ -457,25 +457,26 @@ class StudentCheckAPIView(generics.ListCreateAPIView):
 
 class EduAdminStudentsAPIView(generics.GenericAPIView):
     """
-    GET /students/edu-admin/api/students/?q=<query>&admin_id=<telegram_id>
+    GET /students/edu-admin/api/students/?q=<query>&init_data=<imzolangan initData>
 
     O'quv admin uchun tinglovchilarni qidirish.
     Bugungi davomat holati ham qaytariladi.
     """
     renderer_classes       = [JSONRenderer]
     authentication_classes = []
-    permission_classes     = [AllowAny]
+    permission_classes     = [AllowAny]  # himoya initData imzosi orqali
+    throttle_scope         = 'webapp'
 
     def get(self, request):
         from apps.superadmin.models import Administrator
         from apps.students.models import Student, StudentAttendance
         from django.db.models import Q
 
-        # Admin ID tekshirish
+        # Admin telegram id FAQAT imzolangan initData dan olinadi
         try:
-            admin_telegram_id = int(request.GET.get('admin_id', ''))
-        except (ValueError, TypeError):
-            return Response({"error": "admin_id kerak"}, status=400)
+            admin_telegram_id = get_telegram_user_id(request.GET.get('init_data', ''))
+        except InitDataError as e:
+            return Response({"error": str(e)}, status=401)
 
         q = request.GET.get('q', '').strip()
         if not q:
