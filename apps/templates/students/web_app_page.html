@@ -180,7 +180,8 @@ console.log("[face-embed] fetch override OK");
     const actionBtnLbl  = document.getElementById("actionBtnLbl");
     const infoBlock  = document.getElementById("infoBlock");
 
-    const user_id    = tg.initDataUnsafe?.user?.id || null;
+    // Imzolangan initData — server user id ni shundan oladi (initDataUnsafe emas)
+    const initData   = tg.initData || "";
     const urlParams  = new URLSearchParams(window.location.search);
     const actionType = urlParams.get("action") || "check_in";
     const isCheckIn  = actionType === "check_in";
