@@ -532,7 +532,7 @@ class EduAdminStudentsAPIView(generics.GenericAPIView):
 # ============================================================
 
 class EduAdminCheckSerializer(serializers.Serializer):
-    admin_telegram_id = serializers.IntegerField()
+    init_data         = serializers.CharField()
     latitude          = serializers.FloatField()
     longitude         = serializers.FloatField()
     image             = serializers.CharField()
