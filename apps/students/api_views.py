@@ -4,7 +4,7 @@ Tinglovchi davomat API
 POST /students/api/check/
 
 Request JSON:
-  user_id   — Telegram user ID
+  init_data — Telegram WebApp imzolangan initData (user id shundan olinadi)
   type      — "check_in" | "check_out"
   latitude  — GPS kenglik
   longitude — GPS uzunlik
