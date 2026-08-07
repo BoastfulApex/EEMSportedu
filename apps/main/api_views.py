@@ -7,6 +7,7 @@ from django.core.files.base import ContentFile
 import uuid as _uuid
 from django.utils import timezone
 from apps.superadmin.models import Administrator
+from utils.telegram_auth import get_telegram_user_id, InitDataError
 from datetime import datetime
 from data import config
 import requests
