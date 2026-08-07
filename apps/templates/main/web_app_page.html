@@ -348,8 +348,8 @@ console.log("[face-embed] fetch override OK");
     }
 
     async function performCheck() {
-      if (!user_id) {
-        setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi.");
+      if (!initData) {
+        setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi. Botni qayta oching.");
         return;
       }
       actionBtn.disabled = true;
