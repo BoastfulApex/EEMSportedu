@@ -18,6 +18,9 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-_qo-xrslgusc1ixtvh477nbnps
 # .env da DEBUG=True bo'lsa local, bo'lmasa production
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
+# Telegram WebApp initData imzosini tekshirish uchun — bo'sh bo'lsa API yopiq qoladi
+BOT_TOKEN = os.getenv('BOT_TOKEN', '')
+
 ALLOWED_HOSTS = ['*']
 
 
