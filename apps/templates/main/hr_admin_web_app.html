@@ -172,7 +172,8 @@ console.log("[face-embed] fetch override OK");
     tg.ready();
     tg.expand();
 
-    const adminId = tg.initDataUnsafe?.user?.id || null;
+    // Imzolangan initData — server admin id ni shundan oladi (initDataUnsafe emas)
+    const initData = tg.initData || "";
 
     // URL dan employee_telegram_id o'qish
     const _urlParams = new URLSearchParams(window.location.search);
