@@ -380,7 +380,7 @@ console.log("[face-embed] fetch override OK");
 
     // ── Asosiy action ──────────────────────────────────────
     async function performCheck(action) {
-      if (!adminId) {
+      if (!initData) {
         setStatus("error", "❌", "Telegram foydalanuvchi aniqlanmadi.");
         return;
       }
