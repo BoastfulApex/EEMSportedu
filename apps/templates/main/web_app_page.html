@@ -193,7 +193,8 @@ console.log("[face-embed] fetch override OK");
     const actionBtnIcon = document.getElementById("actionBtnIcon");
     const actionBtnLbl  = document.getElementById("actionBtnLbl");
 
-    const user_id = tg.initDataUnsafe?.user?.id || null;
+    // Imzolangan initData — server user id ni shundan oladi (initDataUnsafe emas)
+    const initData = tg.initData || "";
 
     // URL dan action o'qish: check_in yoki check_out
     const urlParams  = new URLSearchParams(window.location.search);
