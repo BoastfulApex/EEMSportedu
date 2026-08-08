@@ -24,7 +24,9 @@ urlpatterns = [
     path("", include("apps.home.urls")),
     path("superadmin/", include("apps.superadmin.urls")),
     path("students/", include("apps.students.urls")),
-    path("web_app/", include("apps.main.urls"))
+    path("web_app/", include("apps.main.urls")),
+    # LMS integratsiyasi — shartnomadagi manzil root da bo'lishi shart
+    path("api/integration/", include("apps.students.integration_urls")),
 ]
 
 # Local da Django o'zi beradi, production da Nginx beradi
