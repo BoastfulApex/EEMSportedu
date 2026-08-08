@@ -1064,11 +1064,25 @@ class IntegrationAttendanceAPIView(generics.GenericAPIView):
         })
 ```
 
-URL — `apps/students/urls.py`:
+URL — **`apps/students/urls.py` ga QO'YILMAYDI**. Sabab: u `core/urls.py` da
+`students/` prefiksi bilan ulanadi, ya'ni manzil `/students/api/integration/…`
+bo'lib qolardi va yuqoridagi shartnomaga (`/api/integration/attendance/`) mos
+kelmasdi. Shuning uchun alohida fayl ochilib, root ga ulanadi:
+
+`apps/students/integration_urls.py`:
 ```python
-path('api/integration/attendance/',
-     IntegrationAttendanceAPIView.as_view(),
-     name='integration-attendance'),
+from django.urls import path
+from .api_views import IntegrationAttendanceAPIView
+
+urlpatterns = [
+    path('attendance/', IntegrationAttendanceAPIView.as_view(),
+         name='integration-attendance'),
+]
+```
+
+`core/urls.py`:
+```python
+path("api/integration/", include("apps.students.integration_urls")),
 ```
 
 ### `checked_in` mantig'i — diqqat qiling
