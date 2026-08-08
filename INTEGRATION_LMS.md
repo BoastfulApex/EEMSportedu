@@ -1204,11 +1204,14 @@ curl -s -w "\n%{http_code}\n" \
 curl -s "http://localhost:8000/api/integration/attendance/?group_code=<uuid>&date=2026-09-15" \
   -H "Authorization: Api-Key <to'liq kalit>" | python -m json.tool
 
-# 6. Noto'g'ri scope'li kalit bilan (403 kutiladi)
+# 6. Noto'g'ri scope'li kalit bilan (403 + code=scope_denied kutiladi)
 python manage.py create_integration_key "Scope test" --scopes students:read
-curl -s -o /dev/null -w "%{http_code}\n" \
+curl -s -w "\n%{http_code}\n" \
   "http://localhost:8000/api/integration/attendance/?group_code=<uuid>&date=2026-09-15" \
   -H "Authorization: Api-Key <scope-test kaliti>"
+
+# 7. O'chirilgan mijoz kaliti (403 + code=inactive_client kutiladi)
+#    admin panelda yoki shell da: client.is_active = False; client.save()
 ```
 
 Qo'shimcha, `manage.py shell` da tekshiring:
