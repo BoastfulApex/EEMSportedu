@@ -806,3 +806,87 @@ class EduAdminCheckAPIView(generics.CreateAPIView):
                 "late_minutes":   late_minutes,
                 "expected_start": expected_start.strftime('%H:%M') if expected_start else None,
             }, status=200)
+
+
+# ============================================================
+# LMS INTEGRATSIYASI — davomatni o'qish
+# ============================================================
+
+class IntegrationAttendanceAPIView(generics.GenericAPIView):
+    """
+    GET /api/integration/attendance/?group_code=<uuid>&date=YYYY-MM-DD
+
+    LMS uchun: guruhning berilgan kundagi face-ID davomati.
+
+    LMS bu ma'lumot asosida o'qituvchiga yo'qlama ro'yxatini ko'rsatadi —
+    faqat `checked_in=true` bo'lganlarni "darsda bor" deb belgilash mumkin.
+    Guruhdagi BARCHA tinglovchilar qaytariladi (kelmaganlari ham).
+    """
+    renderer_classes       = [JSONRenderer]
+    authentication_classes = []
+    permission_classes     = [HasIntegrationScope]
+    required_scope         = 'attendance:read'
+    throttle_scope         = 'integration'
+
+    def get(self, request):
+        import uuid as _uuid
+        from datetime import date as _date
+        from apps.students.models import Group, StudentAttendance
+
+        group_code = request.query_params.get('group_code')
+        date_str   = request.query_params.get('date')
+        if not group_code or not date_str:
+            return Response({'error': 'group_code va date majburiy'}, status=400)
+        try:
+            _uuid.UUID(str(group_code))
+        except (ValueError, AttributeError, TypeError):
+            return Response(
+                {'error': "group_code UUID formatida bo'lishi kerak"}, status=400)
+        try:
+            day = _date.fromisoformat(date_str)
+        except ValueError:
+            return Response({'error': "date YYYY-MM-DD formatida bo'lishi kerak"},
+                            status=400)
+
+        try:
+            group = Group.objects.get(lms_group_code=group_code)
+        except Group.DoesNotExist:
+            return Response(
+                {'error': "Guruh topilmadi. LMS'dan import qilinganmi?"}, status=404)
+
+        students = group.students.all().order_by('full_name')
+
+        # Bitta so'rovda barcha davomat — N+1 ning oldini oladi
+        att_map = {
+            a.student_id: a
+            for a in StudentAttendance.objects
+                .filter(group=group, date=day, student__in=students)
+                .select_related('building')
+        }
+
+        out = []
+        for s in students:
+            a = att_map.get(s.id)
+            # "checked_in" = HAQIQATAN kirish vaqti qayd etilgan.
+            # `status` ning o'zi yetarli emas: StudentAttendance da default
+            # 'absent' bo'lgani uchun yozuv mavjud bo'lsa ham odam kelmagan
+            # bo'lishi mumkin.
+            checked_in = bool(a and a.check_in)
+            out.append({
+                'id': s.id,
+                'full_name': s.full_name,
+                'checked_in': checked_in,
+                'check_in_time': a.check_in.isoformat() if (a and a.check_in) else None,
+                'check_out_time': a.check_out.isoformat() if (a and a.check_out) else None,
+                'verified_by_face': bool(a and a.verified_by_face),
+                'status': a.status if a else None,
+                'late_minutes': (a.late_minutes if a else 0),
+                'building': (a.building.name if (a and a.building) else None),
+            })
+
+        return Response({
+            'group_code': str(group.lms_group_code),
+            'group_name': group.name,
+            'date': day.isoformat(),
+            'students': out,
+        })
