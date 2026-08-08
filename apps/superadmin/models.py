@@ -137,6 +137,60 @@ class Administrator(models.Model):
         verbose_name_plural = "Administratorlar"
 
 
+class IntegrationClient(models.Model):
+    """
+    Tashqi tizim (LMS) bilan server-to-server aloqa uchun API kalit.
+
+    Kalit formati:  <prefix>.<secret>     masalan  "a1b2c3d4.xYz...48belgi"
+      - prefix — bazada OCHIQ saqlanadi, kalitni TOPISH uchun (indekslangan)
+      - secret — bazada FAQAT SHA-256 hash ko'rinishida saqlanadi
+
+    Nega to'liq kalit saqlanmaydi: agar baza dumpi sizib chiqsa (backup,
+    xatolik logi, o'g'irlangan dump), hujumchi kalitlarni o'qiy olmasligi kerak.
+    Hash'dan asl kalitni tiklab bo'lmaydi.
+    """
+    SCOPE_CHOICES = [
+        ('attendance:read', "Davomatni o'qish"),
+        ('students:read',   "Tinglovchilarni o'qish"),
+    ]
+
+    name        = models.CharField(max_length=100, verbose_name="Nomi")
+    key_prefix  = models.CharField(max_length=12, unique=True, db_index=True)
+    key_hash    = models.CharField(max_length=64)
+    scopes      = models.JSONField(default=list, blank=True)
+    allowed_ips = models.JSONField(
+        default=list, blank=True,
+        help_text="Bo'sh bo'lsa — IP cheklovi yo'q. Masalan: [\"195.158.30.179\"]"
+    )
+    is_active   = models.BooleanField(default=True)
+    last_used   = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Integratsiya kaliti"
+        verbose_name_plural = "Integratsiya kalitlari"
+
+    def __str__(self):
+        return f"{self.name} ({self.key_prefix}…)"
+
+    @classmethod
+    def generate(cls, name, scopes, allowed_ips=None):
+        """
+        Yangi kalit yaratadi va (obyekt, TO'LIQ_KALIT) qaytaradi.
+        TO'LIQ KALIT FAQAT SHU YERDA, BIR MARTA ko'rinadi — keyin hech qachon.
+        """
+        prefix = secrets.token_hex(4)          # 8 belgi
+        raw    = secrets.token_urlsafe(36)
+        obj = cls.objects.create(
+            name=name,
+            key_prefix=prefix,
+            key_hash=hashlib.sha256(raw.encode()).hexdigest(),
+            scopes=scopes,
+            allowed_ips=allowed_ips or [],
+        )
+        return obj, f"{prefix}.{raw}"
+
+
 class Weekday(models.Model):
     name = models.CharField(max_length=20, unique=True)
     name_en = models.CharField(max_length=20, unique=True, null=True, blank=True)
