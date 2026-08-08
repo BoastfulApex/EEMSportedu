@@ -32,6 +32,7 @@ from rest_framework.permissions import AllowAny
 from PIL import Image
 
 from utils.telegram_auth import get_telegram_user_id, InitDataError
+from apps.students.permissions import HasIntegrationScope
 
 try:
     import face_recognition
