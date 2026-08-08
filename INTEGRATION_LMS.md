@@ -1196,8 +1196,8 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST \
 # 3. Integratsiya kaliti yaratish
 python manage.py create_integration_key "LMS test" --scopes attendance:read
 
-# 4. Davomat endpointi — kalitsiz (401/403 kutiladi)
-curl -s -o /dev/null -w "%{http_code}\n" \
+# 4. Davomat endpointi — kalitsiz (403 + code=invalid_key kutiladi)
+curl -s -w "\n%{http_code}\n" \
   "http://localhost:8000/api/integration/attendance/?group_code=<uuid>&date=2026-09-15"
 
 # 5. Kalit bilan (200 + JSON kutiladi)
