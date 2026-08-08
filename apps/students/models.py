@@ -181,6 +181,17 @@ class Group(models.Model):
 
     invite_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
+    # LMS (SportEdu Jadval) bilan bog'lovchi kalit — invite_token bilan chalkashtirmang:
+    # invite_token KPI'ning o'z tokeni, lms_group_code esa LMS'dan import orqali keladi
+    lms_group_code = models.UUIDField(
+        null=True, blank=True, unique=True, db_index=True,
+        verbose_name="LMS guruh kodi",
+        help_text="LMS (SportEdu Jadval) dagi Group.external_code — import orqali to'ladi",
+    )
+    lms_synced_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Oxirgi import"
+    )
+
     # Limit hisoblash boshlanish sanasi
     # Bu sanadan oldingi darslar "sinov" deb qaraladi va limitga hisoblanmaydi
     limit_start_date = models.DateField(
