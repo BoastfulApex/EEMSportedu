@@ -1368,6 +1368,41 @@ def lms_import_day_assignments(request):
         if b['code'] not in location_by_lms_code
     }
 
+    # Hali qo'lda bog'lanmagan LMS binolari uchun — KPI'dagi lokatsiyalar orasida
+    # NOM bo'yicha aniq (katta-kichik harf farqsiz) moslikni avtomatik qidiramiz.
+    # Topilsa DOIMIY bog'laymiz (Location.lms_building_code to'ldiriladi) —
+    # keyingi importlarda qayta qidirilmaydi, "Binolarni moslashtirish"
+    # sahifasida ham "Moslashtirilgan" bo'lib ko'rinadi.
+    #
+    # Xavfsizlik: faqat GPS'i bor VA bir xil nomli YAGONA lokatsiya bo'lsa
+    # bog'lanadi. Noaniq (bir nechta bir xil nomli) yoki GPS'siz holatda hech
+    # narsa avtomatik bog'lanmaydi — 5-B bo'limdagi qat'iy GPS talabi shu
+    # yerda ham kuchda qoladi.
+    auto_matched_names = []
+    if unmatched_buildings:
+        name_counts = {}
+        name_to_loc = {}
+        for loc in Location.objects.filter(
+            organization=admin.organization,
+            latitude__isnull=False, longitude__isnull=False,
+            lms_building_code__isnull=True,
+        ):
+            key = (loc.name or '').strip().lower()
+            if not key:
+                continue
+            name_counts[key] = name_counts.get(key, 0) + 1
+            name_to_loc[key] = loc
+
+        for code, name in list(unmatched_buildings.items()):
+            key = (name or '').strip().lower()
+            if name_counts.get(key) == 1:
+                loc = name_to_loc[key]
+                loc.lms_building_code = code
+                loc.save(update_fields=['lms_building_code'])
+                location_by_lms_code[code] = loc
+                auto_matched_names.append(name)
+                del unmatched_buildings[code]
+
     # ── 3. assignments -> GroupLesson (update_or_create(group=, date=)) ──
     created = updated = skipped_no_group = 0
     unmatched_lesson_count = 0
