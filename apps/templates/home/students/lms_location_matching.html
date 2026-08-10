@@ -1,0 +1,85 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}LMS binolarni moslashtirish{% endblock %}
+{% block body_class %}dashboard{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h4>LMS binolarni moslashtirish</h4>
+      <p class="breadcrumb-info mb-0">
+        <a href="{% url 'groups_list' %}">Guruhlar</a> / LMS binolarni moslashtirish
+      </p>
+    </div>
+  </div>
+
+  <div class="alert alert-info small">
+    LMS'dagi binoda GPS koordinatasi yo'q — shuning uchun har bir LMS binosini
+    KPI'dagi (GPS'i bor) lokatsiyaga qo'lda bog'lash kerak. Bu <strong>bir martalik</strong>
+    ish — yangi bino qo'shilgandagina qayta moslashtiriladi. GPS'siz lokatsiyalar
+    quyidagi ro'yxatda ko'rinmaydi.
+  </div>
+
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  {% if lms_buildings %}
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>LMS binosi</th>
+            <th>Holati</th>
+            <th style="width:320px">KPI lokatsiyasi</th>
+            <th class="text-end">Amal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in lms_buildings %}
+          <tr>
+            <td class="fw-semibold">{{ b.name }}</td>
+            <td>
+              {% if b.already_matched %}
+                <span class="badge bg-success">Moslashtirilgan</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">Moslashtirilmagan</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="lms_building_code" value="{{ b.code }}">
+                <select name="location_id" class="form-control form-control-sm" required>
+                  <option value="">— lokatsiya tanlang —</option>
+                  {% for loc in gps_locations %}
+                    <option value="{{ loc.id }}" {% if loc.lms_building_code|stringformat:"s" == b.code %}selected{% endif %}>
+                      {{ loc.name }}{% if loc.filial %} ({{ loc.filial.filial_name }}){% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary text-nowrap">Bog'lash</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% elif not error %}
+    <div class="alert alert-secondary">Joriy oy uchun LMS'dan bino topilmadi.</div>
+  {% endif %}
+
+  {% if not gps_locations %}
+    <div class="alert alert-warning mt-3">
+      Tashkilotingizda GPS koordinatasi kiritilgan lokatsiya yo'q. Avval
+      <strong>Lokatsiyalar</strong> bo'limida koordinata kiriting, keyin bu yerga qayting.
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
