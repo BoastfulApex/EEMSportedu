@@ -234,6 +234,12 @@ class Smena(models.Model):
     filial = models.ForeignKey(
         Filial, on_delete=models.SET_NULL, null=True, blank=True, related_name='smenas'
     )
+    # LMS'dan import qilinganda to'ladi (LMS Shift.code)
+    lms_shift_code = models.UUIDField(
+        null=True, blank=True, unique=True, db_index=True,
+        verbose_name="LMS smena kodi",
+    )
+
     # Eski maydonlar — migratsiya uchun saqlanadi, yangi yozuvlarda ishlatilmaydi
     para1_start = models.TimeField(null=True, blank=True, verbose_name="1-para boshlanishi (eski)")
     para2_start = models.TimeField(null=True, blank=True, verbose_name="2-para boshlanishi (eski)")
