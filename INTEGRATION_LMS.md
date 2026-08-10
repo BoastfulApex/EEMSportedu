@@ -878,7 +878,51 @@ bo'lib qoladi va sababi hech qayerda ko'rinmaydi).
 
 Moslashtirish bir marta qilingandan keyin 414 ta yozuv bitta tugma bilan.
 
-### Shartnoma — LMS taqdim etadi
+### ⚠️ YANGI: `GET /api/v1/integration/buildings/` — moslashtirish uchun, OYGA BOG'LIQ EMAS
+
+**Bu bo'lim hujjatning dastlabki versiyasida yo'q edi — amaliyotda haqiqiy xato
+topilgandan keyin qo'shildi.**
+
+Avval lokatsiya moslashtirish sahifasi (`lms_location_matching`) binolar ro'yxatini
+`day-assignments`ning `buildings` maydonidan olardi — bu maydon esa faqat **shu
+oyda haqiqatan ishlatilgan** binolarni qaytaradi. Bu NOTO'G'RI edi: moslashtirish
+(LMS bino ↔ KPI Location, GPS bo'yicha) vaqtga bog'liq bo'lmagan, bir martalik ish —
+"bu bino qaysi oyda ishlatilgan" degan savolga aloqasi yo'q. Natija: agar joriy
+kalendar oyida hech qanday kunlik biriktiruv bo'lmasa (masalan production ma'lumoti
+sentabrda, server esa avgustda), moslashtirish sahifasi **"bino topilmadi"**
+ko'rsatardi — garchi binolarning o'zi allaqachon LMS'da mavjud bo'lsa ham.
+
+```
+GET  {LMS_BASE_URL}/api/v1/integration/buildings/
+Headers: Authorization: Api-Key <kalit>   (scope: schedule:read — qo'shimcha
+                                            scope so'rash shart emas, mavjud
+                                            kalitingiz bilan ishlaydi)
+
+200 OK
+{
+  "count": 3,
+  "results": [
+    {"code": "b2f4…", "name": "Institut o'quv binosi",
+     "address": "…", "is_regional": false}
+  ]
+}
+```
+
+Tashkilotning **barcha faol** binolari, oy/yil parametri yo'q.
+
+**Oqim endi ikkiga bo'lingan (moslashtirish import'dan MUSTAQIL):**
+
+1. **Moslashtirish** (`lms_location_matching`) — shu yangi endpointdan foydalanadi,
+   xohlagan vaqtda ishlaydi, oyga bog'liq emas
+2. **Kunlik import** (`day-assignments`, pastga qarang) — bino KODINI qaytaradi,
+   KPI esa 1-qadamda saqlangan `Location.lms_building_code` orqali mos joyni topadi
+
+`day-assignments` javobidagi `buildings` maydoni **o'zgarishsiz qoladi** (orqaga
+moslik uchun, ba'zi KPI kodlari undan hali foydalanayotgan bo'lishi mumkin), lekin
+**moslashtirish endi undan foydalanmasligi kerak** — yangi `/integration/buildings/`
+dan foydalaning.
+
+### Shartnoma — LMS taqdim etadi (kunlik biriktiruvlar)
 
 ```
 GET  {LMS_BASE_URL}/api/v1/integration/day-assignments/?year=2026&month=9
