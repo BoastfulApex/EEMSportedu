@@ -1244,7 +1244,11 @@ def lms_import_groups(request):
         return redirect('groups_list')
 
     created = updated = 0
+    directions_before = set(
+        Direction.objects.filter(organization=admin.organization).values_list('id', flat=True)
+    )
     for row in rows:
+        direction = _get_or_create_direction(row.get('major'), admin.organization, admin.filial)
         obj, is_new = Group.objects.update_or_create(
             lms_group_code=row['code'],
             defaults={
@@ -1253,16 +1257,21 @@ def lms_import_groups(request):
                 'month': row['month'],
                 'organization': admin.organization,
                 'filial': admin.filial,
+                'direction': direction,
                 'lms_synced_at': timezone.now(),
             },
         )
         created += int(is_new)
         updated += int(not is_new)
 
-    messages.success(
-        request,
-        f"LMS'dan import: {created} ta yangi guruh, {updated} ta yangilandi."
-    )
+    new_directions_count = Direction.objects.filter(
+        organization=admin.organization
+    ).exclude(id__in=directions_before).count()
+
+    msg = f"LMS'dan import: {created} ta yangi guruh, {updated} ta yangilandi."
+    if new_directions_count:
+        msg += f" {new_directions_count} ta yangi yo'nalish yaratildi."
+    messages.success(request, msg)
     return redirect('groups_list')
 
 
