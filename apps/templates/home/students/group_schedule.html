@@ -635,26 +635,41 @@ async function setLimitDate(dateStr) {
   const parts = dateStr.split('-');
   const label = `${parts[2]}.${parts[1]}.${parts[0]}`;
   if (!confirm(`📊 ${label} sanasidan limit hisoblashni boshlaymizmi?\n\nBu sanadan OLDINGI darslar "sinov" deb qaraladi va limitga hisoblanmaydi.`)) return;
-  const resp = await fetch(LIMIT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-    body: JSON.stringify({ date: dateStr }),
-  });
-  const data = await resp.json();
-  if (data.ok) location.reload();
-  else alert('Xatolik: ' + (data.error || 'Noma\'lum'));
+  try {
+    const resp = await fetch(LIMIT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ date: dateStr }),
+    });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+    else alert('Xatolik: ' + (data.error || 'Noma\'lum'));
+  } catch (err) {
+    alert('Server bilan aloqa xatosi: ' + err.message + '\nSahifani yangilab qayta urinib ko\'ring.');
+  }
 }
 
 // ── Limit sanasini tozalash ────────────────────────
 document.getElementById('btn-clear-limit').addEventListener('click', async function() {
   if (!confirm('Limit sanasini tozalaysizmi? Barcha darslar limitga hisoblanadi.')) return;
-  const resp = await fetch(LIMIT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-    body: JSON.stringify({ date: null }),
-  });
-  const data = await resp.json();
-  if (data.ok) location.reload();
+  const btn = this;
+  btn.disabled = true;
+  try {
+    const resp = await fetch(LIMIT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ date: null }),
+    });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+    else {
+      alert('Xatolik: ' + (data.error || 'Noma\'lum'));
+      btn.disabled = false;
+    }
+  } catch (err) {
+    alert('Server bilan aloqa xatosi: ' + err.message + '\nSahifani yangilab qayta urinib ko\'ring.');
+    btn.disabled = false;
+  }
 });
 </script>
 {% endblock %}
