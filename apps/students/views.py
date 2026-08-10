@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django.utils import timezone
 
-from apps.superadmin.decorators import edu_admin_required, monitoring_required
+from apps.superadmin.decorators import edu_admin_required, monitoring_required, org_admin_required
 from apps.superadmin.models import Administrator
 from apps.main.models import Location
 from .models import Group, Direction, Student, Smena, SmenaSlot, GroupLesson, GroupSchedule, StudentAttendance, MONTH_CHOICES
