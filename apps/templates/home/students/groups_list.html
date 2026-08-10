@@ -14,9 +14,12 @@
       </p>
     </div>
     <div class="d-flex gap-2">
+      {# Bino/joylashuv — fizik infratuzilma qarori, faqat org_admin #}
+      {% if is_org_admin %}
       <a href="{% url 'lms_location_matching' %}" class="btn btn-outline-secondary">
         <i data-feather="map-pin"></i> LMS binolarni moslashtirish
       </a>
+      {% endif %}
       <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#lmsImportModal">
         <i data-feather="download-cloud"></i> LMS'dan import
       </button>
@@ -26,7 +29,8 @@
     </div>
   </div>
 
-  {# ── LMS import modal ── #}
+  {# ── LMS import modal — guruh/dars sinxronizatsiyasi, edu_admin ishi
+       (bu sahifaning o'zi @edu_admin_required bilan himoyalangan) ── #}
   <div class="modal fade" id="lmsImportModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
