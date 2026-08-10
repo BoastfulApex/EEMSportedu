@@ -30,6 +30,12 @@ class Location(models.Model):
     longitude = models.FloatField(null=True, blank=True)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True)
 
+    # LMS'dagi Building bilan qo'lda moslashtiriladi (LMS'da GPS yo'q, KPI'da bor)
+    lms_building_code = models.UUIDField(
+        null=True, blank=True, unique=True, db_index=True,
+        verbose_name="LMS bino kodi",
+    )
+
     def __str__(self):
         return self.name if self.name else "Unnamed Location"
 
