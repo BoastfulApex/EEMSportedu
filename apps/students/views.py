@@ -1172,3 +1172,255 @@ def _export_student_report_xlsx(group, date_from, date_to):
     response['Content-Disposition'] = f'attachment; filename="{fname}"'
     wb.save(response)
     return response
+
+
+# ============================================================
+# LMS INTEGRATSIYASI — import (VAZIFA A, A2)
+# ============================================================
+
+@edu_admin_required
+def lms_import_groups(request):
+    """
+    LMS'dan guruhlarni import qiladi.
+
+    MUHIM: so'rov SERVERDAN yuboriladi, brauzerdan emas — aks holda
+    LMS_API_KEY frontend kodida ochiq qolib ketardi.
+
+    Onlayn guruhlar LMS tomonida allaqachon chiqarib tashlangan
+    (`lms_client.fetch_groups` izohiga qarang) — bu yerda qayta filtrlanmaydi.
+    """
+    from .lms_client import fetch_groups, LMSError
+
+    if request.method != 'POST':
+        return redirect('groups_list')
+
+    try:
+        year  = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+    except (TypeError, ValueError):
+        messages.error(request, "Yil va oy to'g'ri tanlanmagan.")
+        return redirect('groups_list')
+
+    admin = request.admin_user  # @edu_admin_required o'rnatadi
+
+    try:
+        rows = fetch_groups(year, month)
+    except LMSError as e:
+        messages.error(request, str(e))
+        return redirect('groups_list')
+
+    created = updated = 0
+    for row in rows:
+        obj, is_new = Group.objects.update_or_create(
+            lms_group_code=row['code'],
+            defaults={
+                'name': row['name'],
+                'year': row['year'],
+                'month': row['month'],
+                'organization': admin.organization,
+                'filial': admin.filial,
+                'lms_synced_at': timezone.now(),
+            },
+        )
+        created += int(is_new)
+        updated += int(not is_new)
+
+    messages.success(
+        request,
+        f"LMS'dan import: {created} ta yangi guruh, {updated} ta yangilandi."
+    )
+    return redirect('groups_list')
+
+
+@edu_admin_required
+def lms_location_matching(request):
+    """
+    LMS binolarini KPI Location'lariga BIR MARTALIK qo'lda moslashtirish sahifasi.
+
+    GPS'siz Location ni tanlab bo'lmaydi — bu qat'iy talab (INTEGRATION_LMS.md,
+    5-B bo'lim): aks holda find_student_location() geo-tekshiruvni jimgina
+    o'tkazib yuboradi.
+    """
+    from .lms_client import fetch_day_assignments, LMSError
+
+    admin = request.admin_user
+    today = timezone.localdate()
+
+    if request.method == 'POST':
+        lms_code = request.POST.get('lms_building_code')
+        location_id = request.POST.get('location_id')
+
+        try:
+            loc = Location.objects.get(id=location_id, organization=admin.organization)
+        except (Location.DoesNotExist, ValueError, TypeError):
+            messages.error(request, "Tanlangan lokatsiya topilmadi.")
+            return redirect('lms_location_matching')
+
+        # Server tomonda ham qayta tekshirish — dropdown chetlab o'tilishi mumkin
+        if loc.latitude is None or loc.longitude is None:
+            messages.error(
+                request,
+                f"«{loc.name}» lokatsiyasida GPS koordinatasi yo'q — "
+                "avval uni kiriting, keyin moslashtiring."
+            )
+            return redirect('lms_location_matching')
+
+        loc.lms_building_code = lms_code
+        loc.save(update_fields=['lms_building_code'])
+        messages.success(request, f"«{loc.name}» LMS binosiga bog'landi.")
+        return redirect('lms_location_matching')
+
+    # ── LMS'dan binolar ro'yxatini olish (joriy oy) ──
+    lms_buildings = []
+    error = None
+    try:
+        data = fetch_day_assignments(today.year, today.month)
+        lms_buildings = data['buildings']
+    except LMSError as e:
+        error = str(e)
+
+    matched_codes = set(
+        Location.objects.filter(
+            organization=admin.organization, lms_building_code__isnull=False
+        ).values_list('lms_building_code', flat=True)
+    )
+    matched_codes = {str(c) for c in matched_codes}
+
+    # dropdown uchun QUERYSET — GPS'siz lokatsiyalar umuman ko'rinmasin
+    gps_locations = Location.objects.filter(
+        organization=admin.organization,
+        latitude__isnull=False,
+        longitude__isnull=False,
+    ).order_by('name')
+
+    for b in lms_buildings:
+        b['already_matched'] = b['code'] in matched_codes
+
+    context = {
+        'lms_buildings': lms_buildings,
+        'gps_locations': gps_locations,
+        'error': error,
+    }
+    return render(request, 'home/students/lms_location_matching.html', context)
+
+
+@edu_admin_required
+def lms_import_day_assignments(request):
+    """
+    Kunlik biriktiruvlarni (Smena + SmenaSlot + GroupLesson) LMS'dan import qiladi.
+
+    Qat'iy tartib: shifts -> buildings (faqat tekshirish) -> assignments.
+    Moslashtirilmagan bino uchun qator o'tkazib yuborilmaydi — GroupLesson
+    location=None bilan yaratiladi va foydalanuvchiga aniq ogohlantirish beriladi.
+    """
+    from .lms_client import fetch_day_assignments, LMSError
+
+    if request.method != 'POST':
+        return redirect('groups_list')
+
+    try:
+        year  = int(request.POST.get('year'))
+        month = int(request.POST.get('month'))
+    except (TypeError, ValueError):
+        messages.error(request, "Yil va oy to'g'ri tanlanmagan.")
+        return redirect('groups_list')
+
+    admin = request.admin_user
+
+    try:
+        data = fetch_day_assignments(year, month)
+    except LMSError as e:
+        messages.error(request, str(e))
+        return redirect('groups_list')
+
+    # ── 1. shifts -> Smena + SmenaSlot (avtomatik) ──
+    smena_by_code = {}
+    for row in data['shifts']:
+        smena, _ = Smena.objects.update_or_create(
+            lms_shift_code=row['code'],
+            defaults={
+                'name': row['name'],
+                'organization': admin.organization,
+                'filial': admin.filial,
+            },
+        )
+        # Paralarni to'liq qayta yozish — LMS manba, KPI nusxa
+        smena.slots.all().delete()
+        SmenaSlot.objects.bulk_create([
+            SmenaSlot(
+                smena=smena, order=p['order'],
+                start=p['start_time'], end=p['end_time'],
+            )
+            for p in row['paras']
+        ])
+        smena_by_code[row['code']] = smena
+
+    # ── 2. buildings -> mavjud moslashtirish tekshiriladi (yangi Location YARATILMAYDI) ──
+    location_by_lms_code = {
+        str(loc.lms_building_code): loc
+        for loc in Location.objects.filter(
+            organization=admin.organization, lms_building_code__isnull=False
+        )
+    }
+    unmatched_buildings = {
+        b['code']: b['name'] for b in data['buildings']
+        if b['code'] not in location_by_lms_code
+    }
+
+    # ── 3. assignments -> GroupLesson (update_or_create(group=, date=)) ──
+    created = updated = skipped_no_group = 0
+    unmatched_lesson_count = 0
+    unmatched_building_names = set()
+
+    groups_by_code = {
+        str(g.lms_group_code): g
+        for g in Group.objects.filter(
+            organization=admin.organization, lms_group_code__isnull=False
+        )
+    }
+
+    for row in data['assignments']:
+        group = groups_by_code.get(row['group_code'])
+        if not group:
+            skipped_no_group += 1
+            continue
+
+        smena = smena_by_code.get(row['shift_code']) if row.get('shift_code') else None
+        location = location_by_lms_code.get(row['building_code']) if row.get('building_code') else None
+
+        if row.get('building_code') and row['building_code'] in unmatched_buildings:
+            unmatched_lesson_count += 1
+            unmatched_building_names.add(unmatched_buildings[row['building_code']])
+
+        try:
+            day = dt.date.fromisoformat(row['date'])
+        except ValueError:
+            continue
+
+        obj, is_new = GroupLesson.objects.update_or_create(
+            group=group, date=day,
+            defaults={'location': location, 'smena': smena},
+        )
+        created += int(is_new)
+        updated += int(not is_new)
+
+    msg_parts = [f"{created} ta yangi dars, {updated} ta yangilandi."]
+    if skipped_no_group:
+        msg_parts.append(
+            f"{skipped_no_group} ta biriktiruv o'tkazib yuborildi — "
+            "guruh KPI'da topilmadi. Avval guruhlarni import qiling."
+        )
+    if unmatched_lesson_count:
+        names = ", ".join(f"«{n}»" for n in sorted(unmatched_building_names))
+        msg_parts.append(
+            f"{names} binosi(lari) hali KPI lokatsiyasiga moslashtirilmagan — "
+            f"{unmatched_lesson_count} ta dars lokatsiyasiz yaratildi. "
+            "«Binolarni moslashtirish» sahifasida bog'lang."
+        )
+
+    if skipped_no_group or unmatched_lesson_count:
+        messages.warning(request, " ".join(msg_parts))
+    else:
+        messages.success(request, " ".join(msg_parts))
+
+    return redirect('groups_list')
