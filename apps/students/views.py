@@ -1441,6 +1441,9 @@ def lms_import_day_assignments(request):
         updated += int(not is_new)
 
     msg_parts = [f"{created} ta yangi dars, {updated} ta yangilandi."]
+    if auto_matched_names:
+        names = ", ".join(f"«{n}»" for n in sorted(auto_matched_names))
+        msg_parts.append(f"{len(auto_matched_names)} ta bino nomi bo'yicha avtomatik bog'landi: {names}.")
     if skipped_no_group:
         msg_parts.append(
             f"{skipped_no_group} ta biriktiruv o'tkazib yuborildi — "
