@@ -1244,10 +1244,9 @@ def lms_location_matching(request):
     5-B bo'lim): aks holda find_student_location() geo-tekshiruvni jimgina
     o'tkazib yuboradi.
     """
-    from .lms_client import fetch_day_assignments, LMSError
+    from .lms_client import fetch_buildings, LMSError
 
     admin = request.admin_user
-    today = timezone.localdate()
 
     if request.method == 'POST':
         lms_code = request.POST.get('lms_building_code')
