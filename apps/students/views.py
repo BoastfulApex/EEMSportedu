@@ -74,10 +74,22 @@ def groups_list(request):
         filter_year  = now.year
         filter_month = now.month
 
-    # Lokatsiya (faol jadval) bor-yo'qligini aniqlash uchun subquery
+    # Lokatsiya bor-yo'qligini aniqlash uchun subquery — ikki xil manba bo'lishi
+    # mumkin: eski haftalik GroupSchedule YOKI LMS'dan import qilingan kunlik
+    # GroupLesson (lms_group_code'li guruhlarda GroupSchedule umuman yaratilmaydi,
+    # INTEGRATION_LMS.md 5-B bo'limidagi qat'iy qoidaga ko'ra — shuning uchun
+    # faqat GroupSchedule tekshirilsa LMS guruhlarida "lokatsiya yo'q" noto'g'ri
+    # ko'rsatilardi, garchi kunlik darslarda lokatsiya bo'lsa ham).
     has_schedule_sq = GroupSchedule.objects.filter(
         group=OuterRef('pk'),
         is_active=True,
+    )
+    month_start = dt.date(filter_year, filter_month, 1)
+    month_end = dt.date(filter_year, filter_month, _calendar.monthrange(filter_year, filter_month)[1])
+    has_lesson_location_sq = GroupLesson.objects.filter(
+        group=OuterRef('pk'),
+        date__gte=month_start, date__lte=month_end,
+        location__isnull=False,
     )
 
     groups = Group.objects.filter(
@@ -91,7 +103,7 @@ def groups_list(request):
             filter=Q(students__is_registered=True),
             distinct=True,
         ),
-        has_schedule=Exists(has_schedule_sq),
+        has_schedule=Exists(has_schedule_sq) | Exists(has_lesson_location_sq),
     ).order_by('name')
 
     if filial_id:
