@@ -1190,6 +1190,28 @@ def _export_student_report_xlsx(group, date_from, date_to):
 # LMS INTEGRATSIYASI — import (VAZIFA A, A2)
 # ============================================================
 
+def _get_or_create_direction(name, organization, filial):
+    """
+    LMS'dagi `major` (yo'nalish nomi) bo'yicha KPI `Direction`ni topadi
+    yoki yaratadi. Katta-kichik harf farqsiz ("Futbol" == "futbol") — LMS va
+    KPI'da bir xil yo'nalish turlicha yozilgan bo'lishi mumkin, dublikat
+    yaratilmasligi kerak. Imlo farqi ("Futbol" vs "Futbol trener") esa
+    ataylab ALOHIDA yo'nalish sifatida qoladi — noaniq moslikni avtomatik
+    birlashtirmaymiz.
+    """
+    clean = (name or '').strip()
+    if not clean:
+        return None
+    existing = Direction.objects.filter(
+        organization=organization, filial=filial, name__iexact=clean
+    ).first()
+    if existing:
+        return existing
+    return Direction.objects.create(
+        name=clean, organization=organization, filial=filial
+    )
+
+
 @edu_admin_required
 def lms_import_groups(request):
     """
