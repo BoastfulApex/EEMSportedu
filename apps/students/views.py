@@ -1232,10 +1232,14 @@ def lms_import_groups(request):
     return redirect('groups_list')
 
 
-@edu_admin_required
+@org_admin_required
 def lms_location_matching(request):
     """
     LMS binolarini KPI Location'lariga BIR MARTALIK qo'lda moslashtirish sahifasi.
+
+    org_admin bilan cheklangan (edu_admin bilan emas): bu o'quv jarayoni emas,
+    FIZIK INFRATUZILMA qarori (qaysi bino qayerda joylashgan) — tashkilot
+    darajasidagi mas'uliyat.
 
     GPS'siz Location ni tanlab bo'lmaydi — bu qat'iy talab (INTEGRATION_LMS.md,
     5-B bo'lim): aks holda find_student_location() geo-tekshiruvni jimgina
