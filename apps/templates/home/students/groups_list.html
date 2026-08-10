@@ -13,9 +13,55 @@
         <strong>{{ filter_year }}-yil, {{ month_name }}</strong>
       </p>
     </div>
-    <a href="{% url 'group_create' %}" class="btn btn-primary">
-      <i data-feather="plus"></i> Yangi guruh
-    </a>
+    <div class="d-flex gap-2">
+      <a href="{% url 'lms_location_matching' %}" class="btn btn-outline-secondary">
+        <i data-feather="map-pin"></i> LMS binolarni moslashtirish
+      </a>
+      <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#lmsImportModal">
+        <i data-feather="download-cloud"></i> LMS'dan import
+      </button>
+      <a href="{% url 'group_create' %}" class="btn btn-primary">
+        <i data-feather="plus"></i> Yangi guruh
+      </a>
+    </div>
+  </div>
+
+  {# ── LMS import modal ── #}
+  <div class="modal fade" id="lmsImportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">LMS'dan import</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small">
+            1) Avval guruhlarni import qiling. 2) Binolar moslashtirilgan bo'lsa,
+            kunlik biriktiruvlarni (smena + lokatsiya) import qiling.
+          </p>
+          <form method="post" action="{% url 'lms_import_groups' %}" class="row g-2 align-items-end mb-2">
+            {% csrf_token %}
+            <input type="hidden" name="year" value="{{ filter_year }}">
+            <input type="hidden" name="month" value="{{ filter_month }}">
+            <div class="col">
+              <button type="submit" class="btn btn-sm btn-primary w-100">
+                1. Guruhlarni import qilish ({{ filter_year }}-{{ month_name }})
+              </button>
+            </div>
+          </form>
+          <form method="post" action="{% url 'lms_import_day_assignments' %}" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="year" value="{{ filter_year }}">
+            <input type="hidden" name="month" value="{{ filter_month }}">
+            <div class="col">
+              <button type="submit" class="btn btn-sm btn-outline-primary w-100">
+                2. Kunlik biriktiruvlarni import qilish ({{ filter_year }}-{{ month_name }})
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 
   {# ── Filter Bar ── #}
