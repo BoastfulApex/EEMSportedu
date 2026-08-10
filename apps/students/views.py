@@ -1272,12 +1272,11 @@ def lms_location_matching(request):
         messages.success(request, f"«{loc.name}» LMS binosiga bog'landi.")
         return redirect('lms_location_matching')
 
-    # ── LMS'dan binolar ro'yxatini olish (joriy oy) ──
+    # ── LMS'dan binolar ro'yxatini olish (oy/yilga bog'liq emas — bir martalik ish) ──
     lms_buildings = []
     error = None
     try:
-        data = fetch_day_assignments(today.year, today.month)
-        lms_buildings = data['buildings']
+        lms_buildings = fetch_buildings()
     except LMSError as e:
         error = str(e)
 
