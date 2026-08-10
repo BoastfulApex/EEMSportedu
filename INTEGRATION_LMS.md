@@ -529,8 +529,32 @@ Headers:
 }
 ```
 
-Xato javoblari: `401` (kalit yo'q/noto'g'ri), `403` (scope yetmaydi),
-`429` (throttle).
+Xato javoblari — **LMS ham KPI kabi HAMMA rad etishda `403` qaytaradi**, sabab
+javob tanasidagi `code` da beriladi:
+
+| Kod | `code` | Ma'nosi |
+|---|---|---|
+| 403 | `invalid_key` | Kalit yo'q / noto'g'ri / format buzuq |
+| 403 | `inactive_client` | Kalit o'chirilgan |
+| 403 | `scope_denied` | Kalitda kerakli scope yo'q |
+| 400 | `invalid_params` | `year`/`month` yo'q, harf, yoki 1–12 dan tashqarida |
+| 405 | — | `GET` dan boshqa metod |
+| 200 | — | Muvaffaqiyat |
+
+> **Tuzatildi:** hujjatning avvalgi tahririda "`401` (kalit yo'q/noto'g'ri)"
+> deb yozilgan edi — bu noto'g'ri. Amalda tekshirildi:
+> ```
+> $ curl -s "https://lms.boastful.uz/api/v1/integration/groups/?year=2026&month=9"
+> {"detail":"Api-Key sarlavhasi yo'q yoki formati noto'g'ri.","code":"invalid_key"}   403
+> ```
+> Sababi KPI tomonidagi bilan bir xil: `authentication_classes = []` bo'lganda
+> DRF `WWW-Authenticate` sarlavhasini qaytara olmaydi, shuning uchun 401 emas,
+> 403 beradi.
+>
+> **`code` ga tayaning, `detail` matniga emas** — `detail` o'zbekcha va
+> istalgan vaqtda o'zgarishi mumkin, `code` esa shartnomaning bir qismi.
+
+Kerakli scope'lar: `groups:read` (guruhlar), `schedule:read` (kunlik biriktiruvlar).
 
 ### Filtr — nima uchun aynan `year` + `month`
 
