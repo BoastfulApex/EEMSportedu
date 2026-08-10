@@ -100,6 +100,24 @@ def fetch_groups(year: int, month: int) -> list[dict]:
     return data.get('results', [])
 
 
+def fetch_buildings() -> list[dict]:
+    """
+    LMS'dagi BARCHA faol binolarni oladi — oy/yilga bog'liq emas.
+
+    Bino <-> Location moslashtirish bir martalik, kalendar oyidan mustaqil ish
+    (INTEGRATION_LMS.md, 5-B bo'lim) — shuning uchun `fetch_day_assignments`
+    dagi kabi "shu oy ishlatilganlari" emas, to'liq ro'yxat kerak.
+    """
+    data = _get(
+        '/api/v1/integration/buildings/',
+        {},
+        scope_hint='schedule:read',
+    )
+    if isinstance(data, list):
+        return data
+    return data.get('results', [])
+
+
 def fetch_day_assignments(year: int, month: int) -> dict:
     """
     LMS'dan shu oy uchun kunlik biriktiruvlarni oladi.
