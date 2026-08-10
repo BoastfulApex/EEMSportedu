@@ -53,6 +53,11 @@ urlpatterns = [
     path('telegram-reset/', views.student_telegram_reset, name='student_telegram_reset'),
     path('telegram-reset/<int:pk>/confirm/', views.student_telegram_reset_confirm, name='student_telegram_reset_confirm'),
 
+    # LMS integratsiyasi — import (edu_admin panelida)
+    path('lms/import-groups/', views.lms_import_groups, name='lms_import_groups'),
+    path('lms/location-matching/', views.lms_location_matching, name='lms_location_matching'),
+    path('lms/import-day-assignments/', views.lms_import_day_assignments, name='lms_import_day_assignments'),
+
     # Edu admin WebApp
     path('edu-admin/web-app/', views.edu_admin_web_app, name='edu_admin_web_app'),
     path('edu-admin/api/students/', EduAdminStudentsAPIView.as_view(), name='edu_admin_students_api'),
