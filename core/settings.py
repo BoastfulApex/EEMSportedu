@@ -21,6 +21,11 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 # Telegram WebApp initData imzosini tekshirish uchun — bo'sh bo'lsa API yopiq qoladi
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 
+# LMS (SportEdu Jadval) integratsiyasi — kalit faqat .env da, kodda emas
+LMS_BASE_URL = os.getenv('LMS_BASE_URL', '')
+LMS_API_KEY  = os.getenv('LMS_API_KEY', '')
+LMS_TIMEOUT  = int(os.getenv('LMS_TIMEOUT', '15'))
+
 ALLOWED_HOSTS = ['*']
 
 
